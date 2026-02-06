@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cocoon</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&family=Quicksand:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-shape bg-shape-1"></div>
+    <div class="bg-shape bg-shape-2"></div>
+    <div class="header-gradient" aria-hidden="true"></div>
+
+    <section id="onboarding" class="onboarding" hidden>
+      <div class="onboarding-sky">
+        <div class="mist mist-a"></div>
+        <div class="mist mist-b"></div>
+        <div class="mist mist-c"></div>
+
+        <div class="on-flow">
+          <p id="on-progress" class="on-progress"></p>
+          <h2 id="on-title" class="floating-title"></h2>
+          <p id="on-sub" class="on-sub"></p>
+          <div id="on-live" class="on-live"></div>
+          <div id="on-stage" class="on-stage"></div>
+          <p id="on-error" class="on-error"></p>
+          <div class="on-nav">
+            <button id="on-back" class="cloud-btn ghost">Retour</button>
+            <button id="on-next" class="cloud-btn">Suivant</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <main class="app-shell">
+      <header class="topbar">
+        <h1 class="logo-word">Cocoon</h1>
+        <nav class="tabs" aria-label="Navigation principale">
+          <button data-tab="for-you" class="tab-btn active">Pour vous</button>
+          <button data-tab="cards" class="tab-btn">Envies</button>
+          <button data-tab="nous" class="tab-btn">Nous</button>
+        </nav>
+      </header>
+
+      <section id="tab-for-you" class="tab-panel active">
+        <div id="for-you-feed" class="for-you-feed"></div>
+      </section>
+
+      <section id="guided-lane" class="guided-lane" hidden>
+        <p id="guided-kicker" class="guided-kicker"></p>
+        <h2 id="guided-title" class="guided-title"></h2>
+        <p id="guided-sub" class="guided-sub"></p>
+        <button id="guided-action" class="cloud-btn"></button>
+      </section>
+
+      <section id="tab-nous" class="tab-panel">
+        <div class="couple-stage">
+          <article class="card profile-card profile-a" data-profile="A">
+            <p class="profile-kicker">Profil A</p>
+            <p class="couple-name" data-role="name"></p>
+            <p class="couple-meta"><span data-role="sex"></span></p>
+            <span class="couple-color" data-role="color"></span>
+          </article>
+
+          <article class="card couple-link">
+            <p class="profile-kicker">Le couple</p>
+            <h2 id="couple-title" class="couple-title"></h2>
+            <p id="couple-vibe" class="couple-vibe"></p>
+            <div class="couple-stats">
+              <article class="couple-stat">
+                <p id="couple-match-count" class="couple-stat-value">0</p>
+                <p class="couple-stat-label">Matches</p>
+              </article>
+              <article class="couple-stat">
+                <p id="couple-shared-count" class="couple-stat-value">0</p>
+                <p class="couple-stat-label">Repondu ensemble</p>
+              </article>
+              <article class="couple-stat">
+                <p id="couple-progress" class="couple-stat-value">0%</p>
+                <p class="couple-stat-label">Progression duo</p>
+              </article>
+            </div>
+            <p id="couple-reveal-hint" class="couple-reveal-hint"></p>
+            <button id="couple-reveal-btn" class="cloud-btn">Revelation</button>
+            <div id="couple-shared-list" class="couple-shared-list"></div>
+          </article>
+
+          <article class="card profile-card profile-b" data-profile="B">
+            <p class="profile-kicker">Profil B</p>
+            <p class="couple-name" data-role="name"></p>
+            <p class="couple-meta"><span data-role="sex"></span></p>
+            <span class="couple-color" data-role="color"></span>
+          </article>
+        </div>
+      </section>
+
+      <section id="tab-cards" class="tab-panel">
+        <article class="card controls">
+          <div class="filter-row" aria-label="Filtres des envies">
+            <label class="pretty-filter">Categorie
+              <select id="category-filter"></select>
+            </label>
+            <label class="pretty-filter">Type
+              <select id="type-filter">
+                <option value="all">Tout</option>
+                <option value="practice">Pratiques</option>
+                <option value="discussion">Cartes discussion</option>
+              </select>
+            </label>
+          </div>
+          <p class="hint" id="connected-hint"></p>
+          <p class="hint" id="cards-hint">Touchez une carte pour l'ouvrir en grand.</p>
+        </article>
+        <div id="cards-list" class="cards-list"></div>
+      </section>
+
+      <section id="tab-matches" class="tab-panel">
+        <article class="card controls">
+          <div class="row wrap">
+            <label>Humeur du jour
+              <select id="mood-filter">
+                <option value="all">Tout</option>
+                <option value="leger">Léger</option>
+                <option value="sensuel">Sensuel</option>
+                <option value="aventureux">Aventureux</option>
+              </select>
+            </label>
+            <button id="reveal-btn" class="btn">Révéler nos secrets</button>
+            <button id="surprise-btn" class="btn ghost">Surprise mutuelle</button>
+          </div>
+          <p class="hint" id="match-hint">Les matches sont calculés uniquement sur les cartes notées par les deux profils.</p>
+        </article>
+        <div id="tonight-picks" class="picks"></div>
+        <div id="matches-list" class="cards-list"></div>
+      </section>
+
+      <section id="tab-sync" class="tab-panel">
+        <article class="card controls">
+          <h2>QR Sync chiffré</h2>
+          <p>Partage de réponses entre deux téléphones sans hébergement: exporte un QR, puis scanne sur l'autre appareil.</p>
+          <div class="row wrap">
+            <label>Exporter depuis
+              <select id="export-profile"></select>
+            </label>
+            <button id="export-qr" class="btn">Générer QR</button>
+            <button id="start-scan" class="btn ghost">Scanner un QR</button>
+          </div>
+          <p class="hint">Le QR contient uniquement un paquet chiffré. Sans le code de couple, il est illisible.</p>
+        </article>
+
+        <article class="card qr-area">
+          <div id="qr-output"></div>
+          <div id="scanner" class="scanner"></div>
+          <label>Ou coller le paquet chiffré
+            <textarea id="payload-input" rows="4" placeholder="DUO1...."></textarea>
+          </label>
+          <button id="import-payload" class="btn">Importer le paquet</button>
+          <p class="hint" id="sync-status"></p>
+        </article>
+      </section>
+    </main>
+
+    <button id="connect-fab" class="connect-fab" aria-label="Connexion">
+      <span id="connect-icon" class="connect-icon" aria-hidden="true"></span>
+      <span id="connect-label" class="connect-label">Se connecter</span>
+    </button>
+
+    <p id="connect-toast" class="connect-toast" hidden>Connectez vous pour repondre</p>
+
+    <section id="login-sheet" class="login-sheet" hidden>
+      <article class="login-cloud">
+        <p class="login-kicker">Connexion</p>
+        <div class="login-profiles">
+          <button id="login-profile-a" class="login-profile" data-profile="A"></button>
+          <button id="login-profile-b" class="login-profile" data-profile="B"></button>
+        </div>
+        <p class="login-instruction">Votre code confidentiel</p>
+        <div id="login-dots" class="pin-dots"><span class="pin-dot"></span><span class="pin-dot"></span><span class="pin-dot"></span><span class="pin-dot"></span></div>
+        <div id="login-pad" class="pin-pad">
+          <button class="pad-btn" data-digit="1">1</button><button class="pad-btn" data-digit="2">2</button><button class="pad-btn" data-digit="3">3</button>
+          <button class="pad-btn" data-digit="4">4</button><button class="pad-btn" data-digit="5">5</button><button class="pad-btn" data-digit="6">6</button>
+          <button class="pad-btn" data-digit="7">7</button><button class="pad-btn" data-digit="8">8</button><button class="pad-btn" data-digit="9">9</button>
+          <button class="pad-btn" data-action="clear">C</button><button class="pad-btn" data-digit="0">0</button><button class="pad-btn" data-action="back">⌫</button>
+        </div>
+        <p id="login-error" class="on-error"></p>
+        <button id="login-close" class="cloud-btn ghost">Fermer</button>
+      </article>
+    </section>
+
+    <section id="session-flow" class="session-flow" hidden>
+      <div class="session-cloud">
+        <p id="session-profile" class="session-profile"></p>
+        <p id="session-progress" class="session-progress"></p>
+        <h2 id="session-title" class="session-title"></h2>
+        <p id="session-meta" class="session-meta"></p>
+        <div class="session-levels">
+          <button class="cloud-btn session-level" data-level="0">Jamais</button>
+          <button class="cloud-btn session-level" data-level="1">Curieux</button>
+          <button class="cloud-btn session-level" data-level="2">Oui</button>
+          <button class="cloud-btn session-level" data-level="3">J'en rêve</button>
+        </div>
+        <button id="session-stop" class="cloud-btn ghost">Arreter</button>
+      </div>
+    </section>
+
+    <section id="envie-modal" class="envie-modal" hidden>
+      <article class="envie-sheet">
+        <p id="envie-modal-kicker" class="for-you-kicker"></p>
+        <div class="envie-center">
+          <h2 id="envie-modal-title"></h2>
+          <p id="envie-modal-blurb" class="for-you-blurb"></p>
+          <div id="envie-modal-duo" class="envie-modal-duo" hidden></div>
+          <div id="envie-modal-levels" class="for-you-actions"></div>
+        </div>
+        <div class="envie-footer">
+          <button id="envie-modal-close" class="cloud-btn ghost">Fermer</button>
+        </div>
+      </article>
+    </section>
+
+    <section id="reveal-flow" class="reveal-flow" hidden>
+      <article class="reveal-cloud">
+        <p id="reveal-kicker" class="profile-kicker"></p>
+        <h2 id="reveal-title" class="reveal-title"></h2>
+        <p id="reveal-sub" class="reveal-sub"></p>
+        <article id="reveal-card" class="reveal-card" hidden></article>
+        <div class="reveal-actions">
+          <button id="reveal-next" class="cloud-btn">Commencer</button>
+          <button id="reveal-close" class="cloud-btn ghost">Fermer</button>
+        </div>
+      </article>
+    </section>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
