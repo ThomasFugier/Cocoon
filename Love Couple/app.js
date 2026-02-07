@@ -336,6 +336,7 @@ const el = {
   loginSheet: document.getElementById("login-sheet"),
   loginA: document.getElementById("login-profile-a"),
   loginB: document.getElementById("login-profile-b"),
+  loginSelected: document.getElementById("login-selected"),
   loginDots: document.getElementById("login-dots"),
   loginPad: document.getElementById("login-pad"),
   loginError: document.getElementById("login-error"),
@@ -916,6 +917,8 @@ function renderAll() {
 function renderLoginProfileButtons() {
   el.loginA.textContent = state.profiles.A.name;
   el.loginB.textContent = state.profiles.B.name;
+  el.loginA.style.setProperty("--profile-accent", colorHex(state.profiles.A.color));
+  el.loginB.style.setProperty("--profile-accent", colorHex(state.profiles.B.color));
 }
 
 function renderProfileForms() {
@@ -1511,6 +1514,15 @@ function setLoginProfile(profileId) {
   loginState.pin = "";
   el.loginA.classList.toggle("active", profileId === "A");
   el.loginB.classList.toggle("active", profileId === "B");
+  const accent = colorHex(state.profiles[profileId].color);
+  const accentSoft = hexToRgba(accent, 0.22);
+  if (el.loginSheet) {
+    el.loginSheet.style.setProperty("--login-accent", accent);
+    el.loginSheet.style.setProperty("--login-accent-soft", accentSoft);
+  }
+  if (el.loginSelected) {
+    el.loginSelected.textContent = `${state.profiles[profileId].name} selectionne`;
+  }
   renderLoginDots();
 }
 
@@ -2018,6 +2030,17 @@ function setSyncStatus(message, isError = false) {
 function colorHex(key) {
   const color = COLORS.find((c) => c.key === key);
   return color ? color.hex : "#f4b8d0";
+}
+
+function hexToRgba(hex, alpha) {
+  const normalized = String(hex || "").replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    return `rgba(244, 184, 208, ${alpha})`;
+  }
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 async function verifyPin(profileId, pin) {
