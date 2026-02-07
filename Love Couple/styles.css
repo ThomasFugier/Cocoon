@@ -48,6 +48,41 @@ body::after {
   opacity: 0.45;
 }
 
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 2500;
+  background:
+    radial-gradient(260px 170px at -4% -6%, var(--active-aura-soft, rgba(242, 122, 173, 0.34)), transparent 70%),
+    radial-gradient(260px 170px at 104% 106%, var(--active-aura-soft, rgba(242, 122, 173, 0.34)), transparent 70%),
+    radial-gradient(220px 145px at 102% 6%, var(--active-aura-soft, rgba(242, 122, 173, 0.28)), transparent 72%),
+    radial-gradient(220px 145px at -2% 94%, var(--active-aura-soft, rgba(242, 122, 173, 0.28)), transparent 72%);
+  box-shadow:
+    inset 0 0 0 2px var(--active-aura, rgba(242, 122, 173, 0.58)),
+    inset 0 0 54px var(--active-aura-soft, rgba(242, 122, 173, 0.34));
+  transition: opacity 0.32s ease;
+}
+
+body.connected-aura::before {
+  opacity: 1;
+  animation: auraBreath 2.8s ease-in-out infinite;
+}
+
+@keyframes auraBreath {
+  0%,
+  100% {
+    filter: saturate(1.02);
+    opacity: 0.96;
+  }
+  50% {
+    filter: saturate(1.2);
+    opacity: 1;
+  }
+}
+
 .bg-shape {
   position: fixed;
   border-radius: 999px;
@@ -1832,7 +1867,7 @@ textarea {
   border-radius: 24px;
   padding: 1.25rem 1.1rem 1.1rem;
   display: grid;
-  gap: 0.88rem;
+  gap: 1.15rem;
   justify-items: center;
   background:
     radial-gradient(220px 90px at 10% 8%, var(--login-accent-soft), transparent 72%),
@@ -1866,7 +1901,7 @@ textarea {
 }
 
 .login-selected {
-  margin: -0.15rem 0 0.05rem;
+  margin: 0.34rem 0 0.4rem;
   min-height: 1.2rem;
   font-size: 0.82rem;
   font-weight: 800;
@@ -1876,6 +1911,8 @@ textarea {
 }
 
 .login-instruction {
+  margin-top: 0.34rem;
+  margin-bottom: 0.16rem;
   font-size: 0.98rem;
   color: color-mix(in srgb, var(--login-accent) 44%, #3d4767 56%);
   font-weight: 700;
@@ -1885,7 +1922,8 @@ textarea {
   width: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.62rem;
+  gap: 0.9rem;
+  margin-top: 0.45rem;
 }
 
 .login-profile {
@@ -1931,7 +1969,13 @@ textarea {
 }
 
 #login-pad {
-  margin-top: 0.2rem;
+  margin-top: 0.45rem;
+}
+
+#login-dots {
+  margin-top: 0.15rem;
+  margin-bottom: 0.1rem;
+  gap: 0.58rem;
 }
 
 #login-dots .pin-dot {

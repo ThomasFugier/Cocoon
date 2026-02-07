@@ -1470,6 +1470,7 @@ function renderConnectionUi() {
   const showFab = hasPrimaryOnboardingComplete() && el.onboarding.hidden;
   el.connectFab.hidden = !showFab;
   if (!showFab) {
+    document.body.classList.remove("connected-aura");
     return;
   }
 
@@ -1477,12 +1478,17 @@ function renderConnectionUi() {
     el.connectLabel.textContent = "Se connecter";
     el.connectFab.classList.add("is-disconnected");
     el.connectFab.style.background = "linear-gradient(150deg, rgba(122, 206, 225, 0.92), rgba(251, 105, 153, 0.9))";
+    document.body.classList.remove("connected-aura");
     return;
   }
   const profile = state.profiles[connectedProfileId];
+  const accent = colorHex(profile.color);
   el.connectFab.classList.remove("is-disconnected");
   el.connectLabel.textContent = profile.name;
-  el.connectFab.style.background = colorHex(profile.color);
+  el.connectFab.style.background = accent;
+  document.documentElement.style.setProperty("--active-aura", accent);
+  document.documentElement.style.setProperty("--active-aura-soft", hexToRgba(accent, 0.24));
+  document.body.classList.add("connected-aura");
 }
 
 function openLoginSheet(forceProfileId = null) {
