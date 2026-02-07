@@ -1,0 +1,151 @@
+id,title,category,type,moods,blurb
+v01,Baiser lent de 5 minutes,Vanille,practice,leger|sensuel,"Sans parler, vous restez connectes et vous suivez le rythme de l autre."
+v02,Massage nuque et epaules,Vanille,practice,leger,Un relachement simple pour installer une ambiance douce.
+v03,Caresse des mains,Vanille,practice,leger,"Explorer les doigts, paumes et poignets avec attention."
+v04,Regard soutenu,Vanille,practice,sensuel,Deux minutes yeux dans les yeux pour monter la tension.
+v05,Douche romantique,Vanille,practice,leger|sensuel,"Eau chaude, gestes lents et complicite sans objectif."
+v06,Film sous plaid,Vanille,practice,leger,Choisir un film court et rester colles tout du long.
+v07,Danse lente salon,Vanille,practice,leger|sensuel,"Une chanson, lumieres basses, proches l un de l autre."
+v08,Compliments corporels,Vanille,discussion,leger|sensuel,Dire trois choses concretes que vous aimez chez l autre.
+v09,Respiration synchronisee,Vanille,practice,leger,Caler vos respirations pendant 3 minutes allonges.
+v10,Prelude playlist,Vanille,practice,sensuel,Construire une mini playlist de 5 titres qui vous excitent.
+v11,Baiser cou et clavicule,Vanille,practice,sensuel,Explorer le haut du corps avec des gestes tres lents.
+v12,Petit dejeuner au lit,Vanille,practice,leger,Un matin complice pour prolonger la tendresse.
+v13,Sieste peau contre peau,Vanille,practice,leger|sensuel,Se poser 20 minutes sans ecran et sans parler.
+v14,Huile parfumee,Vanille,practice,sensuel,Massage lent avec une huile choisie ensemble.
+v15,Baiser surprise cuisine,Vanille,practice,leger,Voler un vrai moment a deux dans une routine.
+v16,Je te guide la main,Vanille,practice,sensuel,Montrer ce que vous aimez avec douceur et precision.
+v17,Duo bain chaud,Vanille,practice,leger|sensuel,"Bain, musique douce et gestes tranquilles."
+v18,Jeu des frissons,Vanille,practice,sensuel,Effleurer differentes zones et nommer ce qui plait.
+v19,Cocooning pluie,Vanille,practice,leger,"Jour de pluie, lumiere tamisee, temps lent a deux."
+v20,Baiser apres dispute,Vanille,discussion,leger,Rituel de reconnexion apres un desaccord mineur.
+v21,Sourire et silence,Vanille,practice,leger,Un moment sans mots juste pour retrouver l autre.
+v22,Dos contre torse,Vanille,practice,sensuel,Etre enlace longtemps sans aller plus loin.
+v23,Rituel bonne nuit,Vanille,practice,leger,Creer un geste intime fixe chaque soir.
+v24,Je te decris,Vanille,discussion,sensuel,Dire ce qui vous attire dans le moment present.
+v25,Main dans les cheveux,Vanille,practice,leger|sensuel,"Geste simple, lent et tres rassurant."
+v26,Baiser pulse,Vanille,practice,sensuel,Changer rythme et intensite a tour de role.
+v27,Pause sans telephone,Vanille,practice,leger,30 minutes dediees uniquement a votre lien.
+v28,Jeu des 3 envies,Vanille,discussion,leger|sensuel,Chacun propose trois idees simples pour ce soir.
+v29,Caresse ventre et hanches,Vanille,practice,sensuel,Explorer des zones souvent oubliees.
+v30,Minute gratitude intime,Vanille,discussion,leger,Remercier l autre pour un geste de la semaine.
+b01,Echelle d intensite,BDSM,discussion,aventureux,Definir vos niveaux de confort de 1 a 5 avant de jouer.
+b02,Mot de securite trio,BDSM,discussion,leger|aventureux,"Choisir stop, ralentir, et check ensemble."
+b03,Bandeau et guidance,BDSM,practice,sensuel|aventureux,Un partenaire guide l autre verbalement avec douceur.
+b04,Consignes douces,BDSM,practice,aventureux,"Donner des instructions simples, claires, consenties."
+b05,Role dominant 10 min,BDSM,practice,aventureux,Essai court pour tester la dynamique sans pression.
+b06,Role soumis 10 min,BDSM,practice,aventureux,Lacher prise dans un cadre defini ensemble.
+b07,Bondage poignets consensuel,BDSM,practice,sensuel|aventureux,Attacher les poignets avec regles claires et checks reguliers.
+b08,Jeu de permission,BDSM,practice,aventureux,Demander la permission pour chaque etape du jeu.
+b09,Ordres murmurés,BDSM,practice,sensuel|aventureux,"Voix basse, ton ferme, cadre bienveillant."
+b10,Position tenue et regard,BDSM,practice,aventureux,Maintenir une posture plus intense pendant que l autre guide.
+b11,Jeu d attente,BDSM,practice,sensuel|aventureux,Faire monter le desir en imposant de petites pauses.
+b12,Interdits du soir,BDSM,discussion,aventureux,Lister clairement ce qui est non negociable.
+b13,Autorisation de toucher,BDSM,practice,sensuel|aventureux,Toucher seulement apres signal ou consentement verbal.
+b14,Code couleur emotion,BDSM,discussion,leger|aventureux,Vert orange rouge pour garder le jeu securise.
+b15,Jeu de regard dominant,BDSM,practice,sensuel,Diriger sans parole par posture et regard.
+b16,Rituel debut scene,BDSM,practice,aventureux,Phrase ou geste qui marque l entree en jeu.
+b17,Rituel fin scene,BDSM,practice,leger|aventureux,Sortir de la dynamique avec douceur.
+b18,Aftercare 15 minutes,BDSM,practice,leger,"Hydrater, enlacer, verbaliser les ressentis."
+b19,Relecture des limites,BDSM,discussion,leger,"Ce qui etait bien, trop, ou a ajuster."
+b20,Scenario pouvoir doux,BDSM,practice,aventureux,Mini role-play axé consentement et langage.
+b21,Stop and breathe,BDSM,practice,aventureux,Pause imposee pour checker le confort mutuel.
+b22,Jeu de privation visuelle,BDSM,practice,sensuel|aventureux,Bandeau et guidance tactile lente.
+b23,Ordre puis recompense,BDSM,practice,aventureux,Associer consigne respectee et feedback positif.
+b24,Question de consentement sexy,BDSM,discussion,sensuel,Demander clairement ce qui excite vraiment.
+b25,Fessee consensuelle progressive,BDSM,practice,aventureux,"Rythme progressif, zones securisees, mot de pause actif."
+b26,Distance imposee,BDSM,practice,sensuel|aventureux,Rester proches sans se toucher pendant une minute.
+b27,Guidage vocal uniquement,BDSM,practice,aventureux,"Aucun geste, seulement la voix pour mener."
+b28,Edging controle,BDSM,practice,sensuel|aventureux,Faire monter tres haut puis redescendre avant l orgasme.
+b29,Contrat d un soir,BDSM,discussion,aventureux,Poser les regles avant de commencer.
+b30,Debrief scene,BDSM,discussion,leger,Dire ce qui a plu et ce qui doit changer.
+r01,Inconnus dans un bar,Jeux de rôle,practice,sensuel|aventureux,Se retrouver comme si c etait la premiere fois.
+r02,Message mystere,Jeux de rôle,practice,leger|sensuel,Envoyer un brief de personnage avant de se voir.
+r03,Code secret de rendez-vous,Jeux de rôle,practice,leger,Un mot qui lance le role-play dans la soiree.
+r04,Hotel imaginaire,Jeux de rôle,practice,sensuel,Transformer la chambre en suite de week-end.
+r05,Premier date version 2,Jeux de rôle,practice,leger|sensuel,Se poser des questions comme au debut.
+r06,Guide et voyageur,Jeux de rôle,practice,aventureux,"Un partenaire mene, l autre se laisse surprendre."
+r07,Coach et star,Jeux de rôle,practice,sensuel|aventureux,Jeu de confiance et de valorisation.
+r08,Late check-in,Jeux de rôle,practice,sensuel,Scene d arrivee tardive et tension douce.
+r09,Voix anonyme,Jeux de rôle,practice,aventureux,Jouer un personnage avec une voix differente.
+r10,Rendez-vous interdit,Jeux de rôle,practice,aventureux,Fiction de secret et d envie retenue.
+r11,Prof et eleve adulte,Jeux de rôle,practice,aventureux,"Role-play consensuel et adulte, cadre clarifie."
+r12,Patron et negociateur,Jeux de rôle,practice,aventureux,Jeu de pouvoir verbal et d accords.
+r13,Message vocal tease,Jeux de rôle,practice,sensuel,Lancer le scenario avant la rencontre.
+r14,Jeu de costume,Jeux de rôle,practice,leger|aventureux,Un accessoire suffit pour changer l energie.
+r15,Role discret en public,Jeux de rôle,practice,leger|aventureux,Codes complices en restant respectueux.
+r16,Scenariste a deux,Jeux de rôle,discussion,leger,Ecrire ensemble les 5 etapes du jeu.
+r17,Mot de scene,Jeux de rôle,discussion,leger,"Choisir debut, pause, fin avant de jouer."
+r18,Role de reunion,Jeux de rôle,practice,leger|aventureux,Improviser une scene courte et complice.
+r19,Aeroport retrouvailles,Jeux de rôle,practice,sensuel,Simuler une attente longue puis retrouvailles.
+r20,Surnoms du soir,Jeux de rôle,practice,leger|sensuel,Adopter de nouveaux noms le temps d une nuit.
+r21,Invitation cachee,Jeux de rôle,practice,sensuel,Laisser un mot suggestif dans l appart.
+r22,Carte mission,Jeux de rôle,practice,aventureux,Chaque partenaire tire une mission playful.
+r23,Nuit cinema prive,Jeux de rôle,practice,leger|sensuel,Pretendre que vous louez une salle juste pour vous.
+r24,Decouverte guidee,Jeux de rôle,practice,sensuel,Un partenaire decrit l experience pas a pas.
+r25,Role de confidence,Jeux de rôle,practice,leger,Jeu axé intimite emotionnelle avant le physique.
+r26,Lettres de personnage,Jeux de rôle,discussion,leger,Ecrire deux mini bios pour nourrir la scene.
+r27,Scene en trois actes,Jeux de rôle,practice,aventureux,"Debut doux, tension, final tendre."
+r28,Check consentement en role,Jeux de rôle,discussion,leger,Valider ce qui reste fiction ou non.
+r29,Role inversé,Jeux de rôle,practice,aventureux,Rejouer la meme scene en inversant les roles.
+r30,After role cuddle,Jeux de rôle,practice,leger,Sortie de role avec reconnexion affective.
+a01,Mes 3 zones preferees,Communication,discussion,leger|sensuel,Nommer precisement ce qui vous plait le plus.
+a02,Ce que je veux plus,Communication,discussion,leger,Dire ce que vous souhaitez intensifier.
+a03,Ce que je veux moins,Communication,discussion,leger,Poser des limites claires sans culpabilite.
+a04,Mots qui excitent,Communication,discussion,sensuel,Partager le vocabulaire qui vous allume.
+a05,Mots a eviter,Communication,discussion,leger,Identifier ce qui casse votre desir.
+a06,Feedback en sandwich,Communication,discussion,leger,"Un point adore, un ajustement, un point adore."
+a07,Feu vert actuel,Communication,discussion,leger,Ce soir je suis ok pour... et pas pour...
+a08,Echelle de desir,Communication,discussion,leger|sensuel,Se noter de 1 a 10 au debut et a la fin.
+a09,Fantasme soft partage,Communication,discussion,sensuel,Decrire une idee qui vous excite sans pression.
+a10,Fantasme a garder fiction,Communication,discussion,leger,Distinguer ce qui reste imaginaire.
+a11,Question intime du jour,Communication,discussion,leger,Une seule question pour nourrir le lien.
+a12,Debrief post moment,Communication,discussion,leger,Qu est ce qui etait top pour toi?
+a13,Signal non verbal,Communication,discussion,leger,Choisir un geste pour ralentir sans parler.
+a14,Tempo ideal,Communication,discussion,sensuel,"Rapide, moyen, lent: ce qui vous convient."
+a15,Preference ambiance,Communication,discussion,leger,"Lumiere, musique, odeur: vos settings favoris."
+a16,Consentement continu,Communication,discussion,leger,Rappeler que le oui peut changer.
+a17,Avant pendant apres,Communication,discussion,leger,Ce qui compte le plus a chaque phase.
+a18,Top 5 caresses,Communication,discussion,sensuel,Classer vos gestes preferes.
+a19,Rituel securite,Communication,discussion,leger,"Hydratation, mot pause, check energie."
+a20,Parler plus sale ou pas,Communication,discussion,sensuel,Poser les attentes sur le dirty talk.
+a21,Confiance et pudeur,Communication,discussion,leger,Dire ce qui vous met a l aise.
+a22,Je me sens desire quand...,Communication,discussion,sensuel,Completer la phrase chacun votre tour.
+a23,Limites temporaires,Communication,discussion,leger,Ce qui est non pour cette periode.
+a24,Oui conditionnel,Communication,discussion,leger|aventureux,Definir les conditions qui rendent ok.
+a25,Aftercare ideal,Communication,discussion,leger,"Calin, douche, silence, paroles: vos besoins."
+a26,Temps de reconnexion,Communication,discussion,leger,Combien de temps il vous faut apres.
+a27,Frein mental actuel,Communication,discussion,leger,Nommer sans jugement ce qui bloque.
+a28,Contexte qui excite,Communication,discussion,sensuel,Quand et ou vous vous sentez le plus ouverts.
+a29,Consentement sexy,Communication,discussion,sensuel,Trouver des formulations excitantes et claires.
+a30,Bilan du mois,Communication,discussion,leger,Regarder ce qui a evolue dans votre intimite.
+s01,Plume sur la peau,Sensations,practice,sensuel,Explorer legerement les zones de frisson.
+s02,Glacon doux,Sensations,practice,aventureux,Froid tres leger puis chaleur de la main.
+s03,Serviette chaude,Sensations,practice,sensuel,Contraste thermique en douceur.
+s04,Soie et coton,Sensations,practice,sensuel,Comparer textures et reactions.
+s05,Parfum choisi,Sensations,practice,leger|sensuel,Associer une odeur a votre moment intime.
+s06,Musique basse,Sensations,practice,leger,Tester comment le son change vos gestes.
+s07,Lumiere tamisee,Sensations,practice,leger|sensuel,Ajuster l ambiance pour renforcer la sensation.
+s08,Respiration oreille,Sensations,practice,sensuel,Proximite et souffle sans contact fort.
+s09,Peau contre peau lente,Sensations,practice,sensuel,Bouger tres lentement pour sentir les details.
+s10,Huile chauffante douce,Sensations,practice,sensuel,Massage progressif avec temperature confortable.
+s11,Couverture lourde,Sensations,practice,leger,Rassurance corporelle et apaisement.
+s12,Bain moussant,Sensations,practice,leger|sensuel,Relaxation et contact sans urgence.
+s13,Mains glacees puis chaudes,Sensations,practice,aventureux,Mini contrastes sur zones non sensibles.
+s14,Pieds et mollets,Sensations,practice,leger,Detente corporelle souvent sous-estimee.
+s15,Vibration musicale,Sensations,practice,sensuel,Sentir les basses proches du corps.
+s16,Douche alternance,Sensations,practice,aventureux,Tres leger chaud/frais pour reveiller les sens.
+s17,Fellation rythme guide,Sensations,practice,sensuel|aventureux,"Explorer profondeur, rythme et pauses en communication constante."
+s18,Cunnilingus attentif,Sensations,practice,sensuel|aventureux,"Prendre le temps, ajuster pression et vitesse selon feedback."
+s19,Tissu sur les yeux,Sensations,practice,sensuel|aventureux,"Moins de vision, plus de sensations."
+s20,Position 69 lente,Sensations,practice,sensuel|aventureux,Rester synchrones et privilegier le rythme plutot que la vitesse.
+s21,Silence total,Sensations,practice,leger,Couper les bruits pour ecouter le corps.
+s22,Chuchotements,Sensations,practice,sensuel,Voix basse au creux de l oreille.
+s23,Sensation de poids,Sensations,practice,sensuel,Pression douce des mains sur le torse.
+s24,Caresse au ralenti,Sensations,practice,sensuel,Allonger chaque geste pour amplifier.
+s25,Levrette lente,Sensations,practice,sensuel|aventureux,Maintenir une cadence lente avec contact verbal et corporel.
+s26,Chaleur de la paume,Sensations,practice,leger|sensuel,Poser la main fixe pour apaiser.
+s27,Tension et relachement,Sensations,practice,leger,Contracter puis detendre pour sentir mieux.
+s28,Bruit blanc + calin,Sensations,practice,leger,Creer une bulle sensorielle calme.
+s29,Texture velours,Sensations,practice,sensuel,Tester matieres douces sur le cou et les bras.
+s30,Penetration lente en face a face,Sensations,practice,sensuel|aventureux,Garder le regard et caler les mouvements sur la respiration.

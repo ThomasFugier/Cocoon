@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&family=Quicksand:wght@400;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Nunito:wght@500;700;800&family=Quicksand:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
@@ -15,6 +15,11 @@
   <body>
     <div class="bg-shape bg-shape-1"></div>
     <div class="bg-shape bg-shape-2"></div>
+    <div class="bg-shape bg-shape-3"></div>
+    <div class="bg-shape bg-shape-4"></div>
+    <div class="bg-shape bg-shape-5"></div>
+    <div class="bg-shape bg-shape-6"></div>
+    <div class="bg-shape bg-shape-7"></div>
     <div class="header-gradient" aria-hidden="true"></div>
 
     <section id="onboarding" class="onboarding" hidden>
@@ -89,6 +94,7 @@
             <p id="couple-reveal-hint" class="couple-reveal-hint"></p>
             <button id="couple-reveal-btn" class="cloud-btn">Revelation</button>
             <div id="couple-shared-list" class="couple-shared-list"></div>
+            <button id="couple-replay-btn" class="cloud-btn ghost mini">Revoir les matchs</button>
           </article>
 
           <article class="card profile-card profile-b" data-profile="B">
@@ -231,8 +237,8 @@
         <p id="reveal-sub" class="reveal-sub"></p>
         <article id="reveal-card" class="reveal-card" hidden></article>
         <div class="reveal-actions">
+          <button id="reveal-close" class="cloud-btn ghost">Retour</button>
           <button id="reveal-next" class="cloud-btn">Commencer</button>
-          <button id="reveal-close" class="cloud-btn ghost">Fermer</button>
         </div>
       </article>
     </section>

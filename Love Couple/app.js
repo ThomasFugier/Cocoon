@@ -9,40 +9,199 @@ const LEVELS = [
 ];
 
 const COLORS = [
-  { key: "rose", label: "Rose poudré", hex: "#f4b8d0" },
-  { key: "mint", label: "Menthe", hex: "#b8ecd6" },
-  { key: "sky", label: "Bleu nuage", hex: "#bfd6ff" },
-  { key: "peach", label: "Pêche", hex: "#ffd4b8" },
-  { key: "lilac", label: "Lilas", hex: "#d7c6ff" }
+  { key: "ruby", label: "Rouge Tentation", hex: "#e86689" },
+  { key: "mint", label: "Corail Nude", hex: "#ef8e82" },
+  { key: "peach", label: "Abricot Brulant", hex: "#f3a06f" },
+  { key: "sun", label: "Mandarine Douce", hex: "#e9ad6b" },
+  { key: "rose", label: "Rose Velvet", hex: "#f27aad" },
+  { key: "teal", label: "Prune Desire", hex: "#b06cae" },
+  { key: "lilac", label: "Violet Satin", hex: "#b08de8" },
+  { key: "sky", label: "Lavande Sexy", hex: "#9e86e6" }
 ];
 
-const CARDS = [
-  { id: "v1", title: "Long préliminaire", category: "Vanille", type: "practice", moods: ["leger", "sensuel"] },
-  { id: "v2", title: "Massage à tour de rôle", category: "Vanille", type: "practice", moods: ["leger", "sensuel"] },
-  { id: "v3", title: "Embrassades lentes", category: "Vanille", type: "practice", moods: ["leger"] },
-  { id: "v4", title: "Parler de ses envies à voix basse", category: "Vanille", type: "practice", moods: ["sensuel"] },
-  { id: "v5", title: "Ambiance bougies + playlist", category: "Vanille", type: "practice", moods: ["leger", "sensuel"] },
-  { id: "v6", title: "Matin câlin improvisé", category: "Vanille", type: "practice", moods: ["leger"] },
-  { id: "b1", title: "Jeu de dominance douce", category: "BDSM", type: "practice", moods: ["aventureux"] },
-  { id: "b2", title: "Menottes soft", category: "BDSM", type: "practice", moods: ["aventureux"] },
-  { id: "b3", title: "Bandeau sur les yeux", category: "BDSM", type: "practice", moods: ["sensuel", "aventureux"] },
-  { id: "b4", title: "Consignes de rôle consensuelles", category: "BDSM", type: "practice", moods: ["aventureux"] },
-  { id: "b5", title: "Jeu de contrôle verbal", category: "BDSM", type: "practice", moods: ["aventureux"] },
-  { id: "r1", title: "Scénario rendez-vous inconnu", category: "Jeux de rôle", type: "practice", moods: ["sensuel", "aventureux"] },
-  { id: "r2", title: "Message suggestif avant de se voir", category: "Jeux de rôle", type: "practice", moods: ["sensuel"] },
-  { id: "r3", title: "Code secret du soir", category: "Jeux de rôle", type: "practice", moods: ["leger"] },
-  { id: "a1", title: "Lecture d'un fantasme personnel", category: "Communication", type: "discussion", moods: ["leger", "sensuel"] },
-  { id: "a2", title: "Ce que j'aime qu'on me dise", category: "Communication", type: "discussion", moods: ["leger", "sensuel"] },
-  { id: "a3", title: "Définir nos limites du moment", category: "Communication", type: "discussion", moods: ["leger"] },
-  { id: "a4", title: "Créer un mot de pause", category: "Communication", type: "discussion", moods: ["leger"] },
-  { id: "a5", title: "Débrief tendre après intimité", category: "Communication", type: "discussion", moods: ["leger"] },
-  { id: "s1", title: "Douche à deux", category: "Sensations", type: "practice", moods: ["leger", "sensuel"] },
-  { id: "s2", title: "Texture satin/plume", category: "Sensations", type: "practice", moods: ["sensuel"] },
-  { id: "s3", title: "Température (chaud/froid léger)", category: "Sensations", type: "practice", moods: ["aventureux"] }
-];
+const CARD_SETS = {
+  "Vanille": [
+    { title: "Baiser lent de 5 minutes", type: "practice", moods: ["leger", "sensuel"], blurb: "Sans parler, vous restez connectes et vous suivez le rythme de l autre." },
+    { title: "Massage nuque et epaules", type: "practice", moods: ["leger"], blurb: "Un relachement simple pour installer une ambiance douce." },
+    { title: "Caresse des mains", type: "practice", moods: ["leger"], blurb: "Explorer les doigts, paumes et poignets avec attention." },
+    { title: "Regard soutenu", type: "practice", moods: ["sensuel"], blurb: "Deux minutes yeux dans les yeux pour monter la tension." },
+    { title: "Douche romantique", type: "practice", moods: ["leger", "sensuel"], blurb: "Eau chaude, gestes lents et complicite sans objectif." },
+    { title: "Film sous plaid", type: "practice", moods: ["leger"], blurb: "Choisir un film court et rester colles tout du long." },
+    { title: "Danse lente salon", type: "practice", moods: ["leger", "sensuel"], blurb: "Une chanson, lumieres basses, proches l un de l autre." },
+    { title: "Compliments corporels", type: "discussion", moods: ["leger", "sensuel"], blurb: "Dire trois choses concretes que vous aimez chez l autre." },
+    { title: "Respiration synchronisee", type: "practice", moods: ["leger"], blurb: "Caler vos respirations pendant 3 minutes allonges." },
+    { title: "Prelude playlist", type: "practice", moods: ["sensuel"], blurb: "Construire une mini playlist de 5 titres qui vous excitent." },
+    { title: "Baiser cou et clavicule", type: "practice", moods: ["sensuel"], blurb: "Explorer le haut du corps avec des gestes tres lents." },
+    { title: "Petit dejeuner au lit", type: "practice", moods: ["leger"], blurb: "Un matin complice pour prolonger la tendresse." },
+    { title: "Sieste peau contre peau", type: "practice", moods: ["leger", "sensuel"], blurb: "Se poser 20 minutes sans ecran et sans parler." },
+    { title: "Huile parfumee", type: "practice", moods: ["sensuel"], blurb: "Massage lent avec une huile choisie ensemble." },
+    { title: "Baiser surprise cuisine", type: "practice", moods: ["leger"], blurb: "Voler un vrai moment a deux dans une routine." },
+    { title: "Je te guide la main", type: "practice", moods: ["sensuel"], blurb: "Montrer ce que vous aimez avec douceur et precision." },
+    { title: "Duo bain chaud", type: "practice", moods: ["leger", "sensuel"], blurb: "Bain, musique douce et gestes tranquilles." },
+    { title: "Jeu des frissons", type: "practice", moods: ["sensuel"], blurb: "Effleurer differentes zones et nommer ce qui plait." },
+    { title: "Cocooning pluie", type: "practice", moods: ["leger"], blurb: "Jour de pluie, lumiere tamisee, temps lent a deux." },
+    { title: "Baiser apres dispute", type: "discussion", moods: ["leger"], blurb: "Rituel de reconnexion apres un desaccord mineur." },
+    { title: "Sourire et silence", type: "practice", moods: ["leger"], blurb: "Un moment sans mots juste pour retrouver l autre." },
+    { title: "Dos contre torse", type: "practice", moods: ["sensuel"], blurb: "Etre enlace longtemps sans aller plus loin." },
+    { title: "Rituel bonne nuit", type: "practice", moods: ["leger"], blurb: "Creer un geste intime fixe chaque soir." },
+    { title: "Je te decris", type: "discussion", moods: ["sensuel"], blurb: "Dire ce qui vous attire dans le moment present." },
+    { title: "Main dans les cheveux", type: "practice", moods: ["leger", "sensuel"], blurb: "Geste simple, lent et tres rassurant." },
+    { title: "Baiser pulse", type: "practice", moods: ["sensuel"], blurb: "Changer rythme et intensite a tour de role." },
+    { title: "Pause sans telephone", type: "practice", moods: ["leger"], blurb: "30 minutes dediees uniquement a votre lien." },
+    { title: "Jeu des 3 envies", type: "discussion", moods: ["leger", "sensuel"], blurb: "Chacun propose trois idees simples pour ce soir." },
+    { title: "Caresse ventre et hanches", type: "practice", moods: ["sensuel"], blurb: "Explorer des zones souvent oubliees." },
+    { title: "Minute gratitude intime", type: "discussion", moods: ["leger"], blurb: "Remercier l autre pour un geste de la semaine." }
+  ],
+  "BDSM": [
+    { title: "Echelle d intensite", type: "discussion", moods: ["aventureux"], blurb: "Definir vos niveaux de confort de 1 a 5 avant de jouer." },
+    { title: "Mot de securite trio", type: "discussion", moods: ["leger", "aventureux"], blurb: "Choisir stop, ralentir, et check ensemble." },
+    { title: "Bandeau et guidance", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Un partenaire guide l autre verbalement avec douceur." },
+    { title: "Consignes douces", type: "practice", moods: ["aventureux"], blurb: "Donner des instructions simples, claires, consenties." },
+    { title: "Role dominant 10 min", type: "practice", moods: ["aventureux"], blurb: "Essai court pour tester la dynamique sans pression." },
+    { title: "Role soumis 10 min", type: "practice", moods: ["aventureux"], blurb: "Lacher prise dans un cadre defini ensemble." },
+    { title: "Bondage poignets consensuel", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Attacher les poignets avec regles claires et checks reguliers." },
+    { title: "Jeu de permission", type: "practice", moods: ["aventureux"], blurb: "Demander la permission pour chaque etape du jeu." },
+    { title: "Ordres murmurés", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Voix basse, ton ferme, cadre bienveillant." },
+    { title: "Position tenue et regard", type: "practice", moods: ["aventureux"], blurb: "Maintenir une posture plus intense pendant que l autre guide." },
+    { title: "Jeu d attente", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Faire monter le desir en imposant de petites pauses." },
+    { title: "Interdits du soir", type: "discussion", moods: ["aventureux"], blurb: "Lister clairement ce qui est non negociable." },
+    { title: "Autorisation de toucher", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Toucher seulement apres signal ou consentement verbal." },
+    { title: "Code couleur emotion", type: "discussion", moods: ["leger", "aventureux"], blurb: "Vert orange rouge pour garder le jeu securise." },
+    { title: "Jeu de regard dominant", type: "practice", moods: ["sensuel"], blurb: "Diriger sans parole par posture et regard." },
+    { title: "Rituel debut scene", type: "practice", moods: ["aventureux"], blurb: "Phrase ou geste qui marque l entree en jeu." },
+    { title: "Rituel fin scene", type: "practice", moods: ["leger", "aventureux"], blurb: "Sortir de la dynamique avec douceur." },
+    { title: "Aftercare 15 minutes", type: "practice", moods: ["leger"], blurb: "Hydrater, enlacer, verbaliser les ressentis." },
+    { title: "Relecture des limites", type: "discussion", moods: ["leger"], blurb: "Ce qui etait bien, trop, ou a ajuster." },
+    { title: "Scenario pouvoir doux", type: "practice", moods: ["aventureux"], blurb: "Mini role-play axé consentement et langage." },
+    { title: "Stop and breathe", type: "practice", moods: ["aventureux"], blurb: "Pause imposee pour checker le confort mutuel." },
+    { title: "Jeu de privation visuelle", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Bandeau et guidance tactile lente." },
+    { title: "Ordre puis recompense", type: "practice", moods: ["aventureux"], blurb: "Associer consigne respectee et feedback positif." },
+    { title: "Question de consentement sexy", type: "discussion", moods: ["sensuel"], blurb: "Demander clairement ce qui excite vraiment." },
+    { title: "Fessee consensuelle progressive", type: "practice", moods: ["aventureux"], blurb: "Rythme progressif, zones securisees, mot de pause actif." },
+    { title: "Distance imposee", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Rester proches sans se toucher pendant une minute." },
+    { title: "Guidage vocal uniquement", type: "practice", moods: ["aventureux"], blurb: "Aucun geste, seulement la voix pour mener." },
+    { title: "Edging controle", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Faire monter tres haut puis redescendre avant l orgasme." },
+    { title: "Contrat d un soir", type: "discussion", moods: ["aventureux"], blurb: "Poser les regles avant de commencer." },
+    { title: "Debrief scene", type: "discussion", moods: ["leger"], blurb: "Dire ce qui a plu et ce qui doit changer." }
+  ],
+  "Jeux de rôle": [
+    { title: "Inconnus dans un bar", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Se retrouver comme si c etait la premiere fois." },
+    { title: "Message mystere", type: "practice", moods: ["leger", "sensuel"], blurb: "Envoyer un brief de personnage avant de se voir." },
+    { title: "Code secret de rendez-vous", type: "practice", moods: ["leger"], blurb: "Un mot qui lance le role-play dans la soiree." },
+    { title: "Hotel imaginaire", type: "practice", moods: ["sensuel"], blurb: "Transformer la chambre en suite de week-end." },
+    { title: "Premier date version 2", type: "practice", moods: ["leger", "sensuel"], blurb: "Se poser des questions comme au debut." },
+    { title: "Guide et voyageur", type: "practice", moods: ["aventureux"], blurb: "Un partenaire mene, l autre se laisse surprendre." },
+    { title: "Coach et star", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Jeu de confiance et de valorisation." },
+    { title: "Late check-in", type: "practice", moods: ["sensuel"], blurb: "Scene d arrivee tardive et tension douce." },
+    { title: "Voix anonyme", type: "practice", moods: ["aventureux"], blurb: "Jouer un personnage avec une voix differente." },
+    { title: "Rendez-vous interdit", type: "practice", moods: ["aventureux"], blurb: "Fiction de secret et d envie retenue." },
+    { title: "Prof et eleve adulte", type: "practice", moods: ["aventureux"], blurb: "Role-play consensuel et adulte, cadre clarifie." },
+    { title: "Patron et negociateur", type: "practice", moods: ["aventureux"], blurb: "Jeu de pouvoir verbal et d accords." },
+    { title: "Message vocal tease", type: "practice", moods: ["sensuel"], blurb: "Lancer le scenario avant la rencontre." },
+    { title: "Jeu de costume", type: "practice", moods: ["leger", "aventureux"], blurb: "Un accessoire suffit pour changer l energie." },
+    { title: "Role discret en public", type: "practice", moods: ["leger", "aventureux"], blurb: "Codes complices en restant respectueux." },
+    { title: "Scenariste a deux", type: "discussion", moods: ["leger"], blurb: "Ecrire ensemble les 5 etapes du jeu." },
+    { title: "Mot de scene", type: "discussion", moods: ["leger"], blurb: "Choisir debut, pause, fin avant de jouer." },
+    { title: "Role de reunion", type: "practice", moods: ["leger", "aventureux"], blurb: "Improviser une scene courte et complice." },
+    { title: "Aeroport retrouvailles", type: "practice", moods: ["sensuel"], blurb: "Simuler une attente longue puis retrouvailles." },
+    { title: "Surnoms du soir", type: "practice", moods: ["leger", "sensuel"], blurb: "Adopter de nouveaux noms le temps d une nuit." },
+    { title: "Invitation cachee", type: "practice", moods: ["sensuel"], blurb: "Laisser un mot suggestif dans l appart." },
+    { title: "Carte mission", type: "practice", moods: ["aventureux"], blurb: "Chaque partenaire tire une mission playful." },
+    { title: "Nuit cinema prive", type: "practice", moods: ["leger", "sensuel"], blurb: "Pretendre que vous louez une salle juste pour vous." },
+    { title: "Decouverte guidee", type: "practice", moods: ["sensuel"], blurb: "Un partenaire decrit l experience pas a pas." },
+    { title: "Role de confidence", type: "practice", moods: ["leger"], blurb: "Jeu axé intimite emotionnelle avant le physique." },
+    { title: "Lettres de personnage", type: "discussion", moods: ["leger"], blurb: "Ecrire deux mini bios pour nourrir la scene." },
+    { title: "Scene en trois actes", type: "practice", moods: ["aventureux"], blurb: "Debut doux, tension, final tendre." },
+    { title: "Check consentement en role", type: "discussion", moods: ["leger"], blurb: "Valider ce qui reste fiction ou non." },
+    { title: "Role inversé", type: "practice", moods: ["aventureux"], blurb: "Rejouer la meme scene en inversant les roles." },
+    { title: "After role cuddle", type: "practice", moods: ["leger"], blurb: "Sortie de role avec reconnexion affective." }
+  ],
+  "Communication": [
+    { title: "Mes 3 zones preferees", type: "discussion", moods: ["leger", "sensuel"], blurb: "Nommer precisement ce qui vous plait le plus." },
+    { title: "Ce que je veux plus", type: "discussion", moods: ["leger"], blurb: "Dire ce que vous souhaitez intensifier." },
+    { title: "Ce que je veux moins", type: "discussion", moods: ["leger"], blurb: "Poser des limites claires sans culpabilite." },
+    { title: "Mots qui excitent", type: "discussion", moods: ["sensuel"], blurb: "Partager le vocabulaire qui vous allume." },
+    { title: "Mots a eviter", type: "discussion", moods: ["leger"], blurb: "Identifier ce qui casse votre desir." },
+    { title: "Feedback en sandwich", type: "discussion", moods: ["leger"], blurb: "Un point adore, un ajustement, un point adore." },
+    { title: "Feu vert actuel", type: "discussion", moods: ["leger"], blurb: "Ce soir je suis ok pour... et pas pour..." },
+    { title: "Echelle de desir", type: "discussion", moods: ["leger", "sensuel"], blurb: "Se noter de 1 a 10 au debut et a la fin." },
+    { title: "Fantasme soft partage", type: "discussion", moods: ["sensuel"], blurb: "Decrire une idee qui vous excite sans pression." },
+    { title: "Fantasme a garder fiction", type: "discussion", moods: ["leger"], blurb: "Distinguer ce qui reste imaginaire." },
+    { title: "Question intime du jour", type: "discussion", moods: ["leger"], blurb: "Une seule question pour nourrir le lien." },
+    { title: "Debrief post moment", type: "discussion", moods: ["leger"], blurb: "Qu est ce qui etait top pour toi?" },
+    { title: "Signal non verbal", type: "discussion", moods: ["leger"], blurb: "Choisir un geste pour ralentir sans parler." },
+    { title: "Tempo ideal", type: "discussion", moods: ["sensuel"], blurb: "Rapide, moyen, lent: ce qui vous convient." },
+    { title: "Preference ambiance", type: "discussion", moods: ["leger"], blurb: "Lumiere, musique, odeur: vos settings favoris." },
+    { title: "Consentement continu", type: "discussion", moods: ["leger"], blurb: "Rappeler que le oui peut changer." },
+    { title: "Avant pendant apres", type: "discussion", moods: ["leger"], blurb: "Ce qui compte le plus a chaque phase." },
+    { title: "Top 5 caresses", type: "discussion", moods: ["sensuel"], blurb: "Classer vos gestes preferes." },
+    { title: "Rituel securite", type: "discussion", moods: ["leger"], blurb: "Hydratation, mot pause, check energie." },
+    { title: "Parler plus sale ou pas", type: "discussion", moods: ["sensuel"], blurb: "Poser les attentes sur le dirty talk." },
+    { title: "Confiance et pudeur", type: "discussion", moods: ["leger"], blurb: "Dire ce qui vous met a l aise." },
+    { title: "Je me sens desire quand...", type: "discussion", moods: ["sensuel"], blurb: "Completer la phrase chacun votre tour." },
+    { title: "Limites temporaires", type: "discussion", moods: ["leger"], blurb: "Ce qui est non pour cette periode." },
+    { title: "Oui conditionnel", type: "discussion", moods: ["leger", "aventureux"], blurb: "Definir les conditions qui rendent ok." },
+    { title: "Aftercare ideal", type: "discussion", moods: ["leger"], blurb: "Calin, douche, silence, paroles: vos besoins." },
+    { title: "Temps de reconnexion", type: "discussion", moods: ["leger"], blurb: "Combien de temps il vous faut apres." },
+    { title: "Frein mental actuel", type: "discussion", moods: ["leger"], blurb: "Nommer sans jugement ce qui bloque." },
+    { title: "Contexte qui excite", type: "discussion", moods: ["sensuel"], blurb: "Quand et ou vous vous sentez le plus ouverts." },
+    { title: "Consentement sexy", type: "discussion", moods: ["sensuel"], blurb: "Trouver des formulations excitantes et claires." },
+    { title: "Bilan du mois", type: "discussion", moods: ["leger"], blurb: "Regarder ce qui a evolue dans votre intimite." }
+  ],
+  "Sensations": [
+    { title: "Plume sur la peau", type: "practice", moods: ["sensuel"], blurb: "Explorer legerement les zones de frisson." },
+    { title: "Glacon doux", type: "practice", moods: ["aventureux"], blurb: "Froid tres leger puis chaleur de la main." },
+    { title: "Serviette chaude", type: "practice", moods: ["sensuel"], blurb: "Contraste thermique en douceur." },
+    { title: "Soie et coton", type: "practice", moods: ["sensuel"], blurb: "Comparer textures et reactions." },
+    { title: "Parfum choisi", type: "practice", moods: ["leger", "sensuel"], blurb: "Associer une odeur a votre moment intime." },
+    { title: "Musique basse", type: "practice", moods: ["leger"], blurb: "Tester comment le son change vos gestes." },
+    { title: "Lumiere tamisee", type: "practice", moods: ["leger", "sensuel"], blurb: "Ajuster l ambiance pour renforcer la sensation." },
+    { title: "Respiration oreille", type: "practice", moods: ["sensuel"], blurb: "Proximite et souffle sans contact fort." },
+    { title: "Peau contre peau lente", type: "practice", moods: ["sensuel"], blurb: "Bouger tres lentement pour sentir les details." },
+    { title: "Huile chauffante douce", type: "practice", moods: ["sensuel"], blurb: "Massage progressif avec temperature confortable." },
+    { title: "Couverture lourde", type: "practice", moods: ["leger"], blurb: "Rassurance corporelle et apaisement." },
+    { title: "Bain moussant", type: "practice", moods: ["leger", "sensuel"], blurb: "Relaxation et contact sans urgence." },
+    { title: "Mains glacees puis chaudes", type: "practice", moods: ["aventureux"], blurb: "Mini contrastes sur zones non sensibles." },
+    { title: "Pieds et mollets", type: "practice", moods: ["leger"], blurb: "Detente corporelle souvent sous-estimee." },
+    { title: "Vibration musicale", type: "practice", moods: ["sensuel"], blurb: "Sentir les basses proches du corps." },
+    { title: "Douche alternance", type: "practice", moods: ["aventureux"], blurb: "Tres leger chaud/frais pour reveiller les sens." },
+    { title: "Fellation rythme guide", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Explorer profondeur, rythme et pauses en communication constante." },
+    { title: "Cunnilingus attentif", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Prendre le temps, ajuster pression et vitesse selon feedback." },
+    { title: "Tissu sur les yeux", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Moins de vision, plus de sensations." },
+    { title: "Position 69 lente", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Rester synchrones et privilegier le rythme plutot que la vitesse." },
+    { title: "Silence total", type: "practice", moods: ["leger"], blurb: "Couper les bruits pour ecouter le corps." },
+    { title: "Chuchotements", type: "practice", moods: ["sensuel"], blurb: "Voix basse au creux de l oreille." },
+    { title: "Sensation de poids", type: "practice", moods: ["sensuel"], blurb: "Pression douce des mains sur le torse." },
+    { title: "Caresse au ralenti", type: "practice", moods: ["sensuel"], blurb: "Allonger chaque geste pour amplifier." },
+    { title: "Levrette lente", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Maintenir une cadence lente avec contact verbal et corporel." },
+    { title: "Chaleur de la paume", type: "practice", moods: ["leger", "sensuel"], blurb: "Poser la main fixe pour apaiser." },
+    { title: "Tension et relachement", type: "practice", moods: ["leger"], blurb: "Contracter puis detendre pour sentir mieux." },
+    { title: "Bruit blanc + calin", type: "practice", moods: ["leger"], blurb: "Creer une bulle sensorielle calme." },
+    { title: "Texture velours", type: "practice", moods: ["sensuel"], blurb: "Tester matieres douces sur le cou et les bras." },
+    { title: "Penetration lente en face a face", type: "practice", moods: ["sensuel", "aventureux"], blurb: "Garder le regard et caler les mouvements sur la respiration." }
+  ]
+};
 
-const CATEGORIES = ["Toutes", ...new Set(CARDS.map((card) => card.category))];
-const FIRST_ROUND_IDS = CARDS.slice(0, 10).map((card) => card.id);
+const CARD_PREFIX = { "Vanille": "v", BDSM: "b", "Jeux de rôle": "r", Communication: "a", Sensations: "s" };
+
+let CARDS = Object.entries(CARD_SETS).flatMap(([category, items]) =>
+  items.map((item, index) => ({
+    id: `${CARD_PREFIX[category]}${String(index + 1).padStart(2, "0")}`,
+    title: item.title,
+    category,
+    type: item.type,
+    moods: item.moods,
+    blurb: item.blurb
+  }))
+);
+
+let CATEGORIES = ["Toutes", ...new Set(CARDS.map((card) => card.category))];
+let FIRST_ROUND_IDS = CARDS.slice(0, 10).map((card) => card.id);
+
+function refreshCardIndexes() {
+  CATEGORIES = ["Toutes", ...new Set(CARDS.map((card) => card.category))];
+  FIRST_ROUND_IDS = CARDS.slice(0, 10).map((card) => card.id);
+}
 
 const defaultState = {
   profiles: {
@@ -66,6 +225,7 @@ let onboardingHideTimer = null;
 let loginHideTimer = null;
 let connectToastTimer = null;
 let envieModalHideTimer = null;
+let revealFlowHideTimer = null;
 let onboardingStep = 0;
 let sessionState = null;
 let revealState = null;
@@ -73,6 +233,9 @@ let connectedProfileId = null;
 let loginState = { profileId: "A", pin: "" };
 let currentEnvieCardId = null;
 let currentEnvieContext = "default";
+let pendingMatchBounceIds = [];
+let pendingForYouContext = null;
+let lastForYouScrollTop = 0;
 const onboardingDraft = {
   A: { name: "", sex: "autre", pin: "", color: "rose" },
   B: { name: "", sex: "autre", pin: "", color: "mint" }
@@ -106,6 +269,7 @@ const el = {
   coupleSharedList: document.getElementById("couple-shared-list"),
   coupleRevealHint: document.getElementById("couple-reveal-hint"),
   coupleRevealBtn: document.getElementById("couple-reveal-btn"),
+  coupleReplayBtn: document.getElementById("couple-replay-btn"),
   categoryFilter: document.getElementById("category-filter"),
   typeFilter: document.getElementById("type-filter"),
   connectedHint: document.getElementById("connected-hint"),
@@ -177,7 +341,8 @@ const el = {
 
 init();
 
-function init() {
+async function init() {
+  await loadCardsDatabase();
   setupTabs();
   setupProfiles();
   setupControls();
@@ -189,6 +354,134 @@ function init() {
     setSyncStatus("Mode sans serveur detecte: scan camera indisponible, utilisez export/coller.", false);
   }
   updateHeaderScrollState();
+}
+
+async function loadCardsDatabase() {
+  try {
+    const response = await fetch("./cards.csv", { cache: "no-store" });
+    if (!response.ok) {
+      return;
+    }
+    const raw = await response.text();
+    const parsed = parseCardsCsv(raw);
+    if (!parsed.length) {
+      return;
+    }
+    CARDS = parsed;
+    refreshCardIndexes();
+  } catch (error) {
+    // fallback to embedded cards
+  }
+}
+
+function parseCardsCsv(csvText) {
+  const rows = parseCsvRows(csvText);
+  if (rows.length < 2) {
+    return [];
+  }
+
+  const header = rows[0].map((cell, index) => {
+    const normalized = index === 0 ? cell.replace(/^\uFEFF/, "") : cell;
+    return normalized.trim().toLowerCase();
+  });
+  const idx = {
+    id: header.indexOf("id"),
+    title: header.indexOf("title"),
+    category: header.indexOf("category"),
+    type: header.indexOf("type"),
+    moods: header.indexOf("moods"),
+    blurb: header.indexOf("blurb")
+  };
+
+  const required = [idx.title, idx.category, idx.type, idx.moods, idx.blurb];
+  if (required.some((value) => value < 0)) {
+    return [];
+  }
+
+  return rows.slice(1)
+    .map((row, rowIndex) => {
+      const title = (row[idx.title] || "").trim();
+      const category = (row[idx.category] || "").trim();
+      const type = (row[idx.type] || "practice").trim();
+      const moodsRaw = (row[idx.moods] || "").trim();
+      const blurb = (row[idx.blurb] || "").trim();
+      const providedId = idx.id >= 0 ? (row[idx.id] || "").trim() : "";
+
+      if (!title || !category || !blurb) {
+        return null;
+      }
+
+      const moods = moodsRaw
+        .split("|")
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      const safeType = type === "discussion" ? "discussion" : "practice";
+      const safeMoods = moods.length ? moods : ["leger"];
+      const fallbackPrefix = CARD_PREFIX[category] || "c";
+      const id = providedId || `${fallbackPrefix}${String(rowIndex + 1).padStart(2, "0")}`;
+
+      return {
+        id,
+        title,
+        category,
+        type: safeType,
+        moods: safeMoods,
+        blurb
+      };
+    })
+    .filter(Boolean);
+}
+
+function parseCsvRows(input) {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < input.length; i += 1) {
+    const char = input[i];
+
+    if (char === "\"") {
+      if (inQuotes && input[i + 1] === "\"") {
+        value += "\"";
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      row.push(value);
+      value = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && input[i + 1] === "\n") {
+        i += 1;
+      }
+      row.push(value);
+      if (row.some((cell) => cell.trim() !== "")) {
+        rows.push(row);
+      }
+      row = [];
+      value = "";
+      continue;
+    }
+
+    value += char;
+  }
+
+  if (value.length > 0 || row.length > 0) {
+    row.push(value);
+    if (row.some((cell) => cell.trim() !== "")) {
+      rows.push(row);
+    }
+  }
+
+  return rows;
 }
 
 function setupOnboarding() {
@@ -204,10 +497,7 @@ function setupOnboarding() {
 function setupTabs() {
   el.tabs.forEach((btn) => {
     btn.addEventListener("click", () => {
-      activeTab = btn.dataset.tab;
-      el.tabs.forEach((b) => b.classList.toggle("active", b === btn));
-      el.panels.forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${activeTab}`));
-      updateHeaderScrollState();
+      setActiveTab(btn.dataset.tab);
     });
   });
 }
@@ -275,7 +565,7 @@ function renderOnboardingStep() {
   const totalInteractive = ONBOARDING_STEPS.length - 1;
   el.onProgress.textContent = onboardingStep === 0 ? "COCOON" : `ETAPE ${onboardingStep}/${totalInteractive}`;
   el.onTitle.textContent = step.title;
-  el.onSub.textContent = step.sub || stepSubtitle(step);
+  el.onSub.textContent = step.key === "done" ? "" : (step.sub || stepSubtitle(step));
   el.onTitle.style.setProperty("--on-accent", profileAccent(step.profile));
   el.onLive.innerHTML = buildLiveSummary(step);
 
@@ -308,8 +598,10 @@ function buildLiveSummary(step) {
     return "";
   }
   if (step.key === "done") {
-    return `<div class="live-chip"><strong>${escapeHtml(onboardingDraft.A.name || "Partenaire")}</strong><span class="live-sep">•</span><span>${personaLabel(onboardingDraft.A.sex)}</span></div>
-      <div class="live-chip"><strong>${escapeHtml(onboardingDraft.B.name || "Partenaire")}</strong><span class="live-sep">•</span><span>${personaLabel(onboardingDraft.B.sex)}</span></div>`;
+    return `<div class="done-names">
+      <span class="name-preview" style="--on-accent:${colorHex(onboardingDraft.A.color)}">${escapeHtml(onboardingDraft.A.name || "Partenaire")}</span>
+      <span class="name-preview" style="--on-accent:${colorHex(onboardingDraft.B.color)}">${escapeHtml(onboardingDraft.B.name || "Partenaire")}</span>
+    </div>`;
   }
   const draft = onboardingDraft[step.profile];
   const parts = [];
@@ -380,7 +672,7 @@ function buildOnboardingStage(step) {
     return `<div class="pin-dots">${dots}</div><div class="pin-pad">${pinPadButtons()}</div>`;
   }
   if (step.key === "done") {
-    return `<p class="on-sub">${escapeHtml(onboardingDraft.A.name || "Partenaire")} et ${escapeHtml(onboardingDraft.B.name || "Partenaire")} sont prets a entrer dans leur bulle.</p>`;
+    return `<p class="on-sub on-done-sub">Vos profils sont verrouilles. Seuls les matches seront reveles.</p>`;
   }
   return "";
 }
@@ -533,7 +825,10 @@ function setupControls() {
   }
 
   if (el.coupleRevealBtn) {
-    el.coupleRevealBtn.addEventListener("click", openRevealFlow);
+    el.coupleRevealBtn.addEventListener("click", () => openRevealFlow("new"));
+  }
+  if (el.coupleReplayBtn) {
+    el.coupleReplayBtn.addEventListener("click", () => openRevealFlow("seen"));
   }
   if (el.revealNext) {
     el.revealNext.addEventListener("click", onRevealNext);
@@ -637,11 +932,14 @@ function renderProfileForms() {
 
   const aName = state.profiles.A.name;
   const bName = state.profiles.B.name;
-  const matchCount = computeMatches().length;
+  const matchedCards = computeMatches();
+  const revealedMatches = getSeenMatches();
+  const matchCount = revealedMatches.length;
   const sharedCards = CARDS.filter((card) => state.votes.A[card.id] !== undefined && state.votes.B[card.id] !== undefined);
   const sharedCount = sharedCards.length;
   const duoProgress = Math.round((sharedCount / CARDS.length) * 100);
   const newMatchCount = getNewMatches().length;
+  const seenMatchCount = getSeenMatches().length;
 
   el.coupleTitle.textContent = `${aName} + ${bName}`;
   el.coupleVibe.textContent = matchCount === 0
@@ -654,19 +952,26 @@ function renderProfileForms() {
   el.coupleProgress.textContent = `${duoProgress}%`;
 
   if (el.coupleSharedList) {
-    if (sharedCards.length === 0) {
-      el.coupleSharedList.innerHTML = '<p class="couple-shared-empty">Aucune carte en commun pour le moment.</p>';
+    if (revealedMatches.length === 0) {
+      el.coupleSharedList.innerHTML = '<p class="couple-shared-empty">Aucun match revele pour le moment.</p>';
     } else {
-      const list = sharedCards.map((card) => {
-        const isMatch = state.votes.A[card.id] >= state.matchThreshold && state.votes.B[card.id] >= state.matchThreshold;
-        return `<button type="button" class="couple-shared-item ${isMatch ? "is-match-row" : "is-shared-row"}" data-card-id="${card.id}"><p class="couple-shared-title">${card.title}</p><span class="couple-shared-chip ${isMatch ? "is-match" : "is-shared"}">${isMatch ? "Match" : "Repondu"}</span></button>`;
+      const animatedSet = new Set(pendingMatchBounceIds);
+      let animatedOrder = 0;
+      const list = revealedMatches.map((card) => {
+        const shouldAnimate = animatedSet.has(card.id);
+        const delay = shouldAnimate ? `${animatedOrder * 120}ms` : "0ms";
+        if (shouldAnimate) {
+          animatedOrder += 1;
+        }
+        return `<button type="button" class="couple-shared-item is-match-row ${shouldAnimate ? "match-bounce-in" : ""}" style="animation-delay:${delay}" data-card-id="${card.id}"><p class="couple-shared-title">${card.title}</p><span class="couple-shared-chip is-match">Match</span></button>`;
       }).join("");
-      el.coupleSharedList.innerHTML = `<p class="couple-shared-head">Repondu ensemble</p>${list}`;
+      el.coupleSharedList.innerHTML = `<p class="couple-shared-head">Matches</p>${list}`;
       el.coupleSharedList.querySelectorAll(".couple-shared-item").forEach((btn) => {
         btn.addEventListener("click", () => {
           openEnvieModal(btn.dataset.cardId, "shared");
         });
       });
+      pendingMatchBounceIds = [];
     }
   }
 
@@ -677,6 +982,9 @@ function renderProfileForms() {
   }
   if (el.coupleRevealBtn) {
     el.coupleRevealBtn.disabled = newMatchCount === 0;
+  }
+  if (el.coupleReplayBtn) {
+    el.coupleReplayBtn.disabled = seenMatchCount === 0;
   }
 }
 
@@ -866,15 +1174,161 @@ function renderForYou() {
     return;
   }
   const profileId = connectedProfileId || "A";
-  const feedCards = buildForYouDeck(profileId);
+  const isConnected = Boolean(connectedProfileId);
+  const feedCards = buildForYouDeck(profileId, isConnected);
+  el.forYouFeed.innerHTML = renderForYouCardsMarkup(feedCards, 0);
+  el.forYouFeed.dataset.profileId = profileId;
+  el.forYouFeed.dataset.isConnected = isConnected ? "1" : "0";
+  pendingForYouContext = null;
+  lastForYouScrollTop = el.forYouFeed.scrollTop;
+  syncForYouVisibleVoteState();
 
-  el.forYouFeed.innerHTML = feedCards
+  if (!el.forYouFeed.dataset.boundInfinite) {
+    el.forYouFeed.addEventListener("click", (event) => {
+      const btn = event.target.closest(".for-you-level");
+      if (!btn) {
+        return;
+      }
+      handleForYouVote(btn);
+    });
+
+    el.forYouFeed.addEventListener("scroll", () => {
+      const currentTop = el.forYouFeed.scrollTop;
+      if (pendingForYouContext && Math.abs(currentTop - lastForYouScrollTop) > 3) {
+        applyPendingForYouContext();
+      }
+      lastForYouScrollTop = el.forYouFeed.scrollTop;
+
+      const nearBottom = el.forYouFeed.scrollTop + el.forYouFeed.clientHeight >= el.forYouFeed.scrollHeight - 360;
+      if (!nearBottom) {
+        return;
+      }
+      appendForYouCards();
+    });
+
+    el.forYouFeed.dataset.boundInfinite = "1";
+  }
+}
+
+function handleForYouVote(btn) {
+  if (!connectedProfileId) {
+    btn.classList.remove("pop");
+    void btn.offsetWidth;
+    btn.classList.add("pop");
+    showConnectToast();
+    return;
+  }
+
+  const actions = btn.closest(".for-you-actions");
+  if (actions) {
+    actions.querySelectorAll(".for-you-level").forEach((node) => node.classList.remove("selected"));
+  }
+  btn.classList.add("selected");
+  btn.classList.remove("pop");
+  void btn.offsetWidth;
+  btn.classList.add("pop");
+  btn.style.setProperty("--select-color", colorHex(state.profiles[connectedProfileId].color));
+
+  const cardId = btn.dataset.cardId;
+  const level = Number(btn.dataset.level);
+  state.votes[connectedProfileId][cardId] = level;
+  state.updatedAt = Date.now();
+  saveState();
+  renderCards();
+  renderMatches();
+  renderGuidedLane();
+  renderProfileForms();
+}
+
+function appendForYouCards() {
+  if (!el.forYouFeed || !el.forYouFeed.dataset.profileId) {
+    return;
+  }
+  if (el.forYouFeed.dataset.appending === "1") {
+    return;
+  }
+  el.forYouFeed.dataset.appending = "1";
+
+  const profileId = el.forYouFeed.dataset.profileId;
+  const isConnected = el.forYouFeed.dataset.isConnected === "1";
+  const currentCount = el.forYouFeed.querySelectorAll(".for-you-card").length;
+  const moreCards = buildForYouWave(profileId, isConnected).slice(0, 24);
+  el.forYouFeed.insertAdjacentHTML("beforeend", renderForYouCardsMarkup(moreCards, currentCount));
+  syncForYouVisibleVoteState();
+
+  window.setTimeout(() => {
+    el.forYouFeed.dataset.appending = "0";
+  }, 0);
+}
+
+function queueForYouIncomingContext(profileId, isConnected) {
+  pendingForYouContext = { profileId, isConnected };
+}
+
+function applyPendingForYouContext() {
+  if (!el.forYouFeed || !pendingForYouContext) {
+    return;
+  }
+
+  const cards = Array.from(el.forYouFeed.querySelectorAll(".for-you-card"));
+  const viewport = Math.max(1, el.forYouFeed.clientHeight);
+  const currentIndex = Math.max(0, Math.floor(el.forYouFeed.scrollTop / viewport));
+  const keepCount = Math.min(cards.length, currentIndex + 1);
+
+  cards.slice(keepCount).forEach((node) => node.remove());
+
+  const replacement = buildLoopDeck(
+    buildForYouWave(pendingForYouContext.profileId, pendingForYouContext.isConnected),
+    72
+  );
+  el.forYouFeed.insertAdjacentHTML("beforeend", renderForYouCardsMarkup(replacement, keepCount));
+
+  el.forYouFeed.dataset.profileId = pendingForYouContext.profileId;
+  el.forYouFeed.dataset.isConnected = pendingForYouContext.isConnected ? "1" : "0";
+  pendingForYouContext = null;
+  syncForYouVisibleVoteState();
+}
+
+function syncForYouVisibleVoteState() {
+  if (!el.forYouFeed) {
+    return;
+  }
+
+  const isConnected = Boolean(connectedProfileId);
+  const selectColor = isConnected ? colorHex(state.profiles[connectedProfileId].color) : "";
+
+  el.forYouFeed.querySelectorAll(".for-you-actions").forEach((actions) => {
+    const buttons = Array.from(actions.querySelectorAll(".for-you-level"));
+    if (!buttons.length) {
+      return;
+    }
+
+    if (!isConnected) {
+      buttons.forEach((btn) => {
+        btn.classList.remove("selected");
+        btn.style.removeProperty("--select-color");
+      });
+      return;
+    }
+
+    const cardId = buttons[0].dataset.cardId;
+    const vote = state.votes[connectedProfileId][cardId];
+    buttons.forEach((btn) => {
+      btn.style.setProperty("--select-color", selectColor);
+      btn.classList.toggle("selected", vote !== undefined && Number(btn.dataset.level) === Number(vote));
+    });
+  });
+}
+
+function renderForYouCardsMarkup(cards, startIndex = 0) {
+  return cards
     .map((card, idx) => {
+      const feedIdx = startIndex + idx;
       const levelButtons = LEVELS.map((level) => {
-        return `<button class="for-you-level" data-feed-idx="${idx}" data-card-id="${card.id}" data-level="${level.value}" title="${level.hint}">${level.label}</button>`;
+        return `<button class="for-you-level" data-feed-idx="${feedIdx}" data-card-id="${card.id}" data-level="${level.value}" title="${level.hint}">${level.label}</button>`;
       }).join("");
 
-      return `<article class="for-you-card" data-feed-idx="${idx}">
+      return `<article class="for-you-card" data-feed-idx="${feedIdx}">
         <div class="for-you-main">
           <p class="for-you-kicker">${card.category}</p>
           <h2>${card.title}</h2>
@@ -884,38 +1338,6 @@ function renderForYou() {
       </article>`;
     })
     .join("");
-
-  el.forYouFeed.querySelectorAll(".for-you-level").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (!connectedProfileId) {
-        btn.classList.remove("pop");
-        void btn.offsetWidth;
-        btn.classList.add("pop");
-        showConnectToast();
-        return;
-      }
-
-      const actions = btn.closest(".for-you-actions");
-      if (actions) {
-        actions.querySelectorAll(".for-you-level").forEach((node) => node.classList.remove("selected"));
-      }
-      btn.classList.add("selected");
-      btn.classList.remove("pop");
-      void btn.offsetWidth;
-      btn.classList.add("pop");
-      btn.style.setProperty("--select-color", colorHex(state.profiles[connectedProfileId].color));
-
-      const cardId = btn.dataset.cardId;
-      const level = Number(btn.dataset.level);
-      state.votes[connectedProfileId][cardId] = level;
-      state.updatedAt = Date.now();
-      saveState();
-      renderCards();
-      renderMatches();
-      renderGuidedLane();
-      renderProfileForms();
-    });
-  });
 }
 
 function showConnectToast() {
@@ -938,18 +1360,45 @@ function showConnectToast() {
   }, 1500);
 }
 
-function buildForYouDeck(profileId) {
-  const unanswered = CARDS.filter((card) => state.votes[profileId][card.id] === undefined);
-  const answered = CARDS.filter((card) => state.votes[profileId][card.id] !== undefined);
+function buildForYouDeck(profileId, isConnected = Boolean(connectedProfileId)) {
+  const firstWave = buildForYouWave(profileId, isConnected);
+  return buildLoopDeck(firstWave, 72);
+}
 
-  const firstWave = [...shuffleCards(unanswered), ...shuffleCards(answered)];
+function buildForYouWave(profileId, isConnected = Boolean(connectedProfileId)) {
+  if (!isConnected) {
+    const unseenByBoth = CARDS.filter((card) =>
+      state.votes.A[card.id] === undefined && state.votes.B[card.id] === undefined
+    );
+    const seenByAtLeastOne = CARDS.filter((card) =>
+      !(state.votes.A[card.id] === undefined && state.votes.B[card.id] === undefined)
+    );
+    return [...shuffleCards(unseenByBoth), ...shuffleCards(seenByAtLeastOne)];
+  }
+
+  const otherId = profileId === "A" ? "B" : "A";
+  const otherAnsweredFirst = CARDS.filter((card) =>
+    state.votes[profileId][card.id] === undefined && state.votes[otherId][card.id] !== undefined
+  );
+  const unansweredByBoth = CARDS.filter((card) =>
+    state.votes[profileId][card.id] === undefined && state.votes[otherId][card.id] === undefined
+  );
+  const alreadyAnsweredByMe = CARDS.filter((card) => state.votes[profileId][card.id] !== undefined);
+
+  return [
+    ...shuffleCards(otherAnsweredFirst),
+    ...shuffleCards(unansweredByBoth),
+    ...shuffleCards(alreadyAnsweredByMe)
+  ];
+}
+
+function buildLoopDeck(firstWave, minLength = 48) {
   const base = firstWave.length > 0 ? firstWave : [...CARDS];
-
   const deck = [...firstWave];
-  while (deck.length < 48) {
+  while (deck.length < minLength) {
     deck.push(...shuffleCards(base));
   }
-  return deck.slice(0, 48);
+  return deck.slice(0, minLength);
 }
 
 function shuffleCards(list) {
@@ -962,6 +1411,9 @@ function shuffleCards(list) {
 }
 
 function cardBlurb(card) {
+  if (card.blurb) {
+    return card.blurb;
+  }
   return `Un moment doux autour de "${card.title.toLowerCase()}" pour explorer ensemble et voir si vos envies se rejoignent.`;
 }
 
@@ -1090,7 +1542,8 @@ async function handleLoginPad(digit, action) {
     closeLoginSheet();
     renderConnectionUi();
     renderCards();
-    renderForYou();
+    queueForYouIncomingContext(connectedProfileId, true);
+    syncForYouVisibleVoteState();
     renderGuidedLane();
   }
 }
@@ -1103,7 +1556,8 @@ function disconnectProfile() {
   connectedProfileId = null;
   renderConnectionUi();
   renderCards();
-  renderForYou();
+  queueForYouIncomingContext("A", false);
+  syncForYouVisibleVoteState();
 }
 
 async function onGuidedAction() {
@@ -1130,10 +1584,25 @@ async function onGuidedAction() {
 }
 
 function setActiveTab(tabId) {
+  const changed = activeTab !== tabId;
   activeTab = tabId;
   el.tabs.forEach((b) => b.classList.toggle("active", b.dataset.tab === tabId));
   el.panels.forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${tabId}`));
   updateHeaderScrollState();
+  if (changed) {
+    bounceBackgroundShapes();
+  }
+}
+
+function bounceBackgroundShapes() {
+  document.querySelectorAll(".bg-shape").forEach((node) => {
+    node.classList.remove("bg-bounce");
+    void node.offsetWidth;
+    node.classList.add("bg-bounce");
+    window.setTimeout(() => {
+      node.classList.remove("bg-bounce");
+    }, 1700);
+  });
 }
 
 function updateHeaderScrollState() {
@@ -1224,28 +1693,90 @@ function getNewMatches() {
   return computeMatches().filter((card) => !revealed.has(card.id));
 }
 
-function openRevealFlow() {
+function getSeenMatches() {
+  const revealed = new Set(Array.isArray(state.revealedMatchIds) ? state.revealedMatchIds : []);
+  return computeMatches().filter((card) => revealed.has(card.id));
+}
+
+function openRevealFlow(mode = "new") {
   if (!el.revealFlow || !el.revealKicker || !el.revealTitle || !el.revealSub || !el.revealCard || !el.revealNext) {
     return;
   }
 
-  const newMatches = getNewMatches();
+  if (revealFlowHideTimer) {
+    window.clearTimeout(revealFlowHideTimer);
+    revealFlowHideTimer = null;
+  }
+
+  const queue = mode === "seen" ? getSeenMatches() : getNewMatches();
   revealState = {
-    queue: newMatches,
+    mode,
+    queue,
     index: -1,
     stage: "intro"
   };
 
   el.revealFlow.hidden = false;
+  el.revealFlow.classList.remove("closing");
+  void el.revealFlow.offsetWidth;
+  el.revealFlow.classList.add("open");
   renderRevealStep();
 }
 
-function closeRevealFlow() {
+function closeRevealFlow(returnToMenu = false) {
   if (!el.revealFlow) {
     return;
   }
+
+  if (revealFlowHideTimer) {
+    window.clearTimeout(revealFlowHideTimer);
+    revealFlowHideTimer = null;
+  }
+
+  commitRevealProgress();
+
   revealState = null;
-  el.revealFlow.hidden = true;
+  el.revealFlow.classList.remove("open");
+  el.revealFlow.classList.add("closing");
+  revealFlowHideTimer = window.setTimeout(() => {
+    el.revealFlow.hidden = true;
+    el.revealFlow.classList.remove("closing");
+    revealFlowHideTimer = null;
+    renderProfileForms();
+    if (returnToMenu) {
+      setActiveTab("nous");
+    }
+  }, 320);
+}
+
+function commitRevealProgress() {
+  if (!revealState || revealState.mode === "seen") {
+    return;
+  }
+
+  let upto = -1;
+  if (revealState.stage === "cards") {
+    upto = revealState.index;
+  } else if (revealState.stage === "done") {
+    upto = revealState.queue.length - 1;
+  }
+
+  if (upto < 0) {
+    return;
+  }
+
+  const previouslyRevealed = new Set(Array.isArray(state.revealedMatchIds) ? state.revealedMatchIds : []);
+  const nowRevealed = revealState.queue.slice(0, upto + 1).map((card) => card.id);
+  const newlyAdded = nowRevealed.filter((id) => !previouslyRevealed.has(id));
+
+  if (!newlyAdded.length) {
+    return;
+  }
+
+  state.revealedMatchIds = Array.from(new Set([...previouslyRevealed, ...nowRevealed]));
+  pendingMatchBounceIds = newlyAdded;
+  state.updatedAt = Date.now();
+  saveState();
 }
 
 function onRevealNext() {
@@ -1260,7 +1791,7 @@ function onRevealNext() {
     }
     revealState.stage = "cards";
     revealState.index = 0;
-    renderRevealStep();
+    renderRevealStep(true);
     return;
   }
 
@@ -1270,18 +1801,11 @@ function onRevealNext() {
       renderRevealStep(true);
       return;
     }
-    const revealedIds = new Set(Array.isArray(state.revealedMatchIds) ? state.revealedMatchIds : []);
-    revealState.queue.forEach((card) => revealedIds.add(card.id));
-    state.revealedMatchIds = Array.from(revealedIds);
-    state.updatedAt = Date.now();
-    saveState();
-    revealState.stage = "done";
-    renderRevealStep();
-    renderProfileForms();
+    closeRevealFlow(true);
     return;
   }
 
-  closeRevealFlow();
+  closeRevealFlow(true);
 }
 
 function renderRevealStep(withAnimation = false) {
@@ -1290,13 +1814,18 @@ function renderRevealStep(withAnimation = false) {
   }
 
   const total = revealState.queue.length;
+  const seenMode = revealState.mode === "seen";
   if (revealState.stage === "intro") {
-    el.revealKicker.textContent = "Revelation";
-    el.revealTitle.textContent = `${total} nouveau(x) match(es)`;
-    el.revealSub.textContent = total > 0 ? "Cliquez pour les decouvrir un par un." : "Aucun nouveau match pour le moment.";
+    el.revealKicker.textContent = seenMode ? "Revoir vos matchs" : "Nuit de revelation";
+    el.revealTitle.textContent = seenMode
+      ? `${total} match${total > 1 ? "s" : ""} deja reveles`
+      : `${total} etincelle${total > 1 ? "s" : ""} a decouvrir`;
+    el.revealSub.textContent = total > 0
+      ? (seenMode ? "Revivez vos moments forts un par un." : "On les devoile une par une.")
+      : (seenMode ? "Aucun match deja revele pour le moment." : "Aucun nouveau match pour le moment.");
     el.revealCard.hidden = true;
     el.revealCard.innerHTML = "";
-    el.revealNext.textContent = total > 0 ? "Commencer" : "Fermer";
+    el.revealNext.textContent = total > 0 ? (seenMode ? "Revoir" : "Lancer") : "Fermer";
     el.revealNext.disabled = false;
     return;
   }
@@ -1308,11 +1837,16 @@ function renderRevealStep(withAnimation = false) {
       renderRevealStep();
       return;
     }
+    const levelAValue = state.votes.A[card.id];
+    const levelBValue = state.votes.B[card.id];
+    const levelA = LEVELS.find((lvl) => lvl.value === levelAValue);
+    const levelB = LEVELS.find((lvl) => lvl.value === levelBValue);
+    const heatPercent = Math.round((((levelAValue || 0) + (levelBValue || 0)) / 6) * 100);
     el.revealKicker.textContent = `Match ${revealState.index + 1}/${total}`;
-    el.revealTitle.textContent = "Vos envies se rejoignent";
-    el.revealSub.textContent = "Touchez continuer pour reveler la suivante.";
+    el.revealTitle.textContent = "Connexion intense";
+    el.revealSub.textContent = "Continuez pour reveler la suivante.";
     el.revealCard.hidden = false;
-    el.revealCard.innerHTML = `<h3>${card.title}</h3><p class="reveal-card-meta"><span class="badge">${card.category}</span><span class="badge">${card.type === "discussion" ? "Discussion" : "Pratique"}</span></p><p class="reveal-card-blurb">${cardBlurb(card)}</p>`;
+    el.revealCard.innerHTML = `<p class="reveal-heat">Chaleur ${heatPercent}%</p><h3>${card.title}</h3><p class="reveal-card-meta"><span class="badge">${card.category}</span><span class="badge">${card.type === "discussion" ? "Discussion" : "Pratique"}</span></p><div class="reveal-duo"><p>${escapeHtml(state.profiles.A.name)} ${levelA ? levelA.label : ""}</p><span>❤</span><p>${escapeHtml(state.profiles.B.name)} ${levelB ? levelB.label : ""}</p></div><p class="reveal-card-blurb">${cardBlurb(card)}</p>`;
     if (withAnimation) {
       el.revealCard.classList.remove("is-pop");
       void el.revealCard.offsetWidth;
@@ -1324,10 +1858,14 @@ function renderRevealStep(withAnimation = false) {
   }
 
   el.revealKicker.textContent = "Revelation terminee";
-  el.revealTitle.textContent = "Tous les nouveaux matchs sont reveles";
-  el.revealSub.textContent = "Vous pouvez les retrouver dans l'onglet Envies/Matches.";
+  el.revealTitle.textContent = seenMode
+    ? "Revue de vos matchs terminee"
+    : "Tous vos nouveaux matchs sont devoiles";
+  el.revealSub.textContent = seenMode
+    ? "Vous pouvez les revoir quand vous voulez."
+    : "Profitez de cette energie ensemble.";
   el.revealCard.hidden = true;
-  el.revealNext.textContent = "Fermer";
+  el.revealNext.textContent = "Retour au menu";
   el.revealNext.disabled = false;
 }
 
