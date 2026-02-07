@@ -1800,12 +1800,14 @@ textarea {
 .login-sheet {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 12000;
   --login-accent: #f27aad;
   --login-accent-soft: rgba(242, 122, 173, 0.22);
   display: grid;
   place-items: center;
-  background: rgba(24, 19, 36, 0.42);
+  background:
+    radial-gradient(480px 280px at 50% 18%, color-mix(in srgb, var(--login-accent) 20%, transparent 80%), transparent 72%),
+    rgba(24, 19, 36, 0.42);
   backdrop-filter: blur(10px);
   opacity: 0;
   pointer-events: none;
@@ -1830,7 +1832,7 @@ textarea {
   border-radius: 24px;
   padding: 1.25rem 1.1rem 1.1rem;
   display: grid;
-  gap: 0.95rem;
+  gap: 0.88rem;
   justify-items: center;
   background:
     radial-gradient(220px 90px at 10% 8%, var(--login-accent-soft), transparent 72%),
@@ -1857,6 +1859,12 @@ textarea {
   color: var(--ink-soft);
 }
 
+.login-kicker {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
 .login-selected {
   margin: -0.15rem 0 0.05rem;
   min-height: 1.2rem;
@@ -1869,7 +1877,7 @@ textarea {
 
 .login-instruction {
   font-size: 0.98rem;
-  color: #3d4767;
+  color: color-mix(in srgb, var(--login-accent) 44%, #3d4767 56%);
   font-weight: 700;
 }
 
@@ -1884,12 +1892,12 @@ textarea {
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.94);
   border-radius: 14px;
-  min-height: 52px;
+  min-height: 56px;
   font-weight: 800;
   color: var(--ink);
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.72));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 8px 16px rgba(135, 147, 178, 0.16);
-  transition: transform 0.2s ease, box-shadow 0.22s ease, border-color 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.22s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
 .login-profile::before {
@@ -1903,6 +1911,19 @@ textarea {
   transform: translateY(-50%);
   background: var(--profile-accent, #f27aad);
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.75);
+}
+
+.login-profile::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  transform: translateY(-50%) scale(0.8);
+  background: rgba(84, 97, 129, 0.28);
+  transition: transform 0.18s ease, background 0.2s ease;
 }
 
 .login-profile:hover {
@@ -1943,6 +1964,11 @@ textarea {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.96), 0 12px 20px color-mix(in srgb, var(--login-accent) 26%, transparent 74%);
 }
 
+#login-pad .pad-btn[data-action="clear"],
+#login-pad .pad-btn[data-action="back"] {
+  color: color-mix(in srgb, var(--login-accent) 58%, #3f4360 42%);
+}
+
 #login-pad .pad-btn:active {
   transform: translateY(1px) scale(0.98);
 }
@@ -1955,7 +1981,16 @@ textarea {
   color: #fff;
   border-color: transparent;
   background: linear-gradient(150deg, color-mix(in srgb, var(--login-accent) 78%, #ffffff 22%), var(--login-accent));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58), 0 12px 22px color-mix(in srgb, var(--login-accent) 35%, transparent 65%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    0 12px 22px color-mix(in srgb, var(--login-accent) 35%, transparent 65%),
+    0 0 0 3px color-mix(in srgb, var(--login-accent) 28%, transparent 72%);
+  transform: translateY(-1px);
+}
+
+.login-profile.active::after {
+  transform: translateY(-50%) scale(1);
+  background: rgba(255, 255, 255, 0.92);
 }
 
 #qr-output {
