@@ -235,7 +235,15 @@
         <p id="reveal-kicker" class="profile-kicker"></p>
         <h2 id="reveal-title" class="reveal-title"></h2>
         <p id="reveal-sub" class="reveal-sub"></p>
-        <article id="reveal-card" class="reveal-card" hidden></article>
+        <div class="reveal-stack">
+          <div id="reveal-energy" class="reveal-energy" aria-hidden="true">
+            <span class="energy-core"></span>
+            <span class="energy-wave wave-a"></span>
+            <span class="energy-wave wave-b"></span>
+            <span class="energy-wave wave-c"></span>
+          </div>
+          <article id="reveal-card" class="reveal-card" hidden></article>
+        </div>
         <div class="reveal-actions">
           <button id="reveal-close" class="cloud-btn ghost">Retour</button>
           <button id="reveal-next" class="cloud-btn">Commencer</button>

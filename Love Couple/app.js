@@ -1,4 +1,6 @@
 const STORAGE_KEY = "duo-secret-v1";
+const TAB_CACHE_KEY = "duo-secret-last-tab";
+const TAB_CACHE_TTL_MS = 5 * 60 * 1000;
 const UNLOCK_TIMEOUT_MS = 5 * 60 * 1000;
 
 const LEVELS = [
@@ -219,7 +221,7 @@ const defaultState = {
 
 let state = loadState();
 let unlocked = { A: 0, B: 0 };
-let activeTab = "for-you";
+let activeTab = loadRecentTab();
 let scanner = null;
 let onboardingHideTimer = null;
 let loginHideTimer = null;
@@ -323,6 +325,7 @@ const el = {
   revealKicker: document.getElementById("reveal-kicker"),
   revealTitle: document.getElementById("reveal-title"),
   revealSub: document.getElementById("reveal-sub"),
+  revealEnergy: document.getElementById("reveal-energy"),
   revealCard: document.getElementById("reveal-card"),
   revealNext: document.getElementById("reveal-next"),
   revealClose: document.getElementById("reveal-close"),
@@ -968,7 +971,7 @@ function renderProfileForms() {
       el.coupleSharedList.innerHTML = `<p class="couple-shared-head">Matches</p>${list}`;
       el.coupleSharedList.querySelectorAll(".couple-shared-item").forEach((btn) => {
         btn.addEventListener("click", () => {
-          openEnvieModal(btn.dataset.cardId, "shared");
+          openRevealFlow("seen", { focusCardId: btn.dataset.cardId, singleCard: true, autoReveal: true });
         });
       });
       pendingMatchBounceIds = [];
@@ -1586,6 +1589,7 @@ async function onGuidedAction() {
 function setActiveTab(tabId) {
   const changed = activeTab !== tabId;
   activeTab = tabId;
+  saveRecentTab(tabId);
   el.tabs.forEach((b) => b.classList.toggle("active", b.dataset.tab === tabId));
   el.panels.forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${tabId}`));
   updateHeaderScrollState();
@@ -1698,7 +1702,7 @@ function getSeenMatches() {
   return computeMatches().filter((card) => revealed.has(card.id));
 }
 
-function openRevealFlow(mode = "new") {
+function openRevealFlow(mode = "new", options = {}) {
   if (!el.revealFlow || !el.revealKicker || !el.revealTitle || !el.revealSub || !el.revealCard || !el.revealNext) {
     return;
   }
@@ -1708,7 +1712,15 @@ function openRevealFlow(mode = "new") {
     revealFlowHideTimer = null;
   }
 
-  const queue = mode === "seen" ? getSeenMatches() : getNewMatches();
+  let queue = mode === "seen" ? getSeenMatches() : getNewMatches();
+  if (options.focusCardId) {
+    const focused = queue.find((card) => card.id === options.focusCardId);
+    if (focused) {
+      queue = options.singleCard
+        ? [focused]
+        : [focused, ...queue.filter((card) => card.id !== focused.id)];
+    }
+  }
   revealState = {
     mode,
     queue,
@@ -1716,11 +1728,16 @@ function openRevealFlow(mode = "new") {
     stage: "intro"
   };
 
+  if (options.autoReveal && queue.length > 0) {
+    revealState.stage = "cards";
+    revealState.index = 0;
+  }
+
   el.revealFlow.hidden = false;
   el.revealFlow.classList.remove("closing");
   void el.revealFlow.offsetWidth;
   el.revealFlow.classList.add("open");
-  renderRevealStep();
+  renderRevealStep(Boolean(options.autoReveal));
 }
 
 function closeRevealFlow(returnToMenu = false) {
@@ -1823,9 +1840,17 @@ function renderRevealStep(withAnimation = false) {
     el.revealSub.textContent = total > 0
       ? (seenMode ? "Revivez vos moments forts un par un." : "On les devoile une par une.")
       : (seenMode ? "Aucun match deja revele pour le moment." : "Aucun nouveau match pour le moment.");
-    el.revealCard.hidden = true;
-    el.revealCard.innerHTML = "";
-    el.revealNext.textContent = total > 0 ? (seenMode ? "Revoir" : "Lancer") : "Fermer";
+    if (total > 0) {
+      el.revealCard.hidden = false;
+      el.revealCard.classList.remove("is-flip");
+      el.revealCard.classList.add("is-facedown");
+      el.revealCard.innerHTML = '<div class="reveal-card-back">?</div>';
+    } else {
+      el.revealCard.hidden = true;
+      el.revealCard.classList.remove("is-facedown");
+      el.revealCard.innerHTML = "";
+    }
+    el.revealNext.textContent = total > 0 ? "Decouvrir" : "Fermer";
     el.revealNext.disabled = false;
     return;
   }
@@ -1846,11 +1871,13 @@ function renderRevealStep(withAnimation = false) {
     el.revealTitle.textContent = "Connexion intense";
     el.revealSub.textContent = "Continuez pour reveler la suivante.";
     el.revealCard.hidden = false;
+    el.revealCard.classList.remove("is-facedown");
     el.revealCard.innerHTML = `<p class="reveal-heat">Chaleur ${heatPercent}%</p><h3>${card.title}</h3><p class="reveal-card-meta"><span class="badge">${card.category}</span><span class="badge">${card.type === "discussion" ? "Discussion" : "Pratique"}</span></p><div class="reveal-duo"><p>${escapeHtml(state.profiles.A.name)} ${levelA ? levelA.label : ""}</p><span>❤</span><p>${escapeHtml(state.profiles.B.name)} ${levelB ? levelB.label : ""}</p></div><p class="reveal-card-blurb">${cardBlurb(card)}</p>`;
     if (withAnimation) {
-      el.revealCard.classList.remove("is-pop");
+      triggerRevealBurst();
+      el.revealCard.classList.remove("is-flip");
       void el.revealCard.offsetWidth;
-      el.revealCard.classList.add("is-pop");
+      el.revealCard.classList.add("is-flip");
     }
     el.revealNext.textContent = revealState.index === total - 1 ? "Terminer" : "Continuer";
     el.revealNext.disabled = false;
@@ -1867,6 +1894,18 @@ function renderRevealStep(withAnimation = false) {
   el.revealCard.hidden = true;
   el.revealNext.textContent = "Retour au menu";
   el.revealNext.disabled = false;
+}
+
+function triggerRevealBurst() {
+  if (!el.revealEnergy) {
+    return;
+  }
+  el.revealEnergy.classList.remove("is-burst");
+  void el.revealEnergy.offsetWidth;
+  el.revealEnergy.classList.add("is-burst");
+  window.setTimeout(() => {
+    el.revealEnergy.classList.remove("is-burst");
+  }, 980);
 }
 
 async function onExportQr() {
@@ -2021,6 +2060,32 @@ function loadState() {
     return merged;
   } catch {
     return structuredClone(defaultState);
+  }
+}
+
+function loadRecentTab() {
+  try {
+    const raw = localStorage.getItem(TAB_CACHE_KEY);
+    if (!raw) {
+      return "for-you";
+    }
+    const parsed = JSON.parse(raw);
+    const isValidTab = typeof parsed.tabId === "string" && ["for-you", "cards", "nous"].includes(parsed.tabId);
+    const isFresh = typeof parsed.at === "number" && Date.now() - parsed.at <= TAB_CACHE_TTL_MS;
+    if (!isValidTab || !isFresh) {
+      return "for-you";
+    }
+    return parsed.tabId;
+  } catch {
+    return "for-you";
+  }
+}
+
+function saveRecentTab(tabId) {
+  try {
+    localStorage.setItem(TAB_CACHE_KEY, JSON.stringify({ tabId, at: Date.now() }));
+  } catch {
+    // ignore tab cache write issues
   }
 }
 
