@@ -289,15 +289,18 @@ add constraint purchase_entitlements_couple_entitlement_key unique (couple_id, e
 
 create table if not exists public.match_reveals (
   couple_id uuid not null references public.couples (id) on delete cascade,
+  user_id uuid not null default auth.uid() references public.profiles (id) on delete cascade,
   card_id text not null,
   first_matched_at timestamptz not null default now(),
-  revealed_by uuid references public.profiles (id) on delete set null,
   revealed_at timestamptz,
-  primary key (couple_id, card_id)
+  primary key (couple_id, user_id, card_id)
 );
 
 create index if not exists match_reveals_couple_idx
-on public.match_reveals (couple_id, first_matched_at desc);
+on public.match_reveals (couple_id, user_id, first_matched_at desc);
+
+create index if not exists match_reveals_couple_card_idx
+on public.match_reveals (couple_id, card_id);
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
@@ -671,9 +674,11 @@ begin
     group by votes.couple_id, votes.card_id
     having count(*) filter (where votes.level >= 1) = 2
   ) then
-    insert into public.match_reveals (couple_id, card_id)
-    values (p_couple_id, p_card_id)
-    on conflict (couple_id, card_id) do nothing;
+    insert into public.match_reveals (couple_id, user_id, card_id)
+    select p_couple_id, members.user_id, p_card_id
+    from public.couple_members members
+    where members.couple_id = p_couple_id
+    on conflict (couple_id, user_id, card_id) do nothing;
   end if;
 end;
 $$;
@@ -924,7 +929,7 @@ using (public.is_couple_member(couple_id));
 drop policy if exists "match_reveals_read_members" on public.match_reveals;
 create policy "match_reveals_read_members"
 on public.match_reveals for select
-using (public.is_couple_member(couple_id));
+using (user_id = auth.uid() and public.is_couple_member(couple_id));
 
 drop policy if exists "chat_storage_read_members" on storage.objects;
 create policy "chat_storage_read_members"
@@ -1327,6 +1332,7 @@ begin
   left join public.match_reveals reveals
     on reveals.couple_id = v_couple_id
     and reveals.card_id = cards.id
+    and reveals.user_id = auth.uid()
   where votes.couple_id = v_couple_id
   group by cards.id, cards.title, cards.emoji, cards.category, cards.kind, cards.mood, cards.blurb, cards.safety
   having count(*) filter (where votes.level >= p_threshold) = 2;
@@ -1484,9 +1490,10 @@ begin
     'match_reveals', coalesce((
       select jsonb_agg(to_jsonb(reveals) order by first_matched_at desc)
       from (
-        select card_id, first_matched_at, revealed_at, revealed_by = auth.uid() as revealed_by_current_user
+        select card_id, first_matched_at, revealed_at, true as revealed_by_current_user
         from public.match_reveals
         where couple_id = v_couple_id
+          and user_id = auth.uid()
       ) reveals
     ), '[]'::jsonb),
     'chat_messages', coalesce((
@@ -1938,9 +1945,9 @@ begin
   perform public.ensure_match_reveal(v_couple_id, p_card_id);
 
   update public.match_reveals
-  set revealed_by = auth.uid(),
-      revealed_at = coalesce(revealed_at, now())
+  set revealed_at = coalesce(revealed_at, now())
   where couple_id = v_couple_id
+    and user_id = auth.uid()
     and card_id = p_card_id
     and exists (
       select 1

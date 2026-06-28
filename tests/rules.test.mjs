@@ -85,6 +85,8 @@ test("RLS guardrails: sensitive tables have RLS and client cannot insert paid un
 
   assert.doesNotMatch(schema, /create policy "couple_category_unlocks_insert_members"/);
   assert.doesNotMatch(schema, /create policy "couple_feature_unlocks_insert_members"/);
+  assert.match(schema, /primary key \(couple_id, user_id, card_id\)/);
+  assert.match(schema, /using \(user_id = auth\.uid\(\) and public\.is_couple_member\(couple_id\)\)/);
   assert.match(schema, /grant execute on function public\.get_chat_messages\(uuid, int\) to authenticated;/);
   assert.match(schema, /grant execute on function public\.unlock_category_for_couple\(uuid, text, text\) to service_role;/);
   assert.match(schema, /grant execute on function public\.unlock_feature_for_couple\(uuid, text, text\) to service_role;/);
