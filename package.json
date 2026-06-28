@@ -1,6 +1,6 @@
 {
   "name": "wespice",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",

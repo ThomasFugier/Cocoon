@@ -3876,6 +3876,7 @@ function EnviesScreen({
   const [noAdsPurchaseOpen, setNoAdsPurchaseOpen] = useState(false);
   const [unlimitedPurchaseOpen, setUnlimitedPurchaseOpen] = useState(false);
   const [storeOpen, setStoreOpen] = useState(false);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const gameTransitionTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const ownVotes = couple.votes[couple.activePartnerId] ?? {};
   const [answeredInSession, setAnsweredInSession] = useState<Record<string, boolean>>({});
@@ -3947,6 +3948,7 @@ function EnviesScreen({
   };
   const changeCategory = (nextCategory: DesireCategory) => {
     setCategory(nextCategory);
+    setCategoryPickerOpen(false);
     if (libraryOpen) {
       refreshLibrarySnapshot(nextCategory, filter);
     }
@@ -4052,9 +4054,16 @@ function EnviesScreen({
             ) : null}
             <CategoryChips
               active={category}
+              activeCount={categoryCards.length}
               couple={couple}
+              open={categoryPickerOpen}
               onChange={changeCategory}
-              onLockedCategory={() => setStoreOpen(true)}
+              onClose={() => setCategoryPickerOpen(false)}
+              onLockedCategory={(lockedCategory) => {
+                setCategoryPickerOpen(false);
+                setPurchaseCategory(lockedCategory);
+              }}
+              onOpen={() => setCategoryPickerOpen(true)}
             />
             {libraryOpen ? (
               <DesireFilterChips
@@ -4616,50 +4625,126 @@ function MoodAtmosphere({ heat, pulse }: { heat: Animated.Value; pulse: Animated
 
 function CategoryChips({
   active,
+  activeCount,
   couple,
+  open,
   onChange,
+  onClose,
   onLockedCategory,
+  onOpen,
 }: {
   active: DesireCategory;
+  activeCount: number;
   couple: CoupleState;
+  open: boolean;
   onChange: (category: DesireCategory) => void;
+  onClose: () => void;
   onLockedCategory: (category: DesireCategory) => void;
+  onOpen: () => void;
 }) {
+  const activeTone = categoryTone(active);
+  const activeUnlocked = isCategoryUnlocked(couple, active);
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<DesireCategory, number>();
+
+    allDesireCards(couple).forEach((card) => {
+      counts.set(card.category, (counts.get(card.category) ?? 0) + 1);
+    });
+
+    return counts;
+  }, [couple]);
+
   return (
-    <View style={styles.categoryBar}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow} style={styles.categoryScroll}>
-      {DESIRE_CATEGORIES.map((category) => {
-        const tone = categoryTone(category);
-        const isActive = category === active;
-        const unlocked = isCategoryUnlocked(couple, category);
-        return (
-          <SpringPressable
-            key={category}
-            onPress={() => (unlocked ? onChange(category) : onLockedCategory(category))}
-            style={[
-              styles.categoryChip,
-              {
-                backgroundColor: isActive && unlocked ? tone.active : tone.bg,
-              },
-              isActive && styles.categoryChipActive,
-              !unlocked && styles.categoryChipLocked,
-              categoryChipShadow(category, isActive && unlocked, unlocked),
-            ]}
+    <View style={styles.categorySelectorWrap}>
+      <SpringPressable
+        onPress={onOpen}
+        style={[
+          styles.categorySelectorActive,
+          {
+            backgroundColor: activeUnlocked ? activeTone.active : activeTone.bg,
+          },
+          categoryChipShadow(active, true, activeUnlocked),
+        ]}
+      >
+        <View style={styles.categorySelectorIcon}>
+          <Text style={styles.categorySelectorEmoji}>{activeTone.icon}</Text>
+        </View>
+        <View style={styles.categorySelectorCopy}>
+          <Text style={[styles.categorySelectorEyebrow, { color: categoryChipTextColor(active, true, activeUnlocked) }]}>
+            Pack actif
+          </Text>
+          <Text
+            adjustsFontSizeToFit
+            numberOfLines={1}
+            style={[styles.categorySelectorTitle, { color: categoryChipTextColor(active, true, activeUnlocked) }]}
           >
-            <Text
-              style={[
-                styles.categoryChipText,
-                isActive && unlocked && styles.categoryChipTextActive,
-                { color: categoryChipTextColor(category, isActive, unlocked) },
-              ]}
-            >
-              {categoryLabel(category)}
-            </Text>
-            {!unlocked ? <Text style={styles.categoryChipLock}>🔒</Text> : null}
-          </SpringPressable>
-        );
-      })}
-      </ScrollView>
+            {categoryLabel(active)}
+          </Text>
+        </View>
+        <View style={styles.categorySelectorCount}>
+          <Text style={styles.categorySelectorCountText}>{activeCount}</Text>
+        </View>
+      </SpringPressable>
+      <SpringPressable onPress={onOpen} style={styles.categorySelectorButton}>
+        <Sparkles size={15} color={candy.red} />
+        <Text style={styles.categorySelectorButtonText}>Packs</Text>
+      </SpringPressable>
+
+      <Modal animationType="fade" transparent visible={open} onRequestClose={onClose}>
+        <View style={styles.categoryPickerOverlay}>
+          <Pressable style={styles.categoryPickerBackdrop} onPress={onClose} />
+          <Entrance delay={30} style={styles.categoryPickerSheetWrap}>
+            <View style={styles.categoryPickerSheet}>
+              <View style={styles.categoryPickerHeader}>
+                <View style={styles.categoryPickerHeaderCopy}>
+                  <Text style={styles.categoryPickerEyebrow}>Packs</Text>
+                  <Text style={styles.categoryPickerTitle}>Choisis une catégorie</Text>
+                </View>
+                <SpringPressable onPress={onClose} style={styles.categoryPickerClose}>
+                  <X size={18} color={candy.ink} />
+                </SpringPressable>
+              </View>
+              <ScrollView contentContainerStyle={styles.categoryPickerGrid} showsVerticalScrollIndicator={false}>
+                {DESIRE_CATEGORIES.map((category) => {
+                  const tone = categoryTone(category);
+                  const unlocked = isCategoryUnlocked(couple, category);
+                  const selected = category === active;
+                  const count = categoryCounts.get(category) ?? 0;
+
+                  return (
+                    <SpringPressable
+                      key={category}
+                      onPress={() => (unlocked ? onChange(category) : onLockedCategory(category))}
+                      style={[
+                        styles.categoryPickerCard,
+                        { backgroundColor: unlocked ? tone.bg : "rgba(255,255,255,0.68)" },
+                        selected && styles.categoryPickerCardSelected,
+                        !unlocked && styles.categoryPickerCardLocked,
+                      ]}
+                    >
+                      <View style={[styles.categoryPickerIcon, selected && { backgroundColor: tone.active }]}>
+                        <Text style={styles.categoryPickerEmoji}>{tone.icon}</Text>
+                      </View>
+                      <Text adjustsFontSizeToFit numberOfLines={1} style={styles.categoryPickerCardTitle}>
+                        {categoryLabel(category)}
+                      </Text>
+                      <Text numberOfLines={1} style={styles.categoryPickerCardText}>
+                        {unlocked ? `${count} carte${count > 1 ? "s" : ""}` : "À débloquer"}
+                      </Text>
+                      {selected ? <Text style={styles.categoryPickerSelectedText}>Actif</Text> : null}
+                      {!unlocked ? (
+                        <View style={styles.categoryPickerLock}>
+                          <LockKeyhole size={13} color={candy.red} />
+                        </View>
+                      ) : null}
+                    </SpringPressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </Entrance>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -9257,14 +9342,14 @@ const styles = StyleSheet.create({
   },
   enviesScreenContent: {
     paddingBottom: 184,
-    paddingTop: 236,
+    paddingTop: 220,
   },
   enviesGameContent: {
     flexGrow: 1,
     justifyContent: "center",
     minHeight: "100%",
     paddingBottom: 184,
-    paddingTop: 252,
+    paddingTop: 238,
   },
   enviesStickyHeader: {
     left: 0,
@@ -9396,64 +9481,209 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "900",
   },
-  chipRow: {
-    gap: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 12,
-  },
-  categoryBar: {
+  categorySelectorWrap: {
     alignItems: "center",
-    backgroundColor: "rgba(255,250,253,0.72)",
-    borderColor: "rgba(255,255,255,0.96)",
-    borderRadius: 999,
-    borderWidth: 2,
     flexDirection: "row",
-    justifyContent: "center",
-    minHeight: 82,
-    overflow: "visible",
-    paddingHorizontal: 8,
-    shadowColor: "rgba(87, 8, 58, 0.3)",
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 1,
-    shadowRadius: 28,
+    gap: 8,
     width: "100%",
   },
-  categoryScroll: {
-    flexGrow: 0,
-    minWidth: 0,
-    overflow: "visible",
-  },
-  categoryChip: {
+  categorySelectorActive: {
     alignItems: "center",
     borderColor: "rgba(255,255,255,0.98)",
-    borderRadius: 999,
+    borderRadius: 28,
     borderWidth: 2,
+    flex: 1,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 66,
+    minWidth: 0,
+    overflow: "hidden",
+    paddingHorizontal: 12,
+  },
+  categorySelectorIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.78)",
+    borderRadius: 20,
+    height: 42,
     justifyContent: "center",
-    minHeight: 58,
-    minWidth: 96,
-    paddingHorizontal: 18,
+    width: 42,
   },
-  categoryChipActive: {
-    borderColor: candy.white,
+  categorySelectorEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 22,
   },
-  categoryChipLocked: {
-    opacity: 0.92,
+  categorySelectorCopy: {
+    flex: 1,
+    minWidth: 0,
   },
-  categoryChipText: {
+  categorySelectorEyebrow: {
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0,
+    opacity: 0.72,
+    textTransform: "uppercase",
+  },
+  categorySelectorTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    lineHeight: 22,
+  },
+  categorySelectorCount: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.82)",
+    borderRadius: 16,
+    minWidth: 36,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  categorySelectorCountText: {
+    color: candy.red,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  categorySelectorButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.86)",
+    borderColor: "rgba(255,255,255,0.98)",
+    borderRadius: 24,
+    borderWidth: 2,
+    flexDirection: "row",
+    gap: 5,
+    justifyContent: "center",
+    minHeight: 66,
+    paddingHorizontal: 13,
+  },
+  categorySelectorButtonText: {
+    color: candy.red,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  categoryPickerOverlay: {
+    alignItems: "center",
+    backgroundColor: "rgba(35,18,36,0.24)",
+    flex: 1,
+    justifyContent: "center",
+    padding: 14,
+  },
+  categoryPickerBackdrop: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  categoryPickerSheetWrap: {
+    maxHeight: "88%",
+    maxWidth: 620,
+    width: "100%",
+  },
+  categoryPickerSheet: {
+    backgroundColor: "rgba(255,246,251,0.98)",
+    borderColor: "rgba(255,255,255,0.98)",
+    borderRadius: 28,
+    borderWidth: 2,
+    overflow: "hidden",
+    padding: 14,
+  },
+  categoryPickerHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    paddingBottom: 12,
+  },
+  categoryPickerHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  categoryPickerEyebrow: {
+    color: candy.red,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  categoryPickerTitle: {
+    color: candy.ink,
+    fontSize: 23,
+    fontWeight: "900",
+    lineHeight: 26,
+  },
+  categoryPickerClose: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,225,241,0.86)",
+    borderRadius: 999,
+    height: 40,
+    justifyContent: "center",
+    width: 40,
+  },
+  categoryPickerGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 9,
+    paddingBottom: 4,
+  },
+  categoryPickerCard: {
+    borderColor: "rgba(255,255,255,0.96)",
+    borderRadius: 20,
+    borderWidth: 2,
+    minHeight: 118,
+    padding: 10,
+    position: "relative",
+    width: "48%",
+  },
+  categoryPickerCardSelected: {
+    borderColor: candy.red,
+  },
+  categoryPickerCardLocked: {
+    opacity: 0.88,
+  },
+  categoryPickerIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.7)",
+    borderRadius: 18,
+    height: 38,
+    justifyContent: "center",
+    marginBottom: 8,
+    width: 38,
+  },
+  categoryPickerEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 21,
+  },
+  categoryPickerCardTitle: {
     color: candy.ink,
     fontSize: 14,
     fontWeight: "900",
+    lineHeight: 18,
   },
-  categoryChipTextActive: {
+  categoryPickerCardText: {
+    color: candy.text,
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  categoryPickerSelectedText: {
+    alignSelf: "flex-start",
+    backgroundColor: candy.red,
+    borderRadius: 999,
     color: candy.white,
+    fontSize: 9,
+    fontWeight: "900",
+    marginTop: 8,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    textTransform: "uppercase",
   },
-  categoryChipLock: {
-    fontFamily: emojiFont,
-    fontSize: 13,
-    lineHeight: 15,
+  categoryPickerLock: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.86)",
+    borderRadius: 999,
+    height: 26,
+    justifyContent: "center",
     position: "absolute",
-    right: 11,
-    top: 7,
+    right: 8,
+    top: 8,
+    width: 26,
   },
   desireFilterRow: {
     flexDirection: "row",
@@ -9495,21 +9725,6 @@ const styles = StyleSheet.create({
   },
   desireFilterCountActive: {
     color: candy.pinkSoft,
-  },
-  categoryChipMuted: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.68)",
-    borderRadius: 22,
-    justifyContent: "center",
-    minHeight: 44,
-    minWidth: 74,
-    paddingHorizontal: 10,
-  },
-  categoryChipMutedText: {
-    color: candy.text,
-    fontSize: 11,
-    fontWeight: "900",
-    textAlign: "center",
   },
   cardStack: {
     gap: 10,
