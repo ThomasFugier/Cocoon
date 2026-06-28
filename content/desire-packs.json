@@ -1,0 +1,4086 @@
+{
+  "version": 2,
+  "updatedAt": "2026-06-27",
+  "packs": [
+    {
+      "category": "Vanille",
+      "label": "Vanille",
+      "paid": false,
+      "description": "Le pack inclus : douceur, tendresse et premières envies à découvrir sans pression.",
+      "cards": [
+        {
+          "id": "vanille-01",
+          "title": "Premier date",
+          "emoji": "🌹",
+          "blurb": "Refaire un rendez-vous comme si vous veniez de vous rencontrer.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-02",
+          "title": "Dîner doux",
+          "emoji": "🕯️",
+          "blurb": "Préparer un dîner romantique juste pour vous deux.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-03",
+          "title": "Long baiser",
+          "emoji": "💋",
+          "blurb": "S’embrasser longtemps sans chercher à aller plus loin.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-04",
+          "title": "Peau contre peau",
+          "emoji": "🛏️",
+          "blurb": "Dormir nus ensemble, simplement collés l’un à l’autre.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-05",
+          "title": "Beaux mots",
+          "emoji": "✨",
+          "blurb": "Se dire ce que vous trouvez beau chez l’autre.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-06",
+          "title": "Câlin long",
+          "emoji": "🫂",
+          "blurb": "Se prendre dans les bras pendant plusieurs minutes.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-07",
+          "title": "Douche tendre",
+          "emoji": "🚿",
+          "blurb": "Prendre une douche ensemble sans objectif sexuel.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-08",
+          "title": "Massage relax",
+          "emoji": "💆",
+          "blurb": "Masser l’autre après une longue journée.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-09",
+          "title": "Petit-déj au lit",
+          "emoji": "🥐",
+          "blurb": "Surprendre l’autre avec un réveil tout doux.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-10",
+          "title": "Main dans la main",
+          "emoji": "🤝",
+          "blurb": "Passer une soirée à se tenir la main.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-11",
+          "title": "Balade de nuit",
+          "emoji": "🌙",
+          "blurb": "Marcher ensemble quand la ville est plus calme.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-12",
+          "title": "Lettre d’amour",
+          "emoji": "💌",
+          "blurb": "Écrire quelques lignes sincères à l’autre.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-13",
+          "title": "Sans écrans",
+          "emoji": "📵",
+          "blurb": "Passer une soirée sans téléphone ni distraction.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-14",
+          "title": "Slow dance",
+          "emoji": "🎶",
+          "blurb": "Danser lentement dans le salon.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-15",
+          "title": "Yeux dans les yeux",
+          "emoji": "👀",
+          "blurb": "Se regarder sans parler et laisser le moment durer.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-16",
+          "title": "Beau souvenir",
+          "emoji": "📸",
+          "blurb": "Raconter votre souvenir préféré du couple.",
+          "kind": "discussion",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-17",
+          "title": "Bisous partout",
+          "emoji": "😘",
+          "blurb": "Couvrir l’autre de bisous tendres.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-18",
+          "title": "Parfum préféré",
+          "emoji": "🧴",
+          "blurb": "Porter une odeur que l’autre adore.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-19",
+          "title": "Playlist love",
+          "emoji": "🎧",
+          "blurb": "Créer une playlist romantique pour vous deux.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-20",
+          "title": "Déclaration",
+          "emoji": "❤️",
+          "blurb": "Dire à l’autre ce qu’il ou elle représente pour vous.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-21",
+          "title": "Bain à deux",
+          "emoji": "🛁",
+          "blurb": "Prendre un bain chaud ensemble.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-22",
+          "title": "Câlin gratuit",
+          "emoji": "🧸",
+          "blurb": "Se câliner sans que ça doive devenir sexuel.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-23",
+          "title": "Sieste collée",
+          "emoji": "😴",
+          "blurb": "Faire une sieste enlacés.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-24",
+          "title": "Tenue de date",
+          "emoji": "👗",
+          "blurb": "Choisir une tenue pour plaire à l’autre.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-25",
+          "title": "Mot caché",
+          "emoji": "📝",
+          "blurb": "Laisser un petit mot doux quelque part.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-26",
+          "title": "Petite attention",
+          "emoji": "🎁",
+          "blurb": "Offrir un geste simple mais symbolique.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-27",
+          "title": "Matin lent",
+          "emoji": "☀️",
+          "blurb": "Rester au lit ensemble un peu plus longtemps.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-28",
+          "title": "Bras ouverts",
+          "emoji": "🌛",
+          "blurb": "S’endormir dans les bras l’un de l’autre.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-29",
+          "title": "Week-end love",
+          "emoji": "🧳",
+          "blurb": "Organiser une escapade romantique.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-30",
+          "title": "Moment culte",
+          "emoji": "🎞️",
+          "blurb": "Recréer un souvenir fort de votre histoire.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-31",
+          "title": "Trois mercis",
+          "emoji": "🙏",
+          "blurb": "Dire trois choses que vous aimez dans la relation.",
+          "kind": "discussion",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-32",
+          "title": "Massage mains",
+          "emoji": "🤲",
+          "blurb": "Se masser doucement les mains.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-33",
+          "title": "Compliments",
+          "emoji": "🌷",
+          "blurb": "Se complimenter sans parler de sexe.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-34",
+          "title": "Je te désire",
+          "emoji": "🔥",
+          "blurb": "Dire son désir avec tendresse.",
+          "kind": "discussion",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-35",
+          "title": "Dîner spécial",
+          "emoji": "🍝",
+          "blurb": "Préparer un repas comme pour une grande occasion.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-36",
+          "title": "Soirée pyjama",
+          "emoji": "🧦",
+          "blurb": "Passer une soirée douce et régressive à deux.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-37",
+          "title": "Lecture love",
+          "emoji": "📖",
+          "blurb": "Lire ensemble un texte romantique.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-38",
+          "title": "Film collés",
+          "emoji": "🍿",
+          "blurb": "Regarder un film l’un contre l’autre.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-39",
+          "title": "Photo tendre",
+          "emoji": "📷",
+          "blurb": "Prendre une photo de couple intime et douce.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-40",
+          "title": "Surnom doux",
+          "emoji": "🐻",
+          "blurb": "Se donner un surnom amoureux.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-41",
+          "title": "Couple d’abord",
+          "emoji": "🗓️",
+          "blurb": "Réserver une journée où votre couple passe en priorité.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-42",
+          "title": "Aimé·e comment",
+          "emoji": "💞",
+          "blurb": "Dire ce qui vous fait vous sentir aimé·e.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-43",
+          "title": "Rituel du soir",
+          "emoji": "🌌",
+          "blurb": "Créer un petit rituel avant de dormir.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-44",
+          "title": "Nuque douce",
+          "emoji": "👐",
+          "blurb": "Masser la nuque ou les épaules de l’autre.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-45",
+          "title": "Bisou réveil",
+          "emoji": "🌤️",
+          "blurb": "Commencer la journée par un vrai baiser.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-46",
+          "title": "Envie douce",
+          "emoji": "🫶",
+          "blurb": "Partager une envie tendre à vivre bientôt.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-47",
+          "title": "Surprise love",
+          "emoji": "🎀",
+          "blurb": "Préparer une surprise romantique.",
+          "kind": "practice",
+          "mood": "calme"
+        },
+        {
+          "id": "vanille-48",
+          "title": "Se redécouvrir",
+          "emoji": "🥂",
+          "blurb": "Faire comme si vous appreniez à vous connaître.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-49",
+          "title": "Mot secret",
+          "emoji": "🗝️",
+          "blurb": "Dire une chose qu’on n’ose pas assez dire.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "vanille-50",
+          "title": "Fin tendre",
+          "emoji": "🕊️",
+          "blurb": "Terminer la journée par un long moment de tendresse.",
+          "kind": "practice",
+          "mood": "calme"
+        }
+      ]
+    },
+    {
+      "category": "Sensuel",
+      "label": "Sensuel",
+      "paid": true,
+      "description": "Des cartes lentes, tactiles et intimes pour faire monter la température en douceur.",
+      "cards": [
+        {
+          "id": "sensuel-01",
+          "title": "Huile chaude",
+          "emoji": "🧴",
+          "blurb": "Faire un massage complet avec de l’huile.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-02",
+          "title": "Bout des doigts",
+          "emoji": "✋",
+          "blurb": "Explorer lentement le corps de l’autre.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-03",
+          "title": "Baiser cou",
+          "emoji": "🦢",
+          "blurb": "Embrasser le cou avec lenteur.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-04",
+          "title": "Sous les draps",
+          "emoji": "🛌",
+          "blurb": "Se caresser doucement sous la couette.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-05",
+          "title": "Déshabillage lent",
+          "emoji": "👕",
+          "blurb": "Enlever les vêtements sans se presser.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-06",
+          "title": "À moitié vêtu·e",
+          "emoji": "🧥",
+          "blurb": "Garder quelques vêtements pour faire monter le désir.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-07",
+          "title": "Lumière basse",
+          "emoji": "🕯️",
+          "blurb": "Créer une ambiance douce et tamisée.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-08",
+          "title": "Musique chaude",
+          "emoji": "🎼",
+          "blurb": "Mettre une playlist sensuelle.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-09",
+          "title": "Douche chaude",
+          "emoji": "🚿",
+          "blurb": "Partager une douche lente et intime.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-10",
+          "title": "Se laver",
+          "emoji": "🫧",
+          "blurb": "Laver le corps de l’autre avec attention.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-11",
+          "title": "Silence",
+          "emoji": "🤫",
+          "blurb": "Se toucher sans parler.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-12",
+          "title": "Respiration",
+          "emoji": "🌬️",
+          "blurb": "Respirer ensemble au même rythme.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-13",
+          "title": "À travers le tissu",
+          "emoji": "🧶",
+          "blurb": "Se caresser par-dessus les vêtements.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-14",
+          "title": "Bandeau",
+          "emoji": "🙈",
+          "blurb": "Couvrir les yeux pour ressentir autrement.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "sensuel-15",
+          "title": "Avec les lèvres",
+          "emoji": "👄",
+          "blurb": "Toucher l’autre uniquement avec la bouche.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-16",
+          "title": "Zones oubliées",
+          "emoji": "🗺️",
+          "blurb": "Explorer les parties du corps souvent négligées.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-17",
+          "title": "Hanches",
+          "emoji": "〰️",
+          "blurb": "Embrasser le ventre, les hanches ou le dos.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-18",
+          "title": "Jambes",
+          "emoji": "🦵",
+          "blurb": "Masser lentement les jambes.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-19",
+          "title": "Pieds",
+          "emoji": "🦶",
+          "blurb": "Offrir un massage des pieds.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-20",
+          "title": "Plume",
+          "emoji": "🪶",
+          "blurb": "Utiliser une plume ou un tissu doux.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-21",
+          "title": "Chaud froid",
+          "emoji": "🧊",
+          "blurb": "Jouer avec des sensations chaudes et froides.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-22",
+          "title": "Guide mes mains",
+          "emoji": "🧭",
+          "blurb": "Laisser l’autre placer vos mains où il veut.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-23",
+          "title": "Dis-moi où",
+          "emoji": "🎯",
+          "blurb": "Demander précisément où toucher.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-24",
+          "title": "Préliminaires longs",
+          "emoji": "⏳",
+          "blurb": "Faire durer le moment avant l’acte.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-25",
+          "title": "Sans objectif",
+          "emoji": "🌀",
+          "blurb": "Explorer le plaisir sans chercher l’orgasme.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-26",
+          "title": "Admiration",
+          "emoji": "🪞",
+          "blurb": "Dire à voix haute ce qu’on aime regarder.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-27",
+          "title": "Se laisser voir",
+          "emoji": "👁️",
+          "blurb": "Accepter d’être regardé·e sans se cacher.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-28",
+          "title": "Miroir",
+          "emoji": "🪞",
+          "blurb": "Utiliser un miroir pour vous voir ensemble.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-29",
+          "title": "Avant le baiser",
+          "emoji": "💫",
+          "blurb": "Se caresser longtemps avant de s’embrasser.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-30",
+          "title": "Très lent",
+          "emoji": "🐢",
+          "blurb": "Ralentir chaque geste volontairement.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-31",
+          "title": "Une seule zone",
+          "emoji": "🔍",
+          "blurb": "Se concentrer sur une seule partie du corps.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-32",
+          "title": "Soirée lente",
+          "emoji": "🕰️",
+          "blurb": "Faire une soirée dédiée à la lenteur.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-33",
+          "title": "Hôtel maison",
+          "emoji": "🏨",
+          "blurb": "Transformer la chambre en suite d’hôtel.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-34",
+          "title": "Matière douce",
+          "emoji": "🧵",
+          "blurb": "Porter une matière agréable à toucher.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-35",
+          "title": "Sans pénétration",
+          "emoji": "🚫",
+          "blurb": "Faire monter le désir sans pénétration.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-36",
+          "title": "Mains seules",
+          "emoji": "🤲",
+          "blurb": "Se donner du plaisir uniquement avec les mains.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-37",
+          "title": "Bouche seule",
+          "emoji": "👅",
+          "blurb": "Se donner du plaisir uniquement avec la bouche.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-38",
+          "title": "Doux puis fort",
+          "emoji": "🌊",
+          "blurb": "Alterner caresses douces et baisers appuyés.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-39",
+          "title": "Murmures",
+          "emoji": "🗣️",
+          "blurb": "Dire doucement ce qui fait du bien.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-40",
+          "title": "Réveil sensuel",
+          "emoji": "🌅",
+          "blurb": "Commencer la journée avec des caresses lentes.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-41",
+          "title": "Nuit sensuelle",
+          "emoji": "🌙",
+          "blurb": "Finir la journée par un moment de peau.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-42",
+          "title": "Massage avant",
+          "emoji": "💆",
+          "blurb": "Faire un massage avant un rapport.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-43",
+          "title": "Massage gratuit",
+          "emoji": "🕊️",
+          "blurb": "Se masser sans obligation d’aller plus loin.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-44",
+          "title": "Frissons",
+          "emoji": "⚡",
+          "blurb": "Chercher ce qui donne des frissons à l’autre.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-45",
+          "title": "Baiser minute",
+          "emoji": "⏱️",
+          "blurb": "Faire durer un baiser plusieurs minutes.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-46",
+          "title": "Rythme choisi",
+          "emoji": "🎚️",
+          "blurb": "Laisser l’autre choisir le rythme des caresses.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-47",
+          "title": "Lubrifiant doux",
+          "emoji": "💧",
+          "blurb": "Utiliser du lubrifiant pour plus de confort.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-48",
+          "title": "Yeux fermés",
+          "emoji": "😌",
+          "blurb": "Explorer les sensations les yeux fermés.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-49",
+          "title": "Corps immobiles",
+          "emoji": "🧲",
+          "blurb": "Rester collés sans bouger.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "sensuel-50",
+          "title": "Retour calme",
+          "emoji": "🫶",
+          "blurb": "Finir par des câlins et de l’aftercare doux.",
+          "kind": "practice",
+          "mood": "sensuel"
+        }
+      ]
+    },
+    {
+      "category": "Séduction",
+      "label": "Séduction",
+      "paid": true,
+      "description": "Messages, tension, flirt et jeux de regards pour réveiller le désir avant même de se toucher.",
+      "cards": [
+        {
+          "id": "seduction-01",
+          "title": "Message chaud",
+          "emoji": "📱",
+          "blurb": "Envoyer un message suggestif dans la journée.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-02",
+          "title": "Tension lente",
+          "emoji": "🔥",
+          "blurb": "Faire monter l’envie avant de vous retrouver.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-03",
+          "title": "Photo privée",
+          "emoji": "📸",
+          "blurb": "Envoyer une photo sexy avec accord clair.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-04",
+          "title": "Vocal intime",
+          "emoji": "🎙️",
+          "blurb": "Envoyer un message vocal plus sensuel.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-05",
+          "title": "Tenue choisie",
+          "emoji": "👠",
+          "blurb": "Porter une tenue pensée pour exciter l’autre.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-06",
+          "title": "Inconnus au bar",
+          "emoji": "🍸",
+          "blurb": "Flirter comme deux personnes qui viennent de se rencontrer.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-07",
+          "title": "Première fois",
+          "emoji": "🥂",
+          "blurb": "Faire semblant de vous découvrir à nouveau.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-08",
+          "title": "Rendez-vous secret",
+          "emoji": "🚪",
+          "blurb": "Se donner rendez-vous dans une pièce de la maison.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-09",
+          "title": "Jeu de regards",
+          "emoji": "👀",
+          "blurb": "Se provoquer du regard pendant un dîner.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-10",
+          "title": "À l’oreille",
+          "emoji": "🐚",
+          "blurb": "Chuchoter une envie directement à l’oreille.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-11",
+          "title": "Pas de baiser",
+          "emoji": "🚫💋",
+          "blurb": "Interdire les baisers pendant quelques minutes.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "seduction-12",
+          "title": "Pas de caresse",
+          "emoji": "🙅",
+          "blurb": "Interdire les caresses pour faire monter l’attente.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "seduction-13",
+          "title": "Qui craque",
+          "emoji": "🎲",
+          "blurb": "Jouer à celui ou celle qui résiste le plus longtemps.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "seduction-14",
+          "title": "Plus tard",
+          "emoji": "⏰",
+          "blurb": "Dire ce qu’on veut faire à l’autre plus tard.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-15",
+          "title": "Chauffe SMS",
+          "emoji": "💬",
+          "blurb": "Se chauffer par messages sans agir tout de suite.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-16",
+          "title": "Devine",
+          "emoji": "❓",
+          "blurb": "Laisser l’autre deviner ce que vous portez.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-17",
+          "title": "Mot-code",
+          "emoji": "🗝️",
+          "blurb": "Choisir un mot secret avec un double sens coquin.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-18",
+          "title": "Détail caché",
+          "emoji": "🧦",
+          "blurb": "Porter quelque chose de discret mais excitant.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-19",
+          "title": "Note sexy",
+          "emoji": "📝",
+          "blurb": "Cacher un message intime dans un endroit privé.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-20",
+          "title": "Compte à rebours",
+          "emoji": "⏳",
+          "blurb": "Créer une attente avant le moment intime.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-21",
+          "title": "Invitation",
+          "emoji": "💌",
+          "blurb": "Envoyer une invitation privée pour le soir.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-22",
+          "title": "Drague",
+          "emoji": "😏",
+          "blurb": "Draguer l’autre comme si tout recommençait.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-23",
+          "title": "Résistance",
+          "emoji": "🫦",
+          "blurb": "Faire semblant de résister au charme de l’autre.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "seduction-24",
+          "title": "Stop baiser",
+          "emoji": "⏸️",
+          "blurb": "S’embrasser puis s’arrêter pour prolonger l’envie.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-25",
+          "title": "Souvenir hot",
+          "emoji": "🧠",
+          "blurb": "Décrire un souvenir sexuel marquant du couple.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-26",
+          "title": "J’ai envie",
+          "emoji": "🔥",
+          "blurb": "Dire clairement “ce soir, j’ai envie de toi”.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-27",
+          "title": "Préparation",
+          "emoji": "🪞",
+          "blurb": "Se préparer séparément avant de se retrouver.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-28",
+          "title": "Danse privée",
+          "emoji": "💃",
+          "blurb": "Faire une danse sexy juste pour l’autre.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-29",
+          "title": "Premier contact",
+          "emoji": "🕰️",
+          "blurb": "Retarder volontairement le premier toucher.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-30",
+          "title": "Règle de flirt",
+          "emoji": "📏",
+          "blurb": "Inventer une règle de séduction pour la soirée.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-31",
+          "title": "Trois indices",
+          "emoji": "🔎",
+          "blurb": "Donner trois indices sur ce que vous voulez.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-32",
+          "title": "Emoji secret",
+          "emoji": "😈",
+          "blurb": "Envoyer une envie seulement avec des emojis.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-33",
+          "title": "Vouvoiement",
+          "emoji": "🎭",
+          "blurb": "Se vouvoyer pour créer une tension inhabituelle.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-34",
+          "title": "Trajet chaud",
+          "emoji": "🚗",
+          "blurb": "Faire monter le désir pendant un trajet.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-35",
+          "title": "Compliment sexuel",
+          "emoji": "🫶",
+          "blurb": "Dire ce qui vous excite physiquement chez l’autre.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-36",
+          "title": "Attirance",
+          "emoji": "🧲",
+          "blurb": "Décrire ce qui vous attire chez son corps.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-37",
+          "title": "Remarque-moi",
+          "emoji": "✨",
+          "blurb": "Dire ce que vous aimeriez que l’autre remarque.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-38",
+          "title": "Ambiance choisie",
+          "emoji": "🎛️",
+          "blurb": "Laisser l’autre choisir l’ambiance du soir.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-39",
+          "title": "Strip soft",
+          "emoji": "👗",
+          "blurb": "Faire un strip-tease simple et assumé.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "seduction-40",
+          "title": "Défi séduction",
+          "emoji": "🎯",
+          "blurb": "Donner un petit défi pour séduire l’autre.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "seduction-41",
+          "title": "Phrase crue",
+          "emoji": "🌶️",
+          "blurb": "Susurrer une phrase plus directe au bon moment.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "seduction-42",
+          "title": "Pas encore",
+          "emoji": "⛔",
+          "blurb": "Jouer avec l’attente et le refus temporaire.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-43",
+          "title": "Attente",
+          "emoji": "🕯️",
+          "blurb": "Faire durer le moment avant de toucher l’autre.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-44",
+          "title": "Mots seuls",
+          "emoji": "🗣️",
+          "blurb": "Séduire l’autre uniquement avec les mots.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-45",
+          "title": "Regard seul",
+          "emoji": "👁️",
+          "blurb": "Séduire l’autre uniquement avec les yeux.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-46",
+          "title": "Surprise sexy",
+          "emoji": "🎁",
+          "blurb": "Préparer une surprise excitante mais élégante.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-47",
+          "title": "Amants secrets",
+          "emoji": "🕵️",
+          "blurb": "Se donner rendez-vous comme si c’était interdit.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "seduction-48",
+          "title": "Interdit fictif",
+          "emoji": "🚪",
+          "blurb": "Jouer une tension “on ne devrait pas” entre adultes consentants.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "seduction-49",
+          "title": "Menu intime",
+          "emoji": "🍽️",
+          "blurb": "Chaque étape du dîner débloque une question intime.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "seduction-50",
+          "title": "Envie révélée",
+          "emoji": "🔓",
+          "blurb": "Finir la soirée en avouant une envie précise.",
+          "kind": "practice",
+          "mood": "sensuel"
+        }
+      ]
+    },
+    {
+      "category": "Hot",
+      "label": "Hot",
+      "paid": true,
+      "description": "Un pack plus direct, explicite et assumé pour les couples qui veulent aller plus loin.",
+      "cards": [
+        {
+          "id": "hot-01",
+          "title": "Initiative",
+          "emoji": "🚀",
+          "blurb": "Prendre les devants sans attendre.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-02",
+          "title": "Dis-le",
+          "emoji": "🗣️",
+          "blurb": "Dire clairement ce que vous voulez.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-03",
+          "title": "Plus intense",
+          "emoji": "🔥",
+          "blurb": "Faire l’amour avec plus d’énergie que d’habitude.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-04",
+          "title": "Nouvelle position",
+          "emoji": "🔄",
+          "blurb": "Essayer une position que vous ne faites pas souvent.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-05",
+          "title": "Hors du lit",
+          "emoji": "🛋️",
+          "blurb": "Faire l’amour ailleurs que dans le lit, en privé.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-06",
+          "title": "Matin chaud",
+          "emoji": "🌅",
+          "blurb": "Faire l’amour au réveil.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-07",
+          "title": "Plein jour",
+          "emoji": "☀️",
+          "blurb": "Faire l’amour en journée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-08",
+          "title": "Soirée sexe",
+          "emoji": "🌶️",
+          "blurb": "Réserver une soirée entière au plaisir.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-09",
+          "title": "Préliminaires",
+          "emoji": "⏳",
+          "blurb": "Faire durer les préliminaires plus longtemps.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-10",
+          "title": "Plus vocal",
+          "emoji": "🔊",
+          "blurb": "Oser faire plus de bruit pendant l’acte.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-11",
+          "title": "En direct",
+          "emoji": "📡",
+          "blurb": "Dire ce qui fait du bien pendant que ça arrive.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-12",
+          "title": "Plus lent",
+          "emoji": "🐢",
+          "blurb": "Demander un rythme plus lent.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-13",
+          "title": "Plus fort",
+          "emoji": "⚡",
+          "blurb": "Demander un rythme plus intense.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-14",
+          "title": "Doux puis sauvage",
+          "emoji": "🌊",
+          "blurb": "Alterner tendresse et passion.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-15",
+          "title": "Habillé·e",
+          "emoji": "👔",
+          "blurb": "Garder certains vêtements pendant le rapport.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-16",
+          "title": "Miroir",
+          "emoji": "🪞",
+          "blurb": "Se regarder dans un miroir pendant l’intimité.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-17",
+          "title": "Debout",
+          "emoji": "🧍",
+          "blurb": "Tester une position debout.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-18",
+          "title": "Assis",
+          "emoji": "🪑",
+          "blurb": "Tester une position assise.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-19",
+          "title": "L’un mène",
+          "emoji": "🧭",
+          "blurb": "Laisser une personne guider entièrement le rapport.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-20",
+          "title": "Recevoir oral",
+          "emoji": "👅",
+          "blurb": "Recevoir une fellation ou un cunnilingus.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-21",
+          "title": "Donner oral",
+          "emoji": "😮‍💨",
+          "blurb": "Donner une fellation ou un cunnilingus.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-22",
+          "title": "Cunnilingus",
+          "emoji": "👅",
+          "blurb": "Recevoir ou offrir un cunnilingus long et attentif.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-23",
+          "title": "Fellation",
+          "emoji": "👄",
+          "blurb": "Recevoir ou offrir une fellation avec envie.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-24",
+          "title": "69",
+          "emoji": "☯️",
+          "blurb": "Se donner du plaisir oral en même temps.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-25",
+          "title": "Oral long",
+          "emoji": "⏰",
+          "blurb": "Faire durer le sexe oral comme moment principal.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-26",
+          "title": "Guide oral",
+          "emoji": "🎚️",
+          "blurb": "Guider l’autre pendant une fellation ou un cunnilingus.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-27",
+          "title": "Main + bouche",
+          "emoji": "🤲",
+          "blurb": "Mélanger bouche, langue et mains.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-28",
+          "title": "Clito précis",
+          "emoji": "🎯",
+          "blurb": "Explorer une stimulation clitoridienne plus ciblée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-29",
+          "title": "Pénis lent",
+          "emoji": "🍌",
+          "blurb": "Explorer une stimulation du pénis plus lente.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-30",
+          "title": "Sextoy simple",
+          "emoji": "🧸",
+          "blurb": "Introduire un jouet facile à utiliser.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-31",
+          "title": "Lubrifiant",
+          "emoji": "💧",
+          "blurb": "Utiliser du lubrifiant pour plus de confort et de glisse.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-32",
+          "title": "Profond lent",
+          "emoji": "🌊",
+          "blurb": "Essayer une pénétration plus lente et profonde.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-33",
+          "title": "Rythmé",
+          "emoji": "🥁",
+          "blurb": "Essayer une pénétration plus rythmée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-34",
+          "title": "Se laisser désirer",
+          "emoji": "🫠",
+          "blurb": "Recevoir pleinement le désir de l’autre.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-35",
+          "title": "Recevoir",
+          "emoji": "🎁",
+          "blurb": "Se laisser donner du plaisir sans culpabiliser.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-36",
+          "title": "Donner",
+          "emoji": "🤲",
+          "blurb": "Donner du plaisir sans attendre de retour immédiat.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-37",
+          "title": "Tour de rôle",
+          "emoji": "🔁",
+          "blurb": "Chacun son tour, l’un reçoit puis l’autre.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-38",
+          "title": "Nuit culte",
+          "emoji": "🏆",
+          "blurb": "Rejouer une nuit particulièrement excitante.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-39",
+          "title": "Dirty talk",
+          "emoji": "🌶️",
+          "blurb": "Parler plus cru pendant l’amour.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-40",
+          "title": "Contrôle",
+          "emoji": "🎮",
+          "blurb": "Demander à l’autre de prendre les commandes.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-41",
+          "title": "Encore",
+          "emoji": "✅",
+          "blurb": "Utiliser “encore” comme feu vert excitant.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-42",
+          "title": "Continue",
+          "emoji": "⏩",
+          "blurb": "Demander à l’autre de ne pas s’arrêter.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-43",
+          "title": "Sur le corps",
+          "emoji": "💦",
+          "blurb": "Explorer l’éjaculation sur le corps.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-44",
+          "title": "Dans la bouche",
+          "emoji": "👅",
+          "blurb": "Explorer l’éjaculation dans la bouche, si désirée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-45",
+          "title": "À l’intérieur",
+          "emoji": "🔒",
+          "blurb": "Finir à l’intérieur avec accord, contraception et santé sexuelle.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-46",
+          "title": "Lumière allumée",
+          "emoji": "💡",
+          "blurb": "Faire l’amour en assumant d’être vus par l’autre.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-47",
+          "title": "Noir complet",
+          "emoji": "🌑",
+          "blurb": "Faire l’amour dans le noir total.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-48",
+          "title": "Pause feedback",
+          "emoji": "🛑",
+          "blurb": "Faire une pause pour dire ce qui plaît.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-49",
+          "title": "Plus sauvage",
+          "emoji": "🐺",
+          "blurb": "Refaire une pratique connue en version plus animale.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "hot-50",
+          "title": "Debrief doux",
+          "emoji": "🫶",
+          "blurb": "Terminer en parlant de ce qui a excité.",
+          "kind": "practice",
+          "mood": "aventureux"
+        }
+      ]
+    },
+    {
+      "category": "Jeux & Défis",
+      "label": "Jeux",
+      "paid": true,
+      "description": "Des défis, tirages et règles simples pour transformer vos envies en vrai jeu de couple.",
+      "cards": [
+        {
+          "id": "jeux-et-defis-01",
+          "title": "Carte 24h",
+          "emoji": "🃏",
+          "blurb": "Tirer une carte et la réaliser dans les 24 heures.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-02",
+          "title": "Action vérité",
+          "emoji": "🎲",
+          "blurb": "Jouer à action ou vérité version couple.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-03",
+          "title": "Trois défis",
+          "emoji": "3️⃣",
+          "blurb": "Chacun propose trois défis coquins.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-04",
+          "title": "Sans les mains",
+          "emoji": "🙌",
+          "blurb": "Faire un défi où les mains sont interdites.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-05",
+          "title": "Sans parler",
+          "emoji": "🤐",
+          "blurb": "Faire un défi dans le silence.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-06",
+          "title": "Yeux bandés",
+          "emoji": "🙈",
+          "blurb": "Faire un défi avec un bandeau.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-07",
+          "title": "Minuteur",
+          "emoji": "⏱️",
+          "blurb": "Utiliser un minuteur pour faire durer une caresse.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-08",
+          "title": "Dé du désir",
+          "emoji": "🎲",
+          "blurb": "Laisser un dé choisir l’action.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "jeux-et-defis-09",
+          "title": "Règle du soir",
+          "emoji": "📏",
+          "blurb": "Créer une règle intime pour la soirée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-10",
+          "title": "Zone interdite",
+          "emoji": "⛔",
+          "blurb": "Interdire une zone du corps temporairement.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "jeux-et-defis-11",
+          "title": "Baisers interdits",
+          "emoji": "🚫💋",
+          "blurb": "Interdire les baisers pour créer de l’attente.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "jeux-et-defis-12",
+          "title": "Devine envie",
+          "emoji": "🔍",
+          "blurb": "Faire deviner une envie avec des indices.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-13",
+          "title": "Tirage fantasme",
+          "emoji": "🎟️",
+          "blurb": "Écrire trois fantasmes et en tirer un.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-14",
+          "title": "Roue des envies",
+          "emoji": "🎡",
+          "blurb": "Faire tourner une roue pour choisir une envie.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "jeux-et-defis-15",
+          "title": "Tu préfères",
+          "emoji": "⚖️",
+          "blurb": "Jouer à “tu préfères” version sexuelle.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-16",
+          "title": "Oui peut-être non",
+          "emoji": "🚦",
+          "blurb": "Classer les envies en trois niveaux.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-17",
+          "title": "Récompense",
+          "emoji": "🏅",
+          "blurb": "Prévoir une récompense après un défi réussi.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-18",
+          "title": "Gage doux",
+          "emoji": "🍬",
+          "blurb": "Donner un gage tendre ou sensuel.",
+          "kind": "practice",
+          "mood": "sensuel"
+        },
+        {
+          "id": "jeux-et-defis-19",
+          "title": "Gage spicy",
+          "emoji": "🌶️",
+          "blurb": "Donner un gage plus osé mais consenti.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-20",
+          "title": "Massage only",
+          "emoji": "💆",
+          "blurb": "Faire un défi massage uniquement.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-21",
+          "title": "Baisers only",
+          "emoji": "💋",
+          "blurb": "Faire un défi baisers uniquement.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-22",
+          "title": "Préliminaires only",
+          "emoji": "⏳",
+          "blurb": "Faire un défi sans aller directement à l’acte.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "jeux-et-defis-23",
+          "title": "Sans pénétration",
+          "emoji": "🚫",
+          "blurb": "Faire un moment intime sans pénétration.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-24",
+          "title": "Oral only",
+          "emoji": "👅",
+          "blurb": "Faire un défi centré sur le sexe oral.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-25",
+          "title": "Oral prolongé",
+          "emoji": "⏰",
+          "blurb": "Faire durer une fellation ou un cunnilingus.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-26",
+          "title": "Guide-moi",
+          "emoji": "🧭",
+          "blurb": "L’un guide, l’autre suit.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-27",
+          "title": "Rythme imposé",
+          "emoji": "🎚️",
+          "blurb": "L’autre décide du rythme.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-28",
+          "title": "Permission",
+          "emoji": "🙋",
+          "blurb": "Demander la permission avant chaque étape.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-29",
+          "title": "Ne touche pas",
+          "emoji": "🙅",
+          "blurb": "L’un n’a pas le droit de toucher.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-30",
+          "title": "Reste immobile",
+          "emoji": "🗿",
+          "blurb": "L’un doit rester immobile pendant que l’autre joue.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-31",
+          "title": "Plus vocal",
+          "emoji": "🔊",
+          "blurb": "Le défi est d’oser être plus bruyant.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-32",
+          "title": "Mots crus",
+          "emoji": "🌶️",
+          "blurb": "Les mots plus directs sont autorisés.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "jeux-et-defis-33",
+          "title": "Nouvelle pièce",
+          "emoji": "🚪",
+          "blurb": "Essayer une pièce inhabituelle de la maison.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-34",
+          "title": "Nouvelle position",
+          "emoji": "🔄",
+          "blurb": "Tester une position tirée au hasard.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-35",
+          "title": "Nouvel accessoire",
+          "emoji": "🧰",
+          "blurb": "Ajouter un objet, un bandeau ou un sextoy.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-36",
+          "title": "Bandeau",
+          "emoji": "🙈",
+          "blurb": "Un défi avec les yeux couverts.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-37",
+          "title": "Mains liées",
+          "emoji": "🪢",
+          "blurb": "Les mains sont attachées doucement.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-38",
+          "title": "Strip",
+          "emoji": "👗",
+          "blurb": "Faire un strip-tease comme défi.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-39",
+          "title": "Photo privée",
+          "emoji": "📸",
+          "blurb": "Prendre ou envoyer une photo consentie.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-40",
+          "title": "Vocal sexy",
+          "emoji": "🎙️",
+          "blurb": "Enregistrer un message vocal intime.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-41",
+          "title": "Surprise",
+          "emoji": "🎁",
+          "blurb": "Préparer une surprise sexuelle ou sensuelle.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-42",
+          "title": "Question avant",
+          "emoji": "❓",
+          "blurb": "Répondre à une question intime avant d’agir.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        },
+        {
+          "id": "jeux-et-defis-43",
+          "title": "Échange rôles",
+          "emoji": "🔁",
+          "blurb": "Inverser les rôles habituels.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-44",
+          "title": "Orgasme attente",
+          "emoji": "⏳",
+          "blurb": "Retarder l’orgasme pendant un temps choisi.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-45",
+          "title": "Edging soft",
+          "emoji": "📈",
+          "blurb": "Faire monter le plaisir sans aller jusqu’au bout tout de suite.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-46",
+          "title": "L’un reçoit",
+          "emoji": "🎁",
+          "blurb": "Une personne reçoit, l’autre donne.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-47",
+          "title": "Carte perso",
+          "emoji": "✍️",
+          "blurb": "Créer une carte personnalisée ensemble.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-48",
+          "title": "Favori",
+          "emoji": "⭐",
+          "blurb": "Mettre une carte aimée de côté pour la refaire.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-49",
+          "title": "Debrief défi",
+          "emoji": "🫶",
+          "blurb": "Parler de ce qui a plu après le défi.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "jeux-et-defis-50",
+          "title": "Mot sécurité",
+          "emoji": "🛟",
+          "blurb": "Choisir un mot pour arrêter immédiatement le jeu.",
+          "kind": "discussion",
+          "mood": "sensuel"
+        }
+      ]
+    },
+    {
+      "category": "Scénarios",
+      "label": "Scénarios",
+      "paid": true,
+      "description": "Des rôles, situations et petites fictions privées pour explorer autrement.",
+      "cards": [
+        {
+          "id": "scenarios-01",
+          "title": "Première rencontre",
+          "emoji": "🥂",
+          "blurb": "Rejouer le moment où vous vous découvrez.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-02",
+          "title": "Inconnus",
+          "emoji": "🍷",
+          "blurb": "Faire semblant d’être deux inconnus au restaurant.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-03",
+          "title": "Rendez-vous secret",
+          "emoji": "🕵️",
+          "blurb": "Jouer une rencontre cachée entre adultes consentants.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-04",
+          "title": "Amants",
+          "emoji": "💌",
+          "blurb": "Jouer des amants qui se retrouvent enfin.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-05",
+          "title": "Retrouvailles",
+          "emoji": "✈️",
+          "blurb": "Jouer une scène après une longue absence.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-06",
+          "title": "Chambre d’hôtel",
+          "emoji": "🏨",
+          "blurb": "Imaginer une nuit dans une chambre d’hôtel.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-07",
+          "title": "Vacances",
+          "emoji": "🏖️",
+          "blurb": "Jouer une rencontre chaude en vacances.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-08",
+          "title": "Massage privé",
+          "emoji": "💆",
+          "blurb": "Jouer une scène de massage sensuel.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-09",
+          "title": "Photo modèle",
+          "emoji": "📸",
+          "blurb": "Jouer photographe et modèle.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-10",
+          "title": "Bar",
+          "emoji": "🍸",
+          "blurb": "Jouer barman et client qui flirtent.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-11",
+          "title": "Voisin",
+          "emoji": "🏠",
+          "blurb": "Jouer le voisin séduisant.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-12",
+          "title": "Colocs",
+          "emoji": "🛋️",
+          "blurb": "Jouer deux colocs qui craquent l’un pour l’autre.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-13",
+          "title": "Confession",
+          "emoji": "🗝️",
+          "blurb": "Jouer l’aveu d’une envie cachée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-14",
+          "title": "Tentation",
+          "emoji": "🍎",
+          "blurb": "Faire monter une tentation progressive.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-15",
+          "title": "Secret adulte",
+          "emoji": "🤫",
+          "blurb": "Jouer un secret intime entre adultes.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-16",
+          "title": "Danse privée",
+          "emoji": "💃",
+          "blurb": "Jouer une scène autour d’une danse sexy.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-17",
+          "title": "Strip scène",
+          "emoji": "👗",
+          "blurb": "Jouer une scène de strip-tease.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-18",
+          "title": "Rendez-vous arrangé",
+          "emoji": "🎭",
+          "blurb": "Jouer deux adultes forcés de se découvrir par jeu.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-19",
+          "title": "Pari intime",
+          "emoji": "🎲",
+          "blurb": "Le perdant d’un pari doit réaliser une envie.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-20",
+          "title": "Défi perdu",
+          "emoji": "🏳️",
+          "blurb": "Jouer une scène où l’un doit assumer son défi.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-21",
+          "title": "Jalousie fictive",
+          "emoji": "😈",
+          "blurb": "Jouer une jalousie inventée et consentie.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-22",
+          "title": "Bureau fictif",
+          "emoji": "💼",
+          "blurb": "Jouer une tension au bureau hors vrai cadre professionnel.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-23",
+          "title": "Patron adulte",
+          "emoji": "📋",
+          "blurb": "Jouer une dynamique patron/employé entre adultes consentants.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-24",
+          "title": "Formation adulte",
+          "emoji": "📚",
+          "blurb": "Jouer une scène professeur/adulte en formation.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-25",
+          "title": "Coach",
+          "emoji": "🏋️",
+          "blurb": "Jouer coach et élève adulte.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-26",
+          "title": "Star fan",
+          "emoji": "⭐",
+          "blurb": "Jouer star et fan adulte.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-27",
+          "title": "Dom élégant",
+          "emoji": "🕴️",
+          "blurb": "Jouer une personne dominante et raffinée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-28",
+          "title": "Service privé",
+          "emoji": "🛎️",
+          "blurb": "Jouer maître/serviteur adulte dans un cadre consenti.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-29",
+          "title": "Royal",
+          "emoji": "👑",
+          "blurb": "Jouer roi ou reine et favori adulte.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-30",
+          "title": "Espionnage",
+          "emoji": "🕶️",
+          "blurb": "Jouer une mission secrète très intime.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-31",
+          "title": "Bal masqué",
+          "emoji": "🎭",
+          "blurb": "Jouer une rencontre masquée en privé.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-32",
+          "title": "Vouvoiement",
+          "emoji": "🧐",
+          "blurb": "Jouer une scène avec vouvoiement.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-33",
+          "title": "Costumes",
+          "emoji": "🧥",
+          "blurb": "Utiliser des costumes ou accessoires.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-34",
+          "title": "Personnage",
+          "emoji": "🎬",
+          "blurb": "Inventer un personnage pour la soirée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-35",
+          "title": "Plan secret",
+          "emoji": "🗺️",
+          "blurb": "L’un arrive avec un scénario préparé.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-36",
+          "title": "Sans toucher",
+          "emoji": "🚫",
+          "blurb": "Séduire l’autre sans le toucher.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-37",
+          "title": "Trois consignes",
+          "emoji": "3️⃣",
+          "blurb": "L’un doit obéir à trois consignes.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-38",
+          "title": "Début choisi",
+          "emoji": "⏯️",
+          "blurb": "L’autre décide quand la scène commence.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-39",
+          "title": "Oral scénarisé",
+          "emoji": "👅",
+          "blurb": "Intégrer une fellation ou un cunnilingus au rôle.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-40",
+          "title": "Récompense orale",
+          "emoji": "🏅",
+          "blurb": "Recevoir du sexe oral comme récompense consentie.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-41",
+          "title": "Punition jeu",
+          "emoji": "⚖️",
+          "blurb": "Jouer une punition symbolique et sexy.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-42",
+          "title": "Récompense sexy",
+          "emoji": "🎁",
+          "blurb": "Jouer une récompense sexuelle négociée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-43",
+          "title": "Interrogatoire",
+          "emoji": "🕵️",
+          "blurb": "Jouer un interrogatoire sexy mais léger.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-44",
+          "title": "Pas raisonnable",
+          "emoji": "🚪",
+          "blurb": "Jouer un “on ne devrait pas” fictif entre adultes.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-45",
+          "title": "Possession verbale",
+          "emoji": "🔐",
+          "blurb": "Jouer avec des phrases de possession consentie.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-46",
+          "title": "Instinctif",
+          "emoji": "🐺",
+          "blurb": "Jouer une scène plus animale ou spontanée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-47",
+          "title": "Dom sans douleur",
+          "emoji": "🎮",
+          "blurb": "Jouer une domination sans douleur.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-48",
+          "title": "Sub sans honte",
+          "emoji": "🫶",
+          "blurb": "Jouer une soumission sans humiliation.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-49",
+          "title": "Scénario écrit",
+          "emoji": "✍️",
+          "blurb": "Écrire une scène avant de la jouer.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "scenarios-50",
+          "title": "Sur mesure",
+          "emoji": "🧩",
+          "blurb": "Inventer un scénario avec limites claires.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        }
+      ]
+    },
+    {
+      "category": "Kinky Soft",
+      "label": "Kinky Soft",
+      "paid": true,
+      "description": "Pouvoir, contrôle léger et sensations cadrées, sans basculer dans une intensité trop forte.",
+      "cards": [
+        {
+          "id": "kinky-soft-01",
+          "title": "Bandeau",
+          "emoji": "🙈",
+          "blurb": "Se bander les yeux pour lâcher prise.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-02",
+          "title": "Foulard",
+          "emoji": "🧣",
+          "blurb": "Attacher doucement les poignets avec un foulard.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-03",
+          "title": "Menottes douces",
+          "emoji": "🔗",
+          "blurb": "Utiliser des menottes confortables.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-04",
+          "title": "Sans voir",
+          "emoji": "🧭",
+          "blurb": "Laisser l’autre guider pendant qu’on ne voit rien.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-05",
+          "title": "Permission toucher",
+          "emoji": "🙋",
+          "blurb": "Demander la permission avant de toucher.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-06",
+          "title": "Permission baiser",
+          "emoji": "💋",
+          "blurb": "Demander la permission avant d’embrasser.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-07",
+          "title": "Permission jouir",
+          "emoji": "⏳",
+          "blurb": "Demander la permission avant l’orgasme.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-08",
+          "title": "Pas toucher",
+          "emoji": "🚫",
+          "blurb": "Interdire de toucher pendant quelques minutes.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-09",
+          "title": "Silence",
+          "emoji": "🤐",
+          "blurb": "Interdire de parler pendant quelques minutes.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-10",
+          "title": "Règle intime",
+          "emoji": "📏",
+          "blurb": "Créer une règle de jeu pour la soirée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-11",
+          "title": "Ordres doux",
+          "emoji": "🗣️",
+          "blurb": "Recevoir des consignes simples et excitantes.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-12",
+          "title": "Donner ordre",
+          "emoji": "🎮",
+          "blurb": "Donner des consignes douces à l’autre.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-13",
+          "title": "Ne bouge pas",
+          "emoji": "🗿",
+          "blurb": "Jouer à rester immobile.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-14",
+          "title": "Demande mieux",
+          "emoji": "😇",
+          "blurb": "Jouer à devoir demander gentiment.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-15",
+          "title": "Attente",
+          "emoji": "⏳",
+          "blurb": "Faire monter l’envie sans donner tout de suite.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-16",
+          "title": "Teasing",
+          "emoji": "🪄",
+          "blurb": "Prolonger l’excitation volontairement.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-17",
+          "title": "Baiser privé",
+          "emoji": "🚫💋",
+          "blurb": "Priver l’autre de baiser temporairement.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-18",
+          "title": "Récompense caresse",
+          "emoji": "✋",
+          "blurb": "Récompenser l’autre par une caresse.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-19",
+          "title": "Récompense orale",
+          "emoji": "👅",
+          "blurb": "Récompenser par une fellation ou un cunnilingus.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-20",
+          "title": "Fessée légère",
+          "emoji": "🍑",
+          "blurb": "Recevoir une fessée douce et consentie.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-21",
+          "title": "Donner fessée",
+          "emoji": "👋",
+          "blurb": "Donner une fessée légère si l’autre aime.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-22",
+          "title": "Morsure douce",
+          "emoji": "🦷",
+          "blurb": "Tester une morsure légère et consentie.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-23",
+          "title": "Griffure douce",
+          "emoji": "🐾",
+          "blurb": "Tester une griffure légère.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-24",
+          "title": "Mains tenues",
+          "emoji": "🤝",
+          "blurb": "Se faire maintenir les mains.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-25",
+          "title": "Contre le mur",
+          "emoji": "🧱",
+          "blurb": "Être plaqué·e doucement contre un mur.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-26",
+          "title": "Rythme choisi",
+          "emoji": "🎚️",
+          "blurb": "Laisser l’autre imposer le rythme.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-27",
+          "title": "Position choisie",
+          "emoji": "🔄",
+          "blurb": "Laisser l’autre choisir la position.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-28",
+          "title": "Commence quand",
+          "emoji": "▶️",
+          "blurb": "Laisser l’autre décider du début.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-29",
+          "title": "Stop quand",
+          "emoji": "⏸️",
+          "blurb": "Laisser l’autre décider de la pause.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-30",
+          "title": "Dom douce",
+          "emoji": "👑",
+          "blurb": "Explorer une domination sans douleur.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-31",
+          "title": "Sub douce",
+          "emoji": "🫶",
+          "blurb": "Explorer la soumission sans humiliation.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-32",
+          "title": "Contrôle plaisir",
+          "emoji": "🎛️",
+          "blurb": "Laisser l’autre contrôler l’intensité du plaisir.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-33",
+          "title": "Contrôle orgasme",
+          "emoji": "🔒",
+          "blurb": "Jouer avec le moment de l’orgasme.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-34",
+          "title": "Edging léger",
+          "emoji": "📈",
+          "blurb": "Faire monter puis ralentir le plaisir.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-35",
+          "title": "Pas tout de suite",
+          "emoji": "⏰",
+          "blurb": "Retarder volontairement le moment de jouir.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-36",
+          "title": "Oral bandé",
+          "emoji": "👅",
+          "blurb": "Recevoir du sexe oral avec les yeux bandés.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-37",
+          "title": "Oral mains liées",
+          "emoji": "🪢",
+          "blurb": "Recevoir une fellation ou un cunnilingus les mains liées.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-38",
+          "title": "Oral sous ordre",
+          "emoji": "🎯",
+          "blurb": "Donner du plaisir oral en suivant des consignes.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-39",
+          "title": "Voix guide",
+          "emoji": "🎙️",
+          "blurb": "Être guidé·e uniquement par la voix.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-40",
+          "title": "Surnom intime",
+          "emoji": "🏷️",
+          "blurb": "Utiliser un surnom plus sexuel.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-41",
+          "title": "Langage direct",
+          "emoji": "🌶️",
+          "blurb": "Employer des mots plus explicites.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-42",
+          "title": "Vouvoiement",
+          "emoji": "🎭",
+          "blurb": "Se vouvoyer pendant l’intimité.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-43",
+          "title": "Glaçon",
+          "emoji": "🧊",
+          "blurb": "Tester une sensation froide sur la peau.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-44",
+          "title": "Plume",
+          "emoji": "🪶",
+          "blurb": "Tester une sensation légère et douce.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-45",
+          "title": "Mouvement limité",
+          "emoji": "🧘",
+          "blurb": "Limiter doucement les mouvements.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-46",
+          "title": "L’un décide",
+          "emoji": "🕹️",
+          "blurb": "L’un mène, l’autre suit.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-47",
+          "title": "Check avant",
+          "emoji": "✅",
+          "blurb": "Vérifier les envies et limites avant de commencer.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-48",
+          "title": "Check pendant",
+          "emoji": "🚦",
+          "blurb": "Demander si tout va bien pendant le jeu.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-49",
+          "title": "Check après",
+          "emoji": "🫶",
+          "blurb": "Faire un retour tendre après l’expérience.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "kinky-soft-50",
+          "title": "À refaire",
+          "emoji": "⭐",
+          "blurb": "Refaire seulement ce qui a vraiment plu.",
+          "kind": "practice",
+          "mood": "aventureux"
+        }
+      ]
+    },
+    {
+      "category": "BDSM",
+      "label": "BDSM",
+      "paid": true,
+      "description": "Safeword, limites, contrôle, domination et aftercare pour explorer avec un vrai cadre.",
+      "cards": [
+        {
+          "id": "bdsm-01",
+          "title": "Safeword",
+          "emoji": "🛟",
+          "blurb": "Choisir un mot qui arrête tout immédiatement.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-02",
+          "title": "Feu tricolore",
+          "emoji": "🚦",
+          "blurb": "Utiliser vert, orange et rouge pour communiquer.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-03",
+          "title": "Négociation",
+          "emoji": "📋",
+          "blurb": "Définir la scène avant de commencer.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-04",
+          "title": "Limites dures",
+          "emoji": "⛔",
+          "blurb": "Lister ce qui est clairement non.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-05",
+          "title": "Limites souples",
+          "emoji": "⚠️",
+          "blurb": "Lister ce qui peut être discuté.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-06",
+          "title": "Aftercare",
+          "emoji": "🫂",
+          "blurb": "Prévoir un retour au calme après la scène.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-07",
+          "title": "Domination",
+          "emoji": "👑",
+          "blurb": "Jouer une scène où l’un mène clairement.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-08",
+          "title": "Soumission",
+          "emoji": "🧎",
+          "blurb": "Jouer une scène où l’un accepte de suivre.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-09",
+          "title": "Poignets liés",
+          "emoji": "🪢",
+          "blurb": "Attacher les poignets avec sécurité.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-10",
+          "title": "Chevilles liées",
+          "emoji": "🔗",
+          "blurb": "Attacher les chevilles avec confort et prudence.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-11",
+          "title": "Bondage lit",
+          "emoji": "🛏️",
+          "blurb": "Tester une immobilisation au lit.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-12",
+          "title": "Immobilisé·e",
+          "emoji": "🧘",
+          "blurb": "Tester une position bloquée mais confortable.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-13",
+          "title": "Ordres clairs",
+          "emoji": "🗣️",
+          "blurb": "Recevoir des ordres précis.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-14",
+          "title": "Donner ordres",
+          "emoji": "🎮",
+          "blurb": "Donner des consignes plus strictes.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-15",
+          "title": "Permission bouger",
+          "emoji": "🙋",
+          "blurb": "Demander la permission de bouger.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-16",
+          "title": "Permission parler",
+          "emoji": "🤐",
+          "blurb": "Demander la permission de parler.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-17",
+          "title": "Permission jouir",
+          "emoji": "🔒",
+          "blurb": "Demander la permission avant l’orgasme.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-18",
+          "title": "Orgasm control",
+          "emoji": "🎛️",
+          "blurb": "Laisser l’autre contrôler le moment de jouir.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-19",
+          "title": "Edging",
+          "emoji": "📈",
+          "blurb": "Faire monter le plaisir puis ralentir.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-20",
+          "title": "Déni temporaire",
+          "emoji": "⏳",
+          "blurb": "Retarder l’orgasme dans un cadre consenti.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-21",
+          "title": "Fessée",
+          "emoji": "🍑",
+          "blurb": "Recevoir une fessée consentie.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-22",
+          "title": "Impact léger",
+          "emoji": "👋",
+          "blurb": "Tester des sensations d’impact douces.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-23",
+          "title": "Impact intense",
+          "emoji": "⚡",
+          "blurb": "Tester plus fort avec limites très claires.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-24",
+          "title": "Paddle",
+          "emoji": "🏓",
+          "blurb": "Utiliser une paddle douce.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-25",
+          "title": "Cravache",
+          "emoji": "🐎",
+          "blurb": "Utiliser une cravache de manière symbolique ou légère.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-26",
+          "title": "Discipline",
+          "emoji": "📏",
+          "blurb": "Créer une dynamique de règles et conséquences.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-27",
+          "title": "Règles soirée",
+          "emoji": "📜",
+          "blurb": "Fixer des règles pour une scène.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-28",
+          "title": "Récompenses",
+          "emoji": "🏆",
+          "blurb": "Définir ce qui est gagné en obéissant.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-29",
+          "title": "Punitions",
+          "emoji": "⚖️",
+          "blurb": "Définir des punitions consenties et réversibles.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-30",
+          "title": "Tenue contrôlée",
+          "emoji": "👔",
+          "blurb": "Laisser l’autre choisir la tenue.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-31",
+          "title": "Parole contrôlée",
+          "emoji": "🤫",
+          "blurb": "Limiter quand l’autre peut parler.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-32",
+          "title": "Regard contrôlé",
+          "emoji": "👁️",
+          "blurb": "Limiter quand l’autre peut regarder.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-33",
+          "title": "Plaisir contrôlé",
+          "emoji": "🎚️",
+          "blurb": "Contrôler le rythme et l’intensité du plaisir.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-34",
+          "title": "Fellation sous ordre",
+          "emoji": "👅",
+          "blurb": "Faire ou recevoir une fellation guidée par consignes.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-35",
+          "title": "Cunni sous ordre",
+          "emoji": "👅",
+          "blurb": "Faire ou recevoir un cunnilingus guidé par consignes.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-36",
+          "title": "Pénétration guidée",
+          "emoji": "🎯",
+          "blurb": "Laisser le dominant contrôler la pénétration.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-37",
+          "title": "Collier",
+          "emoji": "⭕",
+          "blurb": "Porter un collier symbolique en privé.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-38",
+          "title": "Laisse privée",
+          "emoji": "🐾",
+          "blurb": "Utiliser une laisse avec accord clair.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-39",
+          "title": "Dom/sub",
+          "emoji": "♟️",
+          "blurb": "Explorer une dynamique dominant/soumis.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-40",
+          "title": "Brat/tamer",
+          "emoji": "😈",
+          "blurb": "Jouer la provocation et la reprise de contrôle.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-41",
+          "title": "Praise kink",
+          "emoji": "🌟",
+          "blurb": "Recevoir beaucoup de compliments excitants.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-42",
+          "title": "Humiliation légère",
+          "emoji": "🫣",
+          "blurb": "Explorer des mots humiliants mais consentis.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-43",
+          "title": "Ordres stricts",
+          "emoji": "📢",
+          "blurb": "Recevoir des ordres plus fermes.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-44",
+          "title": "Service sexuel",
+          "emoji": "🛎️",
+          "blurb": "Jouer une scène de service sexuel consenti.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-45",
+          "title": "Possession",
+          "emoji": "🔐",
+          "blurb": "Jouer avec des phrases de possession consentie.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-46",
+          "title": "Scène courte",
+          "emoji": "⏱️",
+          "blurb": "Faire une scène BDSM de 10 minutes.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-47",
+          "title": "Scène longue",
+          "emoji": "🕯️",
+          "blurb": "Préparer une scène plus longue.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-48",
+          "title": "Ce qui excite",
+          "emoji": "🔥",
+          "blurb": "Débriefer ce qui a vraiment fonctionné.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-49",
+          "title": "Trop intense",
+          "emoji": "⚠️",
+          "blurb": "Débriefer ce qui a été trop fort.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "bdsm-50",
+          "title": "Rejouer",
+          "emoji": "🔁",
+          "blurb": "Refaire une scène réussie avec ajustements.",
+          "kind": "practice",
+          "mood": "aventureux"
+        }
+      ]
+    },
+    {
+      "category": "Plaisirs explicites",
+      "label": "Explicite",
+      "paid": true,
+      "description": "Des pratiques sexuelles plus précises, à aborder avec accord clair, confort et sécurité.",
+      "cards": [
+        {
+          "id": "plaisirs-explicites-01",
+          "title": "Fellation lente",
+          "emoji": "👄",
+          "blurb": "Recevoir ou donner une fellation douce et progressive.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-02",
+          "title": "Donner fellation",
+          "emoji": "👅",
+          "blurb": "Prendre le temps de donner du plaisir avec la bouche.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-03",
+          "title": "Fellation intense",
+          "emoji": "🔥",
+          "blurb": "Explorer une fellation plus rythmée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-04",
+          "title": "Bouche experte",
+          "emoji": "👅",
+          "blurb": "Jouer avec la langue, les lèvres et les mains.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-05",
+          "title": "Plus profond",
+          "emoji": "🌊",
+          "blurb": "Explorer une fellation plus profonde si c’est confortable.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-06",
+          "title": "Rythme oral",
+          "emoji": "🎚️",
+          "blurb": "Guider le rythme d’une fellation.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-07",
+          "title": "Main + fellation",
+          "emoji": "🤲",
+          "blurb": "Combiner main et bouche pendant une fellation.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-08",
+          "title": "Jusqu’au bout",
+          "emoji": "🏁",
+          "blurb": "Recevoir une fellation jusqu’à l’orgasme.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-09",
+          "title": "Dans la bouche",
+          "emoji": "💦",
+          "blurb": "Explorer l’éjaculation dans la bouche avec accord clair.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-10",
+          "title": "Sur le corps",
+          "emoji": "🎨",
+          "blurb": "Explorer l’éjaculation sur une zone du corps choisie.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-11",
+          "title": "Cunnilingus lent",
+          "emoji": "👅",
+          "blurb": "Recevoir ou offrir un cunnilingus lent et attentif.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-12",
+          "title": "Donner cunni",
+          "emoji": "🫦",
+          "blurb": "Prendre le temps de lécher et d’écouter les réactions.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-13",
+          "title": "Cunni intense",
+          "emoji": "🔥",
+          "blurb": "Explorer un cunnilingus plus appuyé.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-14",
+          "title": "Langue précise",
+          "emoji": "🎯",
+          "blurb": "Utiliser la langue de manière plus ciblée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-15",
+          "title": "Guide cunni",
+          "emoji": "🎚️",
+          "blurb": "Guider le rythme d’un cunnilingus.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-16",
+          "title": "Jusqu’à l’orgasme",
+          "emoji": "🏁",
+          "blurb": "Faire durer le cunnilingus jusqu’à l’orgasme.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-17",
+          "title": "Soixante-neuf",
+          "emoji": "☯️",
+          "blurb": "Se donner du plaisir oral en même temps.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-18",
+          "title": "Oral principal",
+          "emoji": "👅",
+          "blurb": "Faire du sexe oral le centre du moment intime.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-19",
+          "title": "Oral bandé",
+          "emoji": "🙈",
+          "blurb": "Recevoir du sexe oral les yeux bandés.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-20",
+          "title": "Oral attaché",
+          "emoji": "🪢",
+          "blurb": "Recevoir du sexe oral avec les mains liées.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-21",
+          "title": "Doigts clito",
+          "emoji": "✌️",
+          "blurb": "Explorer la stimulation clitoridienne avec les doigts.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-22",
+          "title": "Main pénis",
+          "emoji": "✊",
+          "blurb": "Explorer la stimulation du pénis avec la main.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-23",
+          "title": "Masturbation mutuelle",
+          "emoji": "🔁",
+          "blurb": "Se masturber ensemble, côte à côte ou face à face.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-24",
+          "title": "Se montrer",
+          "emoji": "👀",
+          "blurb": "Se masturber devant l’autre.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-25",
+          "title": "Regarder",
+          "emoji": "👁️",
+          "blurb": "Regarder l’autre se donner du plaisir.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-26",
+          "title": "Vibromasseur",
+          "emoji": "🧸",
+          "blurb": "Utiliser un vibromasseur ensemble.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-27",
+          "title": "Stimulateur clito",
+          "emoji": "⚡",
+          "blurb": "Utiliser un stimulateur clitoridien.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-28",
+          "title": "Anneau vibrant",
+          "emoji": "⭕",
+          "blurb": "Essayer un anneau vibrant.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-29",
+          "title": "Sextoy pénétration",
+          "emoji": "🧰",
+          "blurb": "Ajouter un sextoy pendant la pénétration.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-30",
+          "title": "Sextoy distance",
+          "emoji": "📡",
+          "blurb": "Utiliser un sextoy contrôlable à distance.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-31",
+          "title": "Anal externe",
+          "emoji": "🍑",
+          "blurb": "Explorer la stimulation anale externe.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-32",
+          "title": "Doigt anal",
+          "emoji": "☝️",
+          "blurb": "Essayer une stimulation anale avec un doigt.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-33",
+          "title": "Plug anal",
+          "emoji": "🔌",
+          "blurb": "Utiliser un plug anal progressivement.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-34",
+          "title": "Anal doux",
+          "emoji": "🍑",
+          "blurb": "Découvrir la pénétration anale avec lenteur.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-35",
+          "title": "Sodomie",
+          "emoji": "🍑",
+          "blurb": "Explorer la sodomie consentie et préparée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-36",
+          "title": "Recevoir anal",
+          "emoji": "🫶",
+          "blurb": "Recevoir une pénétration anale avec confort et accord.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-37",
+          "title": "Donner anal",
+          "emoji": "💧",
+          "blurb": "Donner une pénétration anale avec écoute et lubrifiant.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-38",
+          "title": "Anal lubrifié",
+          "emoji": "💦",
+          "blurb": "Explorer l’anal avec beaucoup de lubrifiant et de patience.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-39",
+          "title": "Prostate",
+          "emoji": "🎯",
+          "blurb": "Découvrir le plaisir prostatique.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-40",
+          "title": "Doigt prostate",
+          "emoji": "☝️",
+          "blurb": "Explorer la stimulation de la prostate avec les doigts.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-41",
+          "title": "Masseur prostate",
+          "emoji": "🧸",
+          "blurb": "Utiliser un masseur prostatique.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-42",
+          "title": "Pegging",
+          "emoji": "🦄",
+          "blurb": "Explorer le pegging avec gode-ceinture ou sextoy adapté.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-43",
+          "title": "Anal masculin",
+          "emoji": "🍑",
+          "blurb": "Recevoir une stimulation ou pénétration anale masculine.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-44",
+          "title": "Plaisir homme",
+          "emoji": "🎯",
+          "blurb": "Donner du plaisir anal à un homme.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-45",
+          "title": "Double stimulation",
+          "emoji": "✌️",
+          "blurb": "Stimuler deux zones en même temps avec un sextoy.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-46",
+          "title": "Double avec sextoy",
+          "emoji": "🔱",
+          "blurb": "Explorer une double pénétration avec sextoy.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-47",
+          "title": "Squirting",
+          "emoji": "💦",
+          "blurb": "Explorer le squirting sans pression de résultat.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-48",
+          "title": "Orgasmes multiples",
+          "emoji": "🔁",
+          "blurb": "Explorer plusieurs orgasmes dans un même moment.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-49",
+          "title": "Finir dedans",
+          "emoji": "🔒",
+          "blurb": "Finir à l’intérieur avec accord, contraception et santé sexuelle.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "plaisirs-explicites-50",
+          "title": "Menu plaisir",
+          "emoji": "📋",
+          "blurb": "Dire clairement ce qu’on veut essayer, refaire ou éviter.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        }
+      ]
+    },
+    {
+      "category": "Tabous",
+      "label": "Tabous",
+      "paid": true,
+      "description": "Fantasmes, tabous et exploration à plusieurs, à discuter sans obligation de passer à l’action.",
+      "cards": [
+        {
+          "id": "tabous-01",
+          "title": "Fantasme secret",
+          "emoji": "🗝️",
+          "blurb": "Avouer un fantasme jamais dit.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-02",
+          "title": "Oui peut-être jamais",
+          "emoji": "🚦",
+          "blurb": "Classer ses fantasmes par niveau d’envie.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-03",
+          "title": "Juste en parler",
+          "emoji": "💬",
+          "blurb": "Explorer un fantasme sans devoir le réaliser.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-04",
+          "title": "Par la parole",
+          "emoji": "🗣️",
+          "blurb": "Vivre un fantasme uniquement en le décrivant.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-05",
+          "title": "Lecture érotique",
+          "emoji": "📖",
+          "blurb": "Lire un texte érotique ensemble.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-06",
+          "title": "Audio érotique",
+          "emoji": "🎧",
+          "blurb": "Écouter un audio excitant choisi ensemble.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-07",
+          "title": "Vidéo choisie",
+          "emoji": "🎬",
+          "blurb": "Regarder un contenu érotique validé par les deux.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-08",
+          "title": "Fantasme dom",
+          "emoji": "👑",
+          "blurb": "Parler d’un fantasme de domination.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-09",
+          "title": "Fantasme sub",
+          "emoji": "🧎",
+          "blurb": "Parler d’un fantasme de soumission.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-10",
+          "title": "Possession",
+          "emoji": "🔐",
+          "blurb": "Explorer le fantasme d’appartenir symboliquement à l’autre.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-11",
+          "title": "Humiliation",
+          "emoji": "🫣",
+          "blurb": "Parler d’humiliation consentie et cadrée.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-12",
+          "title": "Praise",
+          "emoji": "🌟",
+          "blurb": "Explorer le fantasme d’être couvert·e de compliments sexuels.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-13",
+          "title": "Être utilisé·e",
+          "emoji": "🎭",
+          "blurb": "Jouer avec l’idée d’être objet de désir, avec accord clair.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-14",
+          "title": "Servir",
+          "emoji": "🛎️",
+          "blurb": "Explorer le fantasme de servir sexuellement l’autre.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-15",
+          "title": "Mots crus",
+          "emoji": "🌶️",
+          "blurb": "Utiliser un langage plus direct et sexuel.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-16",
+          "title": "Insultes consenties",
+          "emoji": "⚠️",
+          "blurb": "Explorer des mots plus durs, uniquement si désirés.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-17",
+          "title": "Surnoms osés",
+          "emoji": "🏷️",
+          "blurb": "Utiliser des surnoms sexuels plus provocants.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-18",
+          "title": "Jalousie fictive",
+          "emoji": "😈",
+          "blurb": "Jouer une jalousie inventée et contrôlée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-19",
+          "title": "Interdit fictif",
+          "emoji": "🚪",
+          "blurb": "Explorer un scénario interdit imaginaire entre adultes.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-20",
+          "title": "Pouvoir",
+          "emoji": "♟️",
+          "blurb": "Jouer avec une dynamique de pouvoir symbolique.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-21",
+          "title": "Lâcher prise",
+          "emoji": "🌊",
+          "blurb": "Explorer la perte de contrôle dans un cadre sécurisé.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-22",
+          "title": "Primal soft",
+          "emoji": "🐺",
+          "blurb": "Jouer une énergie plus animale, mais cadrée.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-23",
+          "title": "Morsures",
+          "emoji": "🦷",
+          "blurb": "Explorer les morsures consenties.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-24",
+          "title": "Marquage",
+          "emoji": "🖊️",
+          "blurb": "Explorer un marquage symbolique ou temporaire.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-25",
+          "title": "Lingerie",
+          "emoji": "👙",
+          "blurb": "Explorer un fétiche de lingerie.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-26",
+          "title": "Talons",
+          "emoji": "👠",
+          "blurb": "Explorer un fétiche des talons.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-27",
+          "title": "Cuir latex",
+          "emoji": "🖤",
+          "blurb": "Explorer l’attirance pour le cuir ou le latex.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-28",
+          "title": "Pieds",
+          "emoji": "🦶",
+          "blurb": "Explorer un fétiche des pieds.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-29",
+          "title": "Mains",
+          "emoji": "🤲",
+          "blurb": "Explorer un fétiche des mains.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-30",
+          "title": "Odeurs",
+          "emoji": "🫧",
+          "blurb": "Explorer l’attirance pour les odeurs corporelles.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-31",
+          "title": "Voix",
+          "emoji": "🎙️",
+          "blurb": "Explorer l’excitation liée à la voix.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-32",
+          "title": "Film privé",
+          "emoji": "📹",
+          "blurb": "Se filmer uniquement pour soi, avec accord clair.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-33",
+          "title": "Photos privées",
+          "emoji": "📸",
+          "blurb": "Prendre des photos intimes consenties.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-34",
+          "title": "Trio fantasme",
+          "emoji": "🔺",
+          "blurb": "Parler du fantasme de trio.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-35",
+          "title": "Limites trio",
+          "emoji": "📋",
+          "blurb": "Définir les limites avant d’imaginer un trio.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-36",
+          "title": "Trio imaginaire",
+          "emoji": "💭",
+          "blurb": "Imaginer un trio sans forcément le réaliser.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-37",
+          "title": "Être regardés",
+          "emoji": "👀",
+          "blurb": "Parler du fantasme d’être vus par d’autres adultes consentants.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-38",
+          "title": "Regarder couple",
+          "emoji": "👁️",
+          "blurb": "Parler du fantasme de regarder un autre couple.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-39",
+          "title": "Candaulisme",
+          "emoji": "🔥",
+          "blurb": "Parler du fantasme de voir son/sa partenaire désiré·e.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-40",
+          "title": "Hotwife/hothusband",
+          "emoji": "💍",
+          "blurb": "Explorer ce fantasme si les deux connaissent les codes.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-41",
+          "title": "Échangisme",
+          "emoji": "🔁",
+          "blurb": "Parler d’échangisme sans obligation de passer à l’action.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-42",
+          "title": "Club libertin",
+          "emoji": "🪩",
+          "blurb": "Évoquer l’idée d’un club libertin.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-43",
+          "title": "Observer seulement",
+          "emoji": "👀",
+          "blurb": "Aller dans un lieu libertin uniquement pour observer.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-44",
+          "title": "Exclusif",
+          "emoji": "🔒",
+          "blurb": "Définir ce qui reste réservé au couple.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-45",
+          "title": "Partageable",
+          "emoji": "🔓",
+          "blurb": "Définir ce qui pourrait être partagé.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-46",
+          "title": "Droit de veto",
+          "emoji": "🛑",
+          "blurb": "Pouvoir dire non à tout moment, sans justification.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-47",
+          "title": "Flirt extérieur",
+          "emoji": "💬",
+          "blurb": "Définir les règles de flirt avec d’autres.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-48",
+          "title": "Protection",
+          "emoji": "🛡️",
+          "blurb": "Parler santé sexuelle, contraception et dépistage.",
+          "kind": "discussion",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-49",
+          "title": "Debrief obligatoire",
+          "emoji": "🫶",
+          "blurb": "Prévoir une discussion après toute exploration.",
+          "kind": "practice",
+          "mood": "aventureux"
+        },
+        {
+          "id": "tabous-50",
+          "title": "Fantasme pas réel",
+          "emoji": "💭",
+          "blurb": "Assumer qu’un fantasme peut rester seulement un fantasme.",
+          "kind": "practice",
+          "mood": "aventureux"
+        }
+      ]
+    }
+  ]
+}

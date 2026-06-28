@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "WeSpice",
+    "slug": "wespice",
+    "scheme": "wespice",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.wespice.mobile",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "app.wespice.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#FF2A74",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "expo-notifications",
+        {
+          "color": "#FF2A74",
+          "defaultChannel": "wespice-default",
+          "icon": "./assets/android-icon-monochrome.png"
+        }
+      ],
+      "expo-web-browser",
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": false,
+          "microphonePermission": false,
+          "photosPermission": "WeSpice utilise votre photothèque uniquement pour joindre une photo au chat privé."
+        }
+      ]
+    ]
+  }
+}

@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WeSpice Card Editor</title>
+    <style>
+      :root {
+        --ink: #241021;
+        --muted: #79536c;
+        --hot: #ff245f;
+        --soft: #ffe5f2;
+        --yellow: #ffe16f;
+        --white: #fff;
+        --line: rgba(36, 16, 33, 0.1);
+        --shadow: rgba(87, 8, 58, 0.2);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top right, rgba(255, 225, 111, 0.85), transparent 28rem),
+          linear-gradient(135deg, #ff8bc8, #ffb4d9 48%, #ff78b8);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      input[type="file"] {
+        display: none;
+      }
+
+      .shell {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: 260px minmax(0, 1fr);
+        margin: 0 auto;
+        max-width: 1500px;
+        padding: 16px;
+      }
+
+      .hero {
+        align-items: center;
+        display: flex;
+        gap: 16px;
+        grid-column: 1 / -1;
+        justify-content: space-between;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        color: var(--white);
+        font-size: clamp(28px, 4vw, 46px);
+        letter-spacing: 0;
+        text-shadow: 0 4px 0 rgba(87, 8, 58, 0.24);
+      }
+
+      .hero p {
+        color: var(--white);
+        font-size: 13px;
+        font-weight: 900;
+        margin-top: 4px;
+        max-width: 720px;
+        text-shadow: 0 2px 0 rgba(87, 8, 58, 0.16);
+      }
+
+      .panel {
+        background: rgba(255, 255, 255, 0.78);
+        border: 2px solid rgba(255, 255, 255, 0.92);
+        border-radius: 24px;
+        box-shadow: 0 22px 60px var(--shadow);
+        padding: 14px;
+      }
+
+      .sidebar {
+        align-self: start;
+        display: grid;
+        gap: 12px;
+        position: sticky;
+        top: 12px;
+      }
+
+      .actions,
+      .toolbar,
+      .category-pills,
+      .stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .button,
+      label.file {
+        align-items: center;
+        background: var(--hot);
+        border: 2px solid var(--white);
+        border-radius: 999px;
+        color: var(--white);
+        cursor: pointer;
+        display: inline-flex;
+        font-size: 12px;
+        font-weight: 950;
+        justify-content: center;
+        min-height: 36px;
+        padding: 0 13px;
+        text-decoration: none;
+        user-select: none;
+      }
+
+      .button.secondary,
+      label.file.secondary {
+        background: rgba(255, 255, 255, 0.82);
+        color: var(--hot);
+      }
+
+      .button.dark {
+        background: var(--ink);
+      }
+
+      .button.tiny {
+        min-height: 26px;
+        padding: 0 9px;
+      }
+
+      .danger {
+        background: #21101f;
+      }
+
+      .stat {
+        background: rgba(255, 255, 255, 0.72);
+        border: 1.5px solid rgba(255, 255, 255, 0.9);
+        border-radius: 16px;
+        flex: 1 1 74px;
+        padding: 10px;
+      }
+
+      .stat strong {
+        color: var(--hot);
+        display: block;
+        font-size: 22px;
+        line-height: 1;
+      }
+
+      .stat span {
+        color: var(--muted);
+        display: block;
+        font-size: 10px;
+        font-weight: 900;
+        margin-top: 4px;
+        text-transform: uppercase;
+      }
+
+      .sidebar-title {
+        color: var(--ink);
+        font-size: 20px;
+        font-weight: 950;
+      }
+
+      .category-pills {
+        display: grid;
+      }
+
+      .category-pill {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1.5px solid rgba(255, 255, 255, 0.92);
+        border-radius: 16px;
+        color: var(--ink);
+        cursor: pointer;
+        display: flex;
+        font-size: 12px;
+        font-weight: 950;
+        justify-content: space-between;
+        min-height: 36px;
+        padding: 0 11px;
+      }
+
+      .category-pill.active {
+        background: var(--hot);
+        color: var(--white);
+      }
+
+      .notice {
+        background: rgba(255, 225, 111, 0.9);
+        border-radius: 18px;
+        font-size: 12px;
+        font-weight: 850;
+        line-height: 1.35;
+        padding: 12px;
+      }
+
+      .toolbar {
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+
+      .filters {
+        display: flex;
+        flex: 1;
+        gap: 8px;
+        min-width: 300px;
+      }
+
+      .search,
+      .category-select {
+        background: rgba(255, 255, 255, 0.94);
+        border: 2px solid rgba(255, 255, 255, 0.98);
+        border-radius: 999px;
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 900;
+        min-height: 38px;
+        padding: 0 13px;
+      }
+
+      .search {
+        flex: 1;
+        min-width: 220px;
+      }
+
+      .category-select {
+        min-width: 150px;
+      }
+
+      .count-badge {
+        align-items: center;
+        background: var(--ink);
+        border-radius: 999px;
+        color: var(--white);
+        display: inline-flex;
+        font-size: 12px;
+        font-weight: 950;
+        min-height: 34px;
+        padding: 0 12px;
+      }
+
+      .sheet-wrap {
+        background: rgba(255, 255, 255, 0.72);
+        border: 2px solid rgba(255, 255, 255, 0.94);
+        border-radius: 22px;
+        max-height: calc(100vh - 150px);
+        overflow: auto;
+      }
+
+      table {
+        border-collapse: collapse;
+        min-width: 1280px;
+        width: 100%;
+      }
+
+      thead th {
+        background: rgba(255, 235, 246, 0.98);
+        border-bottom: 2px solid rgba(255, 36, 95, 0.2);
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 950;
+        height: 30px;
+        letter-spacing: 0.02em;
+        padding: 0 7px;
+        position: sticky;
+        text-align: left;
+        text-transform: uppercase;
+        top: 0;
+        z-index: 2;
+      }
+
+      tbody tr {
+        background: rgba(255, 255, 255, 0.64);
+        height: 30px;
+      }
+
+      tbody tr:nth-child(even) {
+        background: rgba(255, 247, 252, 0.76);
+      }
+
+      tbody tr:hover {
+        background: rgba(255, 225, 111, 0.22);
+      }
+
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 2px 4px;
+        vertical-align: middle;
+      }
+
+      .row-index {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 950;
+        text-align: right;
+        width: 42px;
+      }
+
+      .cell-category {
+        width: 118px;
+      }
+
+      .cell-id {
+        width: 158px;
+      }
+
+      .cell-emoji {
+        width: 62px;
+      }
+
+      .cell-title {
+        width: 230px;
+      }
+
+      .cell-blurb {
+        width: 410px;
+      }
+
+      .cell-kind,
+      .cell-mood {
+        width: 126px;
+      }
+
+      .cell-safety {
+        width: 220px;
+      }
+
+      .cell-actions {
+        white-space: nowrap;
+        width: 160px;
+      }
+
+      .sheet-input,
+      .sheet-select {
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        color: var(--ink);
+        font-size: 11px;
+        font-weight: 800;
+        height: 26px;
+        outline: 0;
+        padding: 0 7px;
+        width: 100%;
+      }
+
+      .sheet-input:focus,
+      .sheet-select:focus {
+        background: var(--white);
+        border-color: rgba(255, 36, 95, 0.55);
+        box-shadow: 0 0 0 2px rgba(255, 36, 95, 0.1);
+      }
+
+      .emoji-input {
+        font-size: 16px;
+        text-align: center;
+      }
+
+      .empty {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 900;
+        padding: 22px;
+        text-align: center;
+      }
+
+      @media (max-width: 920px) {
+        .shell {
+          grid-template-columns: 1fr;
+          padding: 12px;
+        }
+
+        .sidebar {
+          position: static;
+        }
+
+        .hero {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .filters {
+          flex-basis: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <h1>WeSpice Card Editor 🔥</h1>
+          <p>Édition compacte façon tableur. Charge le JSON, filtre par catégorie, modifie 50 lignes rapidement, puis exporte.</p>
+        </div>
+        <div class="actions">
+          <label class="file">
+            Ouvrir JSON
+            <input id="fileInput" type="file" accept="application/json,.json" />
+          </label>
+          <button class="button secondary" id="downloadJson">Exporter JSON</button>
+          <button class="button dark" id="downloadCsv">Exporter CSV</button>
+        </div>
+      </section>
+
+      <aside class="panel sidebar">
+        <h2 class="sidebar-title">Catégories</h2>
+        <div class="stats" id="stats"></div>
+        <div class="category-pills" id="categoryPills"></div>
+        <p class="notice">
+          Anti-triche : ce fichier sert à produire l'app. Les achats et déblocages restent validés par Supabase/le serveur,
+          jamais par un JSON local modifiable.
+        </p>
+      </aside>
+
+      <section class="panel">
+        <div class="toolbar">
+          <div class="filters">
+            <input class="search" id="search" placeholder="Rechercher titre, id, emoji, texte..." />
+            <select class="category-select" id="categorySelect"></select>
+            <span class="count-badge" id="rowCount">0 ligne</span>
+          </div>
+          <div class="actions">
+            <button class="button" id="addCard">+ Carte</button>
+            <button class="button secondary" id="sortCards">Trier A-Z</button>
+          </div>
+        </div>
+
+        <div class="sheet-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Catégorie</th>
+                <th>ID stable</th>
+                <th>Emoji</th>
+                <th>Titre</th>
+                <th>Texte carte</th>
+                <th>Type</th>
+                <th>Mood</th>
+                <th>Safety</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const defaultData = {
+        version: 1,
+        updatedAt: new Date().toISOString().slice(0, 10),
+        packs: [
+          { category: "Vanille", label: "Vanille", paid: false, description: "", cards: [] },
+          { category: "Hard", label: "Hard", paid: true, description: "", cards: [] },
+          { category: "BDSM", label: "BDSM", paid: true, description: "", cards: [] },
+        ],
+      };
+
+      const kinds = ["practice", "discussion"];
+      const moods = ["calme", "sensuel", "aventureux"];
+      let data = structuredClone(defaultData);
+      let activeCategory = "all";
+      let query = "";
+
+      const rowsEl = document.querySelector("#rows");
+      const searchEl = document.querySelector("#search");
+      const categorySelectEl = document.querySelector("#categorySelect");
+      const categoryPillsEl = document.querySelector("#categoryPills");
+      const rowCountEl = document.querySelector("#rowCount");
+      const statsEl = document.querySelector("#stats");
+
+      function getCategories() {
+        return data.packs.map((pack) => pack.category).filter(Boolean);
+      }
+
+      function getTotalCards() {
+        return data.packs.reduce((count, pack) => count + pack.cards.length, 0);
+      }
+
+      function ensurePack(category) {
+        let pack = data.packs.find((item) => item.category === category);
+
+        if (!pack) {
+          pack = { category, label: category, paid: true, description: "", cards: [] };
+          data.packs.push(pack);
+        }
+
+        return pack;
+      }
+
+      function slugify(value) {
+        return value
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 42);
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function escapeCsv(value) {
+        const text = String(value ?? "");
+        return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      }
+
+      function download(filename, text, type) {
+        const blob = new Blob([text], { type });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function allRows() {
+        const normalizedQuery = query.trim().toLowerCase();
+        return data.packs
+          .flatMap((pack, packIndex) =>
+            pack.cards.map((card, cardIndex) => ({
+              card,
+              cardIndex,
+              category: pack.category,
+              pack,
+              packIndex,
+            })),
+          )
+          .filter((row) => activeCategory === "all" || row.category === activeCategory)
+          .filter((row) => {
+            if (!normalizedQuery) return true;
+            return [row.category, row.card.id, row.card.title, row.card.emoji, row.card.blurb, row.card.kind, row.card.mood, row.card.safety]
+              .join(" ")
+              .toLowerCase()
+              .includes(normalizedQuery);
+          });
+      }
+
+      function updateCard(row, key, value) {
+        if (key === "category") {
+          moveCard(row, value);
+          return;
+        }
+
+        if (key === "safety" && !value.trim()) {
+          delete row.card.safety;
+          render();
+          return;
+        }
+
+        row.card[key] = value;
+        renderStats();
+      }
+
+      function moveCard(row, nextCategory) {
+        if (row.category === nextCategory) return;
+        const nextPack = ensurePack(nextCategory);
+        row.pack.cards.splice(row.cardIndex, 1);
+        nextPack.cards.push(row.card);
+        render();
+      }
+
+      function duplicateCard(row) {
+        const copy = {
+          ...row.card,
+          id: `${row.card.id}-copy-${Date.now().toString(36)}`,
+        };
+        row.pack.cards.splice(row.cardIndex + 1, 0, copy);
+        render();
+      }
+
+      function deleteCard(row) {
+        if (!confirm(`Supprimer "${row.card.title}" ?`)) return;
+        row.pack.cards.splice(row.cardIndex, 1);
+        render();
+      }
+
+      function renderStats() {
+        statsEl.innerHTML = `
+          <div class="stat"><strong>${getTotalCards()}</strong><span>cartes</span></div>
+          <div class="stat"><strong>${getCategories().length}</strong><span>packs</span></div>
+        `;
+      }
+
+      function renderCategories() {
+        const categories = getCategories();
+        if (activeCategory !== "all" && !categories.includes(activeCategory)) {
+          activeCategory = "all";
+        }
+
+        categorySelectEl.innerHTML = [
+          `<option value="all">Toutes les catégories</option>`,
+          ...categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`),
+        ].join("");
+        categorySelectEl.value = activeCategory;
+
+        categoryPillsEl.innerHTML = [
+          { category: "all", label: "Toutes", count: getTotalCards() },
+          ...data.packs.map((pack) => ({ category: pack.category, label: pack.label || pack.category, count: pack.cards.length })),
+        ]
+          .map(
+            (item) => `
+              <button class="category-pill ${item.category === activeCategory ? "active" : ""}" data-category="${escapeHtml(item.category)}">
+                <span>${escapeHtml(item.label)}</span>
+                <span>${item.count}</span>
+              </button>
+            `,
+          )
+          .join("");
+
+        categoryPillsEl.querySelectorAll("[data-category]").forEach((button) => {
+          button.addEventListener("click", () => {
+            activeCategory = button.dataset.category;
+            render();
+          });
+        });
+      }
+
+      function renderRows() {
+        const rows = allRows();
+        rowCountEl.textContent = `${rows.length} ligne${rows.length > 1 ? "s" : ""}`;
+
+        if (!rows.length) {
+          rowsEl.innerHTML = `<tr><td class="empty" colspan="10">Aucune carte dans ce filtre.</td></tr>`;
+          return;
+        }
+
+        rowsEl.innerHTML = rows
+          .map((row, index) => {
+            const card = row.card;
+            const categories = getCategories();
+
+            return `
+              <tr data-pack-index="${row.packIndex}" data-card-index="${row.cardIndex}">
+                <td class="row-index">${index + 1}</td>
+                <td class="cell-category">${select("category", row.category, categories)}</td>
+                <td class="cell-id">${input("id", card.id)}</td>
+                <td class="cell-emoji">${input("emoji", card.emoji || "✨", "emoji-input")}</td>
+                <td class="cell-title">${input("title", card.title)}</td>
+                <td class="cell-blurb">${input("blurb", card.blurb)}</td>
+                <td class="cell-kind">${select("kind", card.kind || "practice", kinds)}</td>
+                <td class="cell-mood">${select("mood", card.mood || "sensuel", moods)}</td>
+                <td class="cell-safety">${input("safety", card.safety || "")}</td>
+                <td class="cell-actions">
+                  <button class="button secondary tiny" data-action="duplicate">Dupliquer</button>
+                  <button class="button danger tiny" data-action="delete">Suppr.</button>
+                </td>
+              </tr>
+            `;
+          })
+          .join("");
+
+        rowsEl.querySelectorAll("tr[data-pack-index]").forEach((tr) => {
+          const row = {
+            pack: data.packs[Number(tr.dataset.packIndex)],
+            packIndex: Number(tr.dataset.packIndex),
+            cardIndex: Number(tr.dataset.cardIndex),
+          };
+          row.card = row.pack.cards[row.cardIndex];
+          row.category = row.pack.category;
+
+          tr.querySelectorAll("[data-key]").forEach((inputEl) => {
+            inputEl.addEventListener("change", (event) => {
+              updateCard(row, event.target.dataset.key, event.target.value);
+            });
+            inputEl.addEventListener("input", (event) => {
+              if (event.target.dataset.key === "category") return;
+              updateCard(row, event.target.dataset.key, event.target.value);
+            });
+          });
+
+          tr.querySelector('[data-action="duplicate"]').addEventListener("click", () => duplicateCard(row));
+          tr.querySelector('[data-action="delete"]').addEventListener("click", () => deleteCard(row));
+        });
+      }
+
+      function input(key, value, className = "") {
+        return `<input class="sheet-input ${className}" data-key="${key}" title="${escapeHtml(value)}" value="${escapeHtml(value)}" />`;
+      }
+
+      function select(key, value, options) {
+        return `<select class="sheet-select" data-key="${key}">${options
+          .map((option) => `<option value="${escapeHtml(option)}" ${option === value ? "selected" : ""}>${escapeHtml(option)}</option>`)
+          .join("")}</select>`;
+      }
+
+      function render() {
+        renderStats();
+        renderCategories();
+        renderRows();
+      }
+
+      document.querySelector("#fileInput").addEventListener("change", async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        data = JSON.parse(await file.text());
+        activeCategory = "all";
+        query = "";
+        searchEl.value = "";
+        render();
+      });
+
+      categorySelectEl.addEventListener("change", (event) => {
+        activeCategory = event.target.value;
+        render();
+      });
+
+      document.querySelector("#downloadJson").addEventListener("click", () => {
+        data.updatedAt = new Date().toISOString().slice(0, 10);
+        download("desire-packs.json", `${JSON.stringify(data, null, 2)}\n`, "application/json");
+      });
+
+      document.querySelector("#downloadCsv").addEventListener("click", () => {
+        const header = ["category", "id", "title", "emoji", "blurb", "kind", "mood", "safety"];
+        const rows = data.packs.flatMap((pack) =>
+          pack.cards.map((card) => [pack.category, card.id, card.title, card.emoji, card.blurb, card.kind, card.mood, card.safety || ""]),
+        );
+        download("desire-packs.csv", [header, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\n"), "text/csv");
+      });
+
+      document.querySelector("#addCard").addEventListener("click", () => {
+        const category = activeCategory === "all" ? getCategories()[0] || "Vanille" : activeCategory;
+        const pack = ensurePack(category);
+        const index = pack.cards.length + 1;
+        pack.cards.unshift({
+          id: `${slugify(category)}-${String(index).padStart(2, "0")}-${Date.now().toString(36)}`,
+          title: "Nouvelle envie",
+          emoji: "✨",
+          blurb: "Décris l'envie en une phrase courte.",
+          kind: "practice",
+          mood: "sensuel",
+        });
+        activeCategory = category;
+        render();
+      });
+
+      document.querySelector("#sortCards").addEventListener("click", () => {
+        const packs = activeCategory === "all" ? data.packs : data.packs.filter((pack) => pack.category === activeCategory);
+        packs.forEach((pack) => pack.cards.sort((a, b) => a.title.localeCompare(b.title, "fr")));
+        render();
+      });
+
+      searchEl.addEventListener("input", (event) => {
+        query = event.target.value;
+        renderRows();
+      });
+
+      render();
+    </script>
+  </body>
+</html>
