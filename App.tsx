@@ -116,6 +116,7 @@ import {
   UnlockedFeature,
   VoteLevel,
 } from "./src/types";
+import { PROJECT_VERSION } from "./src/version";
 
 type TabKey = "home" | "envies" | "match" | "couple" | "profil" | "debug" | "chat" | "rules";
 type VisibleTabKey = Exclude<TabKey, "rules">;
@@ -6780,7 +6781,7 @@ function ProfileScreen({
         <Text style={styles.aboutText}>
           WeSpice aide à découvrir les envies partagées, avec des réponses privées et un cadre clair.
         </Text>
-        <Text style={styles.aboutMeta}>Version locale de test · Données stockées sur cet appareil</Text>
+        <Text style={styles.aboutMeta}>{PROJECT_VERSION.label} · Données privées par couple</Text>
       </View>
       </View>
     </ScrollView>

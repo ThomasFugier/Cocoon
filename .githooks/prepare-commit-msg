@@ -1,0 +1,32 @@
+#!/bin/sh
+set -e
+
+message_file="$1"
+source="$2"
+
+if [ "$source" = "merge" ]; then
+  exit 0
+fi
+
+version="$(node scripts/version-project.js show)"
+prefix="v$version"
+first_line="$(head -n 1 "$message_file")"
+
+case "$first_line" in
+  "$prefix"*)
+    exit 0
+    ;;
+esac
+
+tmp_file="$message_file.tmp"
+
+if [ -z "$first_line" ]; then
+  printf "%s\n" "$prefix" > "$tmp_file"
+  tail -n +2 "$message_file" >> "$tmp_file"
+else
+  printf "%s - %s\n" "$prefix" "$first_line" > "$tmp_file"
+  tail -n +2 "$message_file" >> "$tmp_file"
+fi
+
+mv "$tmp_file" "$message_file"
+

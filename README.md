@@ -137,6 +137,18 @@ npx tsc --noEmit
 
 Les tests minimum couvrent les regles de match, quota quotidien, limite de cartes perso, leave couple, expiration chat et garde-fous RLS statiques.
 
+## Versioning
+
+La version WeSpice est affichée dans Profil > À propos et synchronisée entre `package.json`, `app.json` et `src/version.ts`.
+
+```bash
+npm run version:hooks
+npm run version:patch
+npm run version:prod
+```
+
+Les hooks Git ajoutent un bump patch à chaque commit si aucun bump n'est déjà staged, puis préfixent le message de commit avec `vX.Y.Z`. Pour le détail du workflow build/prod, voir `VERSIONING.md`.
+
 ## Modifier les packs de cartes
 
 Les cartes ne sont plus hardcodées directement dans l'app. La source éditable est :

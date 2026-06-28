@@ -1,6 +1,6 @@
 {
   "name": "wespice",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",
@@ -40,6 +40,19 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "version:show": "node scripts/version-project.js show",
+    "version:set": "node scripts/version-project.js set",
+    "version:patch": "node scripts/version-project.js bump patch",
+    "version:build": "node scripts/version-project.js bump patch",
+    "version:prod": "node scripts/version-project.js bump minor",
+    "version:major": "node scripts/version-project.js bump major",
+    "version:hooks": "git config core.hooksPath .githooks",
+    "build:dev": "npm run version:build && npx eas-cli@latest build --profile development",
+    "build:dev:ios": "npm run version:build && npx eas-cli@latest build -p ios --profile development",
+    "build:dev:android": "npm run version:build && npx eas-cli@latest build -p android --profile development",
+    "build:prod": "npm run version:prod && npx eas-cli@latest build --profile production",
+    "build:prod:ios": "npm run version:prod && npx eas-cli@latest build -p ios --profile production",
+    "build:prod:android": "npm run version:prod && npx eas-cli@latest build -p android --profile production",
     "cards:generate": "node scripts/generate-desires.js",
     "cards:check": "node scripts/generate-desires.js --check",
     "test": "node --test tests/*.test.mjs"
