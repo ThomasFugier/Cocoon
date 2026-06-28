@@ -6332,6 +6332,7 @@ function CoupleScreen({
   onGoMatch: () => void;
   onJoinPartner: () => void;
 }) {
+  const { height: viewportHeight } = useWindowDimensions();
   const matches = matchedCards(couple);
   const linked = hasLinkedPartner(couple);
   const activeProfile = couple.profiles[couple.activePartnerId];
@@ -6345,11 +6346,15 @@ function CoupleScreen({
   const recentMatches = matches.slice(0, 3);
   const packCategories = [...PACK_CATEGORIES, PERSONAL_CATEGORY];
   const activeProfiles: PartnerId[] = ["me", "partner"];
+  const soloPanelMinHeight = Math.max(520, viewportHeight - 128);
 
   if (!linked) {
     return (
       <ScrollView contentContainerStyle={[styles.profileScreen, styles.coupleScreen]} showsVerticalScrollIndicator={false}>
-        <LinearGradient colors={[candy.roseMist, candy.pinkSoft, candy.pink]} style={[styles.couplePanel, styles.coupleSoloPanel]}>
+        <LinearGradient
+          colors={[candy.roseMist, candy.pinkSoft, candy.pink]}
+          style={[styles.couplePanel, styles.coupleSoloPanel, { minHeight: soloPanelMinHeight }]}
+        >
           <View pointerEvents="none" style={styles.coupleGlow} />
           <Text style={styles.coupleEyebrow}>En solo pour l'instant</Text>
           <View style={styles.coupleSoloAvatarStage}>
