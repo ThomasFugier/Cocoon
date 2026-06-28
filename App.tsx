@@ -3522,6 +3522,7 @@ function MainShell({
           <Entrance delay={0} style={styles.flex}>
             <CoupleScreen
               couple={couple}
+              revealedMatchIds={revealedMatchIds}
               onCopyInvite={onCopyInvite}
               onGoMatch={() => onTabChange("match")}
               onJoinPartner={onJoinPartner}
@@ -6565,11 +6566,13 @@ function HomeSurpriseCard({
 
 function CoupleScreen({
   couple,
+  revealedMatchIds,
   onCopyInvite,
   onGoMatch,
   onJoinPartner,
 }: {
   couple: CoupleState;
+  revealedMatchIds: string[];
   onCopyInvite: () => void;
   onGoMatch: () => void;
   onJoinPartner: () => void;
@@ -6585,7 +6588,8 @@ function CoupleScreen({
   const crossedResponseCount = availableDesireCards(couple).filter(
     (card) => couple.votes.me[card.id] !== undefined && couple.votes.partner[card.id] !== undefined,
   ).length;
-  const recentMatches = matches.slice(0, 3);
+  const revealedMatches = matches.filter((card) => revealedMatchIds.includes(card.id));
+  const recentMatches = revealedMatches.slice(0, 3);
   const packCategories = [...PACK_CATEGORIES, PERSONAL_CATEGORY];
   const activeProfiles: PartnerId[] = ["me", "partner"];
   const soloPanelMinHeight = Math.max(520, viewportHeight - 128);
@@ -6674,8 +6678,10 @@ function CoupleScreen({
             <Text style={styles.coupleSectionTitle}>Matchs récents</Text>
             <Text style={styles.coupleSectionText}>
               {recentMatches.length
-                ? "Les envies que vous avez déjà en commun."
-                : "Rien à révéler pour l'instant. Quelques réponses peuvent suffire."}
+                ? "Les envies que tu as déjà révélées."
+                : matches.length
+                  ? "Révèle d'abord un match dans l'onglet Matchs pour le voir ici."
+                  : "Rien à révéler pour l'instant. Quelques réponses peuvent suffire."}
             </Text>
           </View>
           <SpringPressable onPress={onGoMatch} style={styles.coupleSectionLink}>
@@ -6690,8 +6696,10 @@ function CoupleScreen({
           </View>
         ) : (
           <SpringPressable onPress={onGoMatch} style={styles.coupleEmptyMatches}>
-            <Text style={styles.coupleEmptyMatchesTitle}>Aucun match pour l'instant</Text>
-            <Text style={styles.coupleEmptyMatchesText}>Répondez à quelques cartes chacun de votre côté.</Text>
+            <Text style={styles.coupleEmptyMatchesTitle}>{matches.length ? "Match à révéler" : "Aucun match pour l'instant"}</Text>
+            <Text style={styles.coupleEmptyMatchesText}>
+              {matches.length ? "Ouvre l'onglet Matchs pour le révéler de ton côté." : "Répondez à quelques cartes chacun de votre côté."}
+            </Text>
           </SpringPressable>
         )}
       </View>
