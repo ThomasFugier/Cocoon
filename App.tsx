@@ -61,6 +61,7 @@ import { DESIRE_CATEGORIES, DESIRE_PACKS, desireCards } from "./src/data/desires
 import { AuthProvider, signInWithProvider, signOut } from "./src/lib/auth";
 import {
   createSignedChatAttachmentUrl,
+  compressChatAttachmentForUpload,
   createRemoteCouple,
   fetchRemoteChatMessages,
   fetchRemoteCoupleMembers,
@@ -5397,6 +5398,7 @@ function ChatScreen({
 }) {
   const [draft, setDraft] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
+  const [photoOptimizing, setPhotoOptimizing] = useState(false);
   const activeId = couple.activePartnerId;
   const partnerId = otherPartnerId(activeId);
   const partnerName = couple.profiles[partnerId].displayName;
@@ -5414,6 +5416,7 @@ function ChatScreen({
   }, [couple.chat?.messages]);
   const hasMessages = messages.length > 0;
   const hasMessageContent = draft.trim().length > 0 || pendingAttachments.length > 0;
+  const canSendMessage = hasMessageContent && !photoOptimizing;
   const messageCountLabel = messages.length ? `${messages.length} message${messages.length > 1 ? "s" : ""} ce soir` : "Aucun message";
   const quickPrompts = useMemo(() => chatSuggestionPrompts({
     contextCard,
@@ -5422,6 +5425,12 @@ function ChatScreen({
   }), [contextCard, hasMessages, partnerName]);
 
   async function pickPhoto() {
+    const remainingSlots = Math.max(0, 4 - pendingAttachments.length);
+
+    if (photoOptimizing || remainingSlots <= 0) {
+      return;
+    }
+
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
@@ -5432,31 +5441,47 @@ function ChatScreen({
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsMultipleSelection: true,
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-      selectionLimit: 4,
+      quality: 0.8,
+      selectionLimit: remainingSlots,
     });
 
     if (result.canceled) {
       return;
     }
 
-    const nextAttachments = result.assets.slice(0, 4).map((asset, index) => ({
-      height: asset.height,
-      id: `photo-${Date.now()}-${index}`,
-      mimeType: asset.mimeType,
-      name: asset.fileName ?? "Photo",
-      sizeBytes: asset.fileSize,
-      type: "image" as const,
-      uri: asset.uri,
-      width: asset.width,
-    }));
+    setPhotoOptimizing(true);
 
-    setPendingAttachments((current) => [...current, ...nextAttachments].slice(0, 4));
-    await Haptics.selectionAsync();
+    try {
+      const pickedAt = Date.now();
+      const nextAttachments = await Promise.all(result.assets.slice(0, remainingSlots).map(async (asset, index) => {
+        const attachment: ChatAttachment = {
+          height: asset.height,
+          id: `photo-${pickedAt}-${index}`,
+          mimeType: asset.mimeType,
+          name: asset.fileName ?? "Photo",
+          sizeBytes: asset.fileSize,
+          type: "image" as const,
+          uri: asset.uri,
+          width: asset.width,
+        };
+
+        try {
+          return await compressChatAttachmentForUpload(attachment);
+        } catch (error) {
+          console.warn("Photo compression failed, keeping original asset", error);
+          return attachment;
+        }
+      }));
+
+      setPendingAttachments((current) => [...current, ...nextAttachments].slice(0, 4));
+      await Haptics.selectionAsync();
+    } finally {
+      setPhotoOptimizing(false);
+    }
   }
 
   async function send() {
-    if (!hasMessageContent) {
+    if (!canSendMessage) {
       return;
     }
 
@@ -5587,8 +5612,17 @@ function ChatScreen({
         ) : null}
 
           <View style={[styles.chatComposer, hasMessageContent && styles.chatComposerActive]}>
-          <SpringPressable onPress={pickPhoto} style={styles.chatIconButton} testID="chat-photo-button">
-            <ImagePlus size={20} color={candy.red} />
+          <SpringPressable
+            disabled={photoOptimizing || pendingAttachments.length >= 4}
+            onPress={pickPhoto}
+            style={[styles.chatIconButton, (photoOptimizing || pendingAttachments.length >= 4) && styles.chatIconButtonDisabled]}
+            testID="chat-photo-button"
+          >
+            {photoOptimizing ? (
+              <ActivityIndicator color={candy.red} size="small" />
+            ) : (
+              <ImagePlus size={20} color={candy.red} />
+            )}
           </SpringPressable>
           <TextInput
             multiline
@@ -5600,9 +5634,9 @@ function ChatScreen({
             value={draft}
           />
           <SpringPressable
-            disabled={!hasMessageContent}
+            disabled={!canSendMessage}
             onPress={send}
-            style={[styles.chatSendButton, !hasMessageContent && styles.chatSendButtonDisabled]}
+            style={[styles.chatSendButton, !canSendMessage && styles.chatSendButtonDisabled]}
             testID="chat-send-button"
           >
             <Send size={19} color={candy.white} />
@@ -11706,6 +11740,9 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: "center",
     width: 40,
+  },
+  chatIconButtonDisabled: {
+    opacity: 0.55,
   },
   chatInput: {
     color: candy.ink,

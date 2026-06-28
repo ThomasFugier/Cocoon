@@ -129,8 +129,8 @@ type PendingRemoteAttachment = ChatAttachment & {
   mimeType?: string;
 };
 
-const CHAT_ATTACHMENT_JPEG_QUALITY = 0.72;
-const CHAT_ATTACHMENT_MAX_EDGE = 1600;
+const CHAT_ATTACHMENT_JPEG_QUALITY = 0.48;
+const CHAT_ATTACHMENT_MAX_EDGE = 1080;
 
 function requireSupabase() {
   if (!supabase) {
@@ -156,6 +156,34 @@ function resizeActionsForAttachment(attachment: PendingRemoteAttachment): Action
         : { height: CHAT_ATTACHMENT_MAX_EDGE },
     },
   ];
+}
+
+function jpegAttachmentName(name?: string) {
+  const baseName = (name ?? "photo").replace(/\.[^.]+$/, "").trim();
+
+  return `${baseName || "photo"}.jpg`;
+}
+
+export async function compressChatAttachmentForUpload(attachment: ChatAttachment): Promise<ChatAttachment> {
+  const compressed = await ImageManipulator.manipulateAsync(
+    attachment.uri,
+    resizeActionsForAttachment(attachment),
+    {
+      compress: CHAT_ATTACHMENT_JPEG_QUALITY,
+      format: ImageManipulator.SaveFormat.JPEG,
+    },
+  );
+
+  return {
+    ...attachment,
+    height: compressed.height ?? attachment.height,
+    mimeType: "image/jpeg",
+    name: jpegAttachmentName(attachment.name),
+    optimized: true,
+    sizeBytes: undefined,
+    uri: compressed.uri,
+    width: compressed.width ?? attachment.width,
+  };
 }
 
 export async function createRemoteCouple(profile: Omit<PartnerProfile, "id">) {
@@ -424,14 +452,9 @@ async function uploadRemoteChatAttachment({
   messageId: string;
 }) {
   const client = requireSupabase();
-  const compressed = await ImageManipulator.manipulateAsync(
-    attachment.uri,
-    resizeActionsForAttachment(attachment),
-    {
-      compress: CHAT_ATTACHMENT_JPEG_QUALITY,
-      format: ImageManipulator.SaveFormat.JPEG,
-    },
-  );
+  const compressed = attachment.optimized
+    ? attachment
+    : await compressChatAttachmentForUpload(attachment);
   const response = await fetch(compressed.uri);
   const arrayBuffer = await response.arrayBuffer();
   const attachmentId = Crypto.randomUUID();
@@ -450,7 +473,7 @@ async function uploadRemoteChatAttachment({
   return {
     id: attachmentId,
     mime_type: "image/jpeg",
-    name: attachment.name ?? "photo.jpg",
+    name: jpegAttachmentName(compressed.name),
     height: compressed.height ?? null,
     size_bytes: arrayBuffer.byteLength,
     storage_path: storagePath,

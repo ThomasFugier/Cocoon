@@ -47,6 +47,7 @@ export type ChatAttachment = {
   width?: number;
   height?: number;
   sizeBytes?: number;
+  optimized?: boolean;
 };
 
 export type ChatMessage = {
