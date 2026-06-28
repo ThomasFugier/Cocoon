@@ -264,6 +264,26 @@ function userFacingSyncNotice(message: string) {
     return "";
   }
 
+  if (/notification|push|permission|project id|eas|appareil|téléphone|telephone|ios|android/i.test(message)) {
+    if (/appareil|téléphone|telephone|ios|android|physical|web/i.test(message)) {
+      return "Les notifications push se testent sur un vrai téléphone avec un build de développement.";
+    }
+
+    if (/permission|refus/i.test(message)) {
+      return "Notifications refusées. Tu peux les réactiver dans les réglages du téléphone.";
+    }
+
+    if (/project id|eas/i.test(message)) {
+      return "Notifications pas encore configurées pour ce build. Il manque le Project ID EAS.";
+    }
+
+    if (/préférence|preference|synchron/i.test(message)) {
+      return "Ta préférence est gardée ici. La synchro serveur réessaiera dès que possible.";
+    }
+
+    return message;
+  }
+
   if (/achat/i.test(message)) {
     return "Achat impossible pour le moment. Réessaie dans un instant.";
   }
@@ -2428,9 +2448,17 @@ function Root() {
       return false;
     }
 
-    const result = await requestPushPermissionAndRegister();
+    let result: Awaited<ReturnType<typeof requestPushPermissionAndRegister>>;
+
+    try {
+      result = await requestPushPermissionAndRegister();
+    } catch (error) {
+      setSyncError(`Notifications: ${errorMessage(error, "activation impossible")}`);
+      return false;
+    }
 
     if (result.status === "registered") {
+      setSyncError("");
       return true;
     }
 
@@ -3257,6 +3285,10 @@ function CandyFrame({ children }: { children: React.ReactNode }) {
 function syncNoticeTitle(message: string) {
   if (/achat/i.test(message)) {
     return "Achat en attente";
+  }
+
+  if (/notification|push|permission|project id|eas|téléphone|telephone|ios|android/i.test(message)) {
+    return "Notifications";
   }
 
   if (/connecte-toi|connexion/i.test(message)) {
