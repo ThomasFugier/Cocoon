@@ -1533,6 +1533,8 @@ function Root() {
   const [chatContextCardId, setChatContextCardId] = useState<string | undefined>(undefined);
   const [introSeen, setIntroSeen] = useState(false);
   const [invitePromptVisible, setInvitePromptVisible] = useState(false);
+  const [joinPromptVisible, setJoinPromptVisible] = useState(false);
+  const [joinReturnToInvite, setJoinReturnToInvite] = useState(false);
   const [tutorialReplayVisible, setTutorialReplayVisible] = useState(false);
   const [leaveConfirmVisible, setLeaveConfirmVisible] = useState(false);
   const [purchaseSuccess, setPurchaseSuccess] = useState<PurchaseSuccess | null>(null);
@@ -1889,6 +1891,7 @@ function Root() {
           setSyncError(`Compte créé localement. Synchro serveur à corriger: ${message}`);
         }
         setInvitePromptVisible(mode === "create");
+        setJoinPromptVisible(false);
         setLeaveConfirmVisible(false);
         setPurchaseSuccess(null);
         setTab("home");
@@ -1897,6 +1900,7 @@ function Root() {
 
       setCouple(localCouple);
       setInvitePromptVisible(mode === "create");
+      setJoinPromptVisible(false);
       setLeaveConfirmVisible(false);
       setPurchaseSuccess(null);
       setSyncError("");
@@ -2468,6 +2472,7 @@ function Root() {
 
   const handleReplayTutorial = useCallback(() => {
     setInvitePromptVisible(false);
+    setJoinPromptVisible(false);
     setLeaveConfirmVisible(false);
     setPurchaseSuccess(null);
     setTutorialReplayVisible(true);
@@ -2488,6 +2493,7 @@ function Root() {
     setCouple(nextCouple);
     setIntroSeen(true);
     setInvitePromptVisible(false);
+    setJoinPromptVisible(false);
     setTutorialReplayVisible(false);
     setLeaveConfirmVisible(false);
     setPurchaseSuccess(null);
@@ -2502,6 +2508,7 @@ function Root() {
     setCouple(nextCouple);
     setChatContextCardId(undefined);
     setInvitePromptVisible(false);
+    setJoinPromptVisible(false);
     setTutorialReplayVisible(false);
     setLeaveConfirmVisible(false);
     setPurchaseSuccess(null);
@@ -2524,11 +2531,80 @@ function Root() {
     setTutorialReplayVisible(false);
     setLeaveConfirmVisible(false);
     setPurchaseSuccess(null);
+    setJoinPromptVisible(false);
     setInvitePromptVisible(true);
   }, [couple]);
 
+  const handleShowJoinPrompt = useCallback((returnToInvite = false) => {
+    if (!couple || hasLinkedPartner(couple)) {
+      return;
+    }
+
+    setJoinReturnToInvite(returnToInvite);
+    setInvitePromptVisible(false);
+    setTutorialReplayVisible(false);
+    setLeaveConfirmVisible(false);
+    setPurchaseSuccess(null);
+    setJoinPromptVisible(true);
+  }, [couple]);
+
+  const handleJoinExistingCouple = useCallback(
+    async (inviteCode: string) => {
+      if (!couple) {
+        throw new Error("Aucun espace solo à relier.");
+      }
+
+      const activeProfile = couple.profiles[couple.activePartnerId];
+      const profile = {
+        color: activeProfile.color,
+        displayName: activeProfile.displayName,
+        statusEmoji: profileEmoji(activeProfile),
+        statusUpdatedAt: activeProfile.statusUpdatedAt ?? new Date().toISOString(),
+        vibe: activeProfile.vibe,
+      };
+      const trimmedCode = inviteCode.trim();
+      const localCouple = createJoinedCouple(profile, trimmedCode);
+
+      if (session && hasSupabaseConfig) {
+        try {
+          const previousCoupleId = isRemoteCoupleId(couple.id) ? couple.id : null;
+          const remote = await joinRemoteCouple(profile, trimmedCode);
+
+          if (previousCoupleId && previousCoupleId !== remote.couple_id) {
+            await leaveRemoteCouple(previousCoupleId).catch(() => undefined);
+          }
+
+          setCouple(hydrateRemoteShell(localCouple, remote));
+          await refreshRemoteCoupleState(remote.couple_id);
+          setSyncError("");
+        } catch (error) {
+          const message = errorMessage(error);
+          setSyncError(`Impossible de rejoindre ce couple: ${message}`);
+          throw new Error(message);
+        }
+      } else if (localModeEnabled) {
+        setCouple(localCouple);
+        setSyncError("");
+      } else {
+        throw new Error("Connecte-toi pour rejoindre un couple.");
+      }
+
+      setInvitePromptVisible(false);
+      setJoinPromptVisible(false);
+      setJoinReturnToInvite(false);
+      setLeaveConfirmVisible(false);
+      setPurchaseSuccess(null);
+      setChatContextCardId(undefined);
+      setRevealedMatchIds([]);
+      setTab("home");
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    [couple, refreshRemoteCoupleState, session],
+  );
+
   const handleRequestLeaveCouple = useCallback(() => {
     setInvitePromptVisible(false);
+    setJoinPromptVisible(false);
     setTutorialReplayVisible(false);
     setPurchaseSuccess(null);
     setLeaveConfirmVisible(true);
@@ -2572,6 +2648,7 @@ function Root() {
     setCouple(nextCouple);
     setChatContextCardId(undefined);
     setInvitePromptVisible(false);
+    setJoinPromptVisible(false);
     setTutorialReplayVisible(false);
     setLeaveConfirmVisible(false);
     setPurchaseSuccess(null);
@@ -2587,6 +2664,7 @@ function Root() {
     setCouple(null);
     setIntroSeen(true);
     setInvitePromptVisible(false);
+    setJoinPromptVisible(false);
     setTutorialReplayVisible(false);
     setLeaveConfirmVisible(false);
     setPurchaseSuccess(null);
@@ -2603,6 +2681,7 @@ function Root() {
     setCouple(null);
     setIntroSeen(false);
     setInvitePromptVisible(false);
+    setJoinPromptVisible(false);
     setTutorialReplayVisible(false);
     setLeaveConfirmVisible(false);
     setPurchaseSuccess(null);
@@ -2620,6 +2699,7 @@ function Root() {
     setCouple(null);
     setIntroSeen(false);
     setInvitePromptVisible(false);
+    setJoinPromptVisible(false);
     setTutorialReplayVisible(false);
     setLeaveConfirmVisible(false);
     setPurchaseSuccess(null);
@@ -2673,6 +2753,24 @@ function Root() {
     );
   }
 
+  if (joinPromptVisible) {
+    return (
+      <CandyFrame>
+        <JoinCoupleScreen
+          couple={couple}
+          onCancel={() => {
+            setJoinPromptVisible(false);
+            if (joinReturnToInvite) {
+              setInvitePromptVisible(true);
+            }
+            setJoinReturnToInvite(false);
+          }}
+          onJoin={handleJoinExistingCouple}
+        />
+      </CandyFrame>
+    );
+  }
+
   if (invitePromptVisible) {
     return (
       <CandyFrame>
@@ -2682,6 +2780,7 @@ function Root() {
             setInvitePromptVisible(false);
             setTab("home");
           }}
+          onJoin={() => handleShowJoinPrompt(true)}
         />
       </CandyFrame>
     );
@@ -2726,6 +2825,7 @@ function Root() {
         onMoodChange={handleMoodChange}
         onMoodNotificationPreference={handleMoodNotificationPreference}
         onNotificationPreference={handleNotificationPreference}
+        onJoinPartner={handleShowJoinPrompt}
         onOpenChat={handleOpenChat}
         onRevealMatch={(cardId) => {
           setRevealedMatchIds((current) => (current.includes(cardId) ? current : [...current, cardId]));
@@ -2984,6 +3084,7 @@ function MainShell({
   onMoodNotificationPreference,
   onNotificationPreference,
   onOpenChat,
+  onJoinPartner,
   onRevealMatch,
   onRequestLeaveCouple,
   onReplayTutorial,
@@ -3021,6 +3122,7 @@ function MainShell({
   onMoodNotificationPreference: (enabled: boolean) => void;
   onNotificationPreference: (key: NotificationToggleKey, enabled: boolean) => void;
   onOpenChat: (cardId?: string) => void;
+  onJoinPartner: () => void;
   onRevealMatch: (cardId: string) => void;
   onRequestLeaveCouple: () => void;
   onReplayTutorial: () => void;
@@ -3048,6 +3150,7 @@ function MainShell({
             onGoEnvies={() => onTabChange("envies")}
             onGoMatch={() => onTabChange("match")}
             onInvitePartner={onShowInvitePrompt}
+            onJoinPartner={onJoinPartner}
             onMoodChange={onMoodChange}
             onMoodNotificationPreference={onMoodNotificationPreference}
             onOpenChat={onOpenChat}
@@ -3088,6 +3191,7 @@ function MainShell({
             couple={couple}
             onCopyInvite={onCopyInvite}
             onGoMatch={() => onTabChange("match")}
+            onJoinPartner={onJoinPartner}
           />
         ) : null}
         {tab === "profil" ? (
@@ -5219,6 +5323,7 @@ function HomeScreen({
   onGoEnvies,
   onGoMatch,
   onInvitePartner,
+  onJoinPartner,
   onMoodChange,
   onMoodNotificationPreference,
   onOpenChat,
@@ -5235,6 +5340,7 @@ function HomeScreen({
   onGoEnvies: () => void;
   onGoMatch: () => void;
   onInvitePartner: () => void;
+  onJoinPartner: () => void;
   onMoodChange: (level: CoupleMoodLevel) => void;
   onMoodNotificationPreference: (enabled: boolean) => void;
   onOpenChat: (cardId?: string) => void;
@@ -5263,6 +5369,7 @@ function HomeScreen({
             onGoEnvies={onGoEnvies}
             onGoMatch={onGoMatch}
             onInvitePartner={onInvitePartner}
+            onJoinPartner={onJoinPartner}
             onOpenChat={onOpenChat}
             onOpenStore={() => setStoreOpen(true)}
             revealedMatchIds={revealedMatchIds}
@@ -5416,6 +5523,7 @@ function HomeNextStepPanel({
   onGoEnvies,
   onGoMatch,
   onInvitePartner,
+  onJoinPartner,
   onOpenChat,
   onOpenStore,
   revealedMatchIds,
@@ -5424,6 +5532,7 @@ function HomeNextStepPanel({
   onGoEnvies: () => void;
   onGoMatch: () => void;
   onInvitePartner: () => void;
+  onJoinPartner: () => void;
   onOpenChat: (cardId?: string) => void;
   onOpenStore: () => void;
   revealedMatchIds: string[];
@@ -5462,10 +5571,10 @@ function HomeNextStepPanel({
         emoji: "💌",
         phase: "1",
         onPress: onInvitePartner,
-        secondary: "Commencer seul.e",
-        secondaryPress: onGoEnvies,
-        text: "Partage ton code. Ensuite chacun répond de son côté, à son rythme.",
-        title: "Invite ton/ta partenaire",
+        secondary: "Rejoindre",
+        secondaryPress: onJoinPartner,
+        text: "Partage ton code ou entre celui de ton/ta partenaire. Ensuite chacun répond de son côté, à son rythme.",
+        title: "Invite ou rejoins ton/ta partenaire",
       }
     : firstHiddenMatch
       ? {
@@ -6079,10 +6188,12 @@ function CoupleScreen({
   couple,
   onCopyInvite,
   onGoMatch,
+  onJoinPartner,
 }: {
   couple: CoupleState;
   onCopyInvite: () => void;
   onGoMatch: () => void;
+  onJoinPartner: () => void;
 }) {
   const matches = matchedCards(couple);
   const profileNames = [couple.profiles.me.displayName, couple.profiles.partner.displayName];
@@ -6128,13 +6239,19 @@ function CoupleScreen({
         </View>
         {!linked ? (
           <View style={styles.inviteRow}>
-            <View>
+            <View style={styles.inviteCodeBlock}>
               <Text style={styles.inviteLabel}>Code d'invitation</Text>
               <Text style={styles.inviteCode}>{couple.inviteCode}</Text>
             </View>
-            <SpringPressable onPress={onCopyInvite} style={styles.copyButton}>
-              <Copy size={20} color={candy.white} />
-            </SpringPressable>
+            <View style={styles.inviteRowActions}>
+              <SpringPressable onPress={onJoinPartner} style={styles.inviteJoinButton}>
+                <Users size={16} color={candy.red} />
+                <Text style={styles.inviteJoinText}>Rejoindre</Text>
+              </SpringPressable>
+              <SpringPressable onPress={onCopyInvite} style={styles.copyButton}>
+                <Copy size={20} color={candy.white} />
+              </SpringPressable>
+            </View>
           </View>
         ) : null}
       </LinearGradient>
@@ -7503,7 +7620,15 @@ function WelcomeTutorialScreen({ onStart }: { onStart: () => void }) {
   );
 }
 
-function InvitePartnerScreen({ couple, onContinue }: { couple: CoupleState; onContinue: () => void }) {
+function InvitePartnerScreen({
+  couple,
+  onContinue,
+  onJoin,
+}: {
+  couple: CoupleState;
+  onContinue: () => void;
+  onJoin: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   const inviteMessage = `Rejoins notre espace WeSpice avec le code ${couple.inviteCode}. On ne verra que nos envies partagées.`;
 
@@ -7567,6 +7692,11 @@ function InvitePartnerScreen({ couple, onContinue }: { couple: CoupleState; onCo
             <Text style={styles.inviteSecondaryText}>Copier le code</Text>
           </SpringPressable>
 
+          <SpringPressable onPress={onJoin} style={styles.inviteSecondaryButton}>
+            <Users size={18} color={candy.red} />
+            <Text style={styles.inviteSecondaryText}>J'ai reçu un code</Text>
+          </SpringPressable>
+
           <SpringPressable onPress={onContinue} style={styles.inviteContinueButton}>
             <Text style={styles.inviteContinueText}>Commencer maintenant</Text>
             <ChevronRight size={19} color={candy.white} />
@@ -7578,6 +7708,82 @@ function InvitePartnerScreen({ couple, onContinue }: { couple: CoupleState; onCo
         <Text style={styles.inviteFinePrint}>Tu pourras retrouver ce code plus tard dans Nous.</Text>
       </Entrance>
     </ScrollView>
+  );
+}
+
+function JoinCoupleScreen({
+  couple,
+  onCancel,
+  onJoin,
+}: {
+  couple: CoupleState;
+  onCancel: () => void;
+  onJoin: (inviteCode: string) => Promise<void>;
+}) {
+  const [inviteCode, setInviteCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const activeProfile = couple.profiles[couple.activePartnerId];
+  const normalizedCode = inviteCode.trim().toUpperCase();
+
+  async function submit() {
+    if (normalizedCode.length < 4) {
+      setError("Entre le code reçu par ton/ta partenaire.");
+      return;
+    }
+
+    try {
+      setBusy(true);
+      setError("");
+      await onJoin(normalizedCode);
+    } catch (joinError) {
+      setError(errorMessage(joinError, "Impossible de rejoindre ce couple."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
+      <ScrollView contentContainerStyle={styles.inviteScreen} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <Entrance delay={0}>
+          <LinearGradient colors={[candy.red, "#FF3A8A", "#FF7ABE"]} style={styles.inviteHero}>
+            <EmojiSticker emoji="🔗" size={86} style={styles.inviteLock} />
+            <Text style={styles.inviteEyebrow}>Relier ton espace</Text>
+            <Text style={styles.inviteTitle}>Rejoins ton/ta partenaire.</Text>
+            <Text style={styles.inviteText}>
+              Tu restes {activeProfile.displayName}. Entre le code reçu pour basculer de solo à couple.
+            </Text>
+          </LinearGradient>
+        </Entrance>
+
+        <Entrance delay={120} style={styles.onboardingPanel}>
+          <CandyInput
+            label="Code d'invitation"
+            onChangeText={(text) => {
+              setInviteCode(text.toUpperCase());
+              setError("");
+            }}
+            placeholder="ABCD42"
+            value={inviteCode}
+          />
+          <Text style={styles.authHint}>
+            Ton espace solo sera remplacé par l'espace rejoint. Les réponses du couple restent privées jusqu'au match.
+          </Text>
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          <CandyButton
+            disabled={busy}
+            icon={busy ? <ActivityIndicator color={candy.white} /> : <ChevronRight size={18} color={candy.white} />}
+            label="Rejoindre le couple"
+            onPress={submit}
+          />
+          <SpringPressable disabled={busy} onPress={onCancel} style={styles.inviteSecondaryButton}>
+            <ArrowLeft size={18} color={candy.red} />
+            <Text style={styles.inviteSecondaryText}>Retour à l'invitation</Text>
+          </SpringPressable>
+        </Entrance>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -12306,10 +12512,35 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "900",
   },
+  inviteCodeBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
   inviteCode: {
     color: candy.red,
     fontFamily: displayFont,
     fontSize: 24,
+    fontWeight: "900",
+  },
+  inviteRowActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  inviteJoinButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.76)",
+    borderColor: candy.white,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    flexDirection: "row",
+    gap: 5,
+    minHeight: 42,
+    paddingHorizontal: 12,
+  },
+  inviteJoinText: {
+    color: candy.red,
+    fontSize: 12,
     fontWeight: "900",
   },
   copyButton: {
