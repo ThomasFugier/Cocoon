@@ -3311,61 +3311,75 @@ function MainShell({
           />
         ) : null}
         {tab === "match" ? (
-          <MatchScreen
-            couple={couple}
-            revealedMatchIds={revealedMatchIds}
-            onGoEnvies={() => onTabChange("envies")}
-            onOpenChat={onOpenChat}
-            onBeforeRevealMatch={onBeforeRevealMatch}
-            onRevealMatch={onRevealMatch}
-          />
+          <Entrance delay={0} style={styles.flex}>
+            <MatchScreen
+              couple={couple}
+              revealedMatchIds={revealedMatchIds}
+              onGoEnvies={() => onTabChange("envies")}
+              onOpenChat={onOpenChat}
+              onBeforeRevealMatch={onBeforeRevealMatch}
+              onRevealMatch={onRevealMatch}
+            />
+          </Entrance>
         ) : null}
         {tab === "couple" ? (
-          <CoupleScreen
-            couple={couple}
-            onCopyInvite={onCopyInvite}
-            onGoMatch={() => onTabChange("match")}
-            onJoinPartner={onJoinPartner}
-          />
+          <Entrance delay={0} style={styles.flex}>
+            <CoupleScreen
+              couple={couple}
+              onCopyInvite={onCopyInvite}
+              onGoMatch={() => onTabChange("match")}
+              onJoinPartner={onJoinPartner}
+            />
+          </Entrance>
         ) : null}
         {tab === "profil" ? (
-          <ProfileScreen
-            authError={authError}
-            couple={couple}
-            providerLoading={providerLoading}
-            session={session}
-            onLogout={onLogout}
-            onMoodNotificationPreference={onMoodNotificationPreference}
-            onNotificationPreference={onNotificationPreference}
-            onProvider={onProvider}
-            onRequestLeaveCouple={onRequestLeaveCouple}
-            onReplayTutorial={onReplayTutorial}
-            onRestorePurchases={onRestorePurchases}
-            onReset={onReset}
-            onStatusEmojiChange={onStatusEmojiChange}
-          />
+          <Entrance delay={0} style={styles.flex}>
+            <ProfileScreen
+              authError={authError}
+              couple={couple}
+              providerLoading={providerLoading}
+              session={session}
+              onLogout={onLogout}
+              onMoodNotificationPreference={onMoodNotificationPreference}
+              onNotificationPreference={onNotificationPreference}
+              onProvider={onProvider}
+              onRequestLeaveCouple={onRequestLeaveCouple}
+              onReplayTutorial={onReplayTutorial}
+              onRestorePurchases={onRestorePurchases}
+              onReset={onReset}
+              onStatusEmojiChange={onStatusEmojiChange}
+            />
+          </Entrance>
         ) : null}
         {debugEnabled && tab === "debug" ? (
-          <DebugScreen
-            couple={couple}
-            onActorChange={onActorChange}
-            onApplyPreset={onApplyDebugPreset}
-            onDebugFakeAd={onDebugFakeAd}
-            onDisableDebugProfiles={onDisableDebugProfiles}
-            onReplayTutorial={onReplayTutorial}
-            onReset={onReset}
-            onShowInvitePrompt={onShowInvitePrompt}
-            onShowOnboarding={onShowOnboarding}
-          />
+          <Entrance delay={0} style={styles.flex}>
+            <DebugScreen
+              couple={couple}
+              onActorChange={onActorChange}
+              onApplyPreset={onApplyDebugPreset}
+              onDebugFakeAd={onDebugFakeAd}
+              onDisableDebugProfiles={onDisableDebugProfiles}
+              onReplayTutorial={onReplayTutorial}
+              onReset={onReset}
+              onShowInvitePrompt={onShowInvitePrompt}
+              onShowOnboarding={onShowOnboarding}
+            />
+          </Entrance>
         ) : null}
         {tab === "chat" ? (
-          <ChatScreen
-            contextCardId={chatContextCardId}
-            couple={couple}
-            onSendMessage={onSendChatMessage}
-          />
+          <Entrance delay={0} style={styles.flex}>
+            <ChatScreen
+              contextCardId={chatContextCardId}
+              couple={couple}
+              onSendMessage={onSendChatMessage}
+            />
+          </Entrance>
         ) : null}
-        {tab === "rules" ? <RulesScreen onBack={() => onTabChange("home")} /> : null}
+        {tab === "rules" ? (
+          <Entrance delay={0} style={styles.flex}>
+            <RulesScreen onBack={() => onTabChange("home")} />
+          </Entrance>
+        ) : null}
       </View>
       <View pointerEvents="box-none" style={styles.tabDock}>
         <LinearGradient
