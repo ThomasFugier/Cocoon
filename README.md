@@ -140,6 +140,7 @@ Les tests minimum couvrent les regles de match, quota quotidien, limite de carte
 ## Versioning
 
 La version WeSpice est affichée dans Profil > À propos et synchronisée entre `package.json`, `app.json` et `src/version.ts`.
+La première mise en production démarre à `1.0.0`; ensuite chaque commit/build de dev ajoute un patch (`1.0.1`) et chaque vraie release prod ajoute un minor (`1.1.0`).
 
 ```bash
 npm run version:hooks
