@@ -3254,6 +3254,78 @@ function CandyFrame({ children }: { children: React.ReactNode }) {
   );
 }
 
+function syncNoticeTitle(message: string) {
+  if (/achat/i.test(message)) {
+    return "Achat en attente";
+  }
+
+  if (/connecte-toi|connexion/i.test(message)) {
+    return "Connexion";
+  }
+
+  return "Connexion instable";
+}
+
+function ServerNoticeToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!message) {
+      Animated.timing(progress, {
+        duration: 120,
+        easing: Easing.out(Easing.cubic),
+        toValue: 0,
+        useNativeDriver: useNativeAnimations,
+      }).start();
+      return undefined;
+    }
+
+    progress.setValue(0);
+    Animated.timing(progress, {
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      toValue: 1,
+      useNativeDriver: useNativeAnimations,
+    }).start();
+
+    const hideTimer = setTimeout(onDismiss, 6200);
+
+    return () => clearTimeout(hideTimer);
+  }, [message, onDismiss, progress]);
+
+  if (!message) {
+    return null;
+  }
+
+  return (
+    <View pointerEvents="box-none" style={styles.serverNoticeHost}>
+      <Animated.View
+        style={[
+          styles.serverNoticeCard,
+          {
+            opacity: progress,
+            transform: [
+              { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [-14, 0] }) },
+              { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1] }) },
+            ],
+          },
+        ]}
+      >
+        <View style={styles.serverNoticeIcon}>
+          <RefreshCcw size={16} color={candy.white} />
+        </View>
+        <View style={styles.serverNoticeCopy}>
+          <Text style={styles.serverNoticeTitle}>{syncNoticeTitle(message)}</Text>
+          <Text style={styles.serverNoticeText}>{message}</Text>
+        </View>
+        <SpringPressable onPress={onDismiss} style={styles.serverNoticeClose}>
+          <X size={15} color="rgba(35,18,36,0.62)" />
+        </SpringPressable>
+      </Animated.View>
+    </View>
+  );
+}
+
 function SecretVoteToast({ nonce, visible }: { nonce: number; visible: boolean }) {
   const progress = useRef(new Animated.Value(0)).current;
 
@@ -3523,12 +3595,19 @@ function MainShell({
   onVote: (cardId: string, level: VoteLevel) => boolean;
 }) {
   const syncNotice = userFacingSyncNotice(syncError);
+  const [dismissedSyncNotice, setDismissedSyncNotice] = useState("");
   const chatNotificationsEnabled = isNotificationPreferenceEnabled(couple, couple.activePartnerId, "chatMessageEnabled");
+  const visibleSyncNotice = syncNotice && syncNotice !== dismissedSyncNotice ? syncNotice : "";
+  const dismissSyncNotice = useCallback(() => setDismissedSyncNotice(syncNotice), [syncNotice]);
+
+  useEffect(() => {
+    if (!syncNotice) {
+      setDismissedSyncNotice("");
+    }
+  }, [syncNotice]);
 
   return (
     <View style={styles.app}>
-      {syncNotice ? <Text style={styles.syncText}>{syncNotice}</Text> : null}
-
       <View style={styles.content}>
         {tab === "home" ? (
           <HomeScreen
@@ -3647,6 +3726,10 @@ function MainShell({
           onChange={onTabChange}
         />
       </View>
+      <ServerNoticeToast
+        message={visibleSyncNotice}
+        onDismiss={dismissSyncNotice}
+      />
     </View>
   );
 }
@@ -8694,6 +8777,65 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1.5 },
     textShadowRadius: 0,
   },
+  serverNoticeHost: {
+    left: 0,
+    paddingHorizontal: 14,
+    position: "absolute",
+    right: 0,
+    top: 12,
+    zIndex: 110,
+  },
+  serverNoticeCard: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderColor: "rgba(255,255,255,0.98)",
+    borderRadius: 22,
+    borderWidth: 1.5,
+    flexDirection: "row",
+    gap: 10,
+    maxWidth: 520,
+    minHeight: 58,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    width: "100%",
+    shadowColor: "rgba(74,18,54,0.24)",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 1,
+    shadowRadius: 28,
+  },
+  serverNoticeIcon: {
+    alignItems: "center",
+    backgroundColor: candy.red,
+    borderRadius: 999,
+    height: 34,
+    justifyContent: "center",
+    width: 34,
+  },
+  serverNoticeCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  serverNoticeTitle: {
+    color: candy.ink,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  serverNoticeText: {
+    color: "rgba(35,18,36,0.72)",
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 14,
+  },
+  serverNoticeClose: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,225,241,0.72)",
+    borderRadius: 999,
+    height: 30,
+    justifyContent: "center",
+    width: 30,
+  },
   secretToast: {
     alignItems: "center",
     alignSelf: "center",
@@ -9071,13 +9213,6 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: candy.red,
-  },
-  syncText: {
-    color: candy.black,
-    fontSize: 12,
-    fontWeight: "800",
-    marginHorizontal: 18,
-    textAlign: "center",
   },
   screen: {
     gap: 13,
