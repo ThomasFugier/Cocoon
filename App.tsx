@@ -50,6 +50,12 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
+import {
+  ProfileAccountPanel,
+  SessionStatusPill,
+  authAccountInfo,
+  type AuthAccountInfo,
+} from "./src/components/AuthStatus";
 import { DESIRE_CATEGORIES, DESIRE_PACKS, desireCards } from "./src/data/desires";
 import { AuthProvider, signInWithProvider, signOut } from "./src/lib/auth";
 import {
@@ -85,9 +91,11 @@ import {
   loadCoupleState,
   loadDebugBackupState,
   loadGuestMode,
+  loadIntroSeen,
   saveCoupleState,
   saveDebugBackupState,
   saveGuestMode,
+  saveIntroSeen,
 } from "./src/lib/localStore";
 import {
   enqueueRemoteChatMessage,
@@ -1555,6 +1563,11 @@ function Root() {
   const [syncError, setSyncError] = useState("");
   const [tab, setTab] = useState<TabKey>("home");
 
+  const updateIntroSeen = useCallback((seen: boolean) => {
+    setIntroSeen(seen);
+    void saveIntroSeen(seen);
+  }, []);
+
   useEffect(() => {
     coupleRef.current = couple;
   }, [couple]);
@@ -1642,7 +1655,11 @@ function Root() {
     let mounted = true;
 
     async function boot() {
-      const [storedCouple, storedGuestMode] = await Promise.all([loadCoupleState(), loadGuestMode()]);
+      const [storedCouple, storedGuestMode, storedIntroSeen] = await Promise.all([
+        loadCoupleState(),
+        loadGuestMode(),
+        loadIntroSeen(),
+      ]);
       let nextSession: Session | null = null;
 
       if (!mounted) {
@@ -1661,6 +1678,7 @@ function Root() {
       setSession(nextSession);
       setCouple(!nextSession && !localModeEnabled ? null : storedCouple ? purgeExpiredChat(storedCouple) : null);
       setGuestMode(localModeEnabled && storedGuestMode);
+      setIntroSeen(storedIntroSeen);
 
       if (mounted) {
         setBooting(false);
@@ -1857,9 +1875,9 @@ function Root() {
       const nextSession = await signInWithProvider(provider);
       if (nextSession) {
         setSession(nextSession);
+        void saveGuestMode(false);
+        setGuestMode(false);
       }
-      await saveGuestMode(false);
-      setGuestMode(false);
     } catch (error) {
       const message = errorMessage(error, "Connexion impossible.");
       setAuthError(message);
@@ -2491,7 +2509,7 @@ function Root() {
     await saveGuestMode(true);
     setGuestMode(true);
     setCouple(nextCouple);
-    setIntroSeen(true);
+    updateIntroSeen(true);
     setInvitePromptVisible(false);
     setJoinPromptVisible(false);
     setTutorialReplayVisible(false);
@@ -2499,7 +2517,7 @@ function Root() {
     setPurchaseSuccess(null);
     setTab("debug");
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [couple]);
+  }, [couple, updateIntroSeen]);
 
   const handleDisableDebugProfiles = useCallback(async () => {
     const backup = await loadDebugBackupState();
@@ -2662,7 +2680,7 @@ function Root() {
     await clearCoupleState();
     await clearDebugBackupState();
     setCouple(null);
-    setIntroSeen(true);
+    updateIntroSeen(true);
     setInvitePromptVisible(false);
     setJoinPromptVisible(false);
     setTutorialReplayVisible(false);
@@ -2671,7 +2689,7 @@ function Root() {
     setChatContextCardId(undefined);
     setRevealedMatchIds([]);
     setTab("home");
-  }, []);
+  }, [updateIntroSeen]);
 
   const handleReset = useCallback(async () => {
     await clearCoupleState();
@@ -2679,7 +2697,7 @@ function Root() {
     await saveGuestMode(localModeEnabled);
     setGuestMode(localModeEnabled);
     setCouple(null);
-    setIntroSeen(false);
+    updateIntroSeen(false);
     setInvitePromptVisible(false);
     setJoinPromptVisible(false);
     setTutorialReplayVisible(false);
@@ -2688,7 +2706,7 @@ function Root() {
     setChatContextCardId(undefined);
     setSyncError("");
     setTab("home");
-  }, []);
+  }, [updateIntroSeen]);
 
   const handleLogout = useCallback(async () => {
     await signOut();
@@ -2697,7 +2715,6 @@ function Root() {
     setSession(null);
     setGuestMode(false);
     setCouple(null);
-    setIntroSeen(false);
     setInvitePromptVisible(false);
     setJoinPromptVisible(false);
     setTutorialReplayVisible(false);
@@ -2729,9 +2746,11 @@ function Root() {
     return (
       <CandyFrame>
         <WelcomeTutorialScreen
+          account={authAccountInfo(session)}
+          guestMode={guestMode}
           onStart={() => {
             setTutorialReplayVisible(false);
-            setIntroSeen(true);
+            updateIntroSeen(true);
             setTab("home");
           }}
         />
@@ -2744,10 +2763,10 @@ function Root() {
       <CandyFrame>
         {introSeen ? (
           <Entrance delay={30} style={styles.flex}>
-            <OnboardingScreen onComplete={handleOnboardingComplete} />
+            <OnboardingScreen account={authAccountInfo(session)} guestMode={guestMode} onComplete={handleOnboardingComplete} />
           </Entrance>
         ) : (
-          <WelcomeTutorialScreen onStart={() => setIntroSeen(true)} />
+          <WelcomeTutorialScreen account={authAccountInfo(session)} guestMode={guestMode} onStart={() => updateIntroSeen(true)} />
         )}
       </CandyFrame>
     );
@@ -2806,10 +2825,12 @@ function Root() {
     <CandyFrame>
       <MainShell
         allowActorSwitch={!session || guestMode}
+        authError={authError}
         chatContextCardId={chatContextCardId}
         couple={couple}
         debugEnabled={localModeEnabled}
         enviesFocusCategory={enviesFocusCategory}
+        providerLoading={providerLoading}
         revealedMatchIds={revealedMatchIds}
         session={session}
         syncError={syncError}
@@ -2827,6 +2848,7 @@ function Root() {
         onNotificationPreference={handleNotificationPreference}
         onJoinPartner={handleShowJoinPrompt}
         onOpenChat={handleOpenChat}
+        onProvider={handleProvider}
         onRevealMatch={(cardId) => {
           setRevealedMatchIds((current) => (current.includes(cardId) ? current : [...current, cardId]));
           if (session && hasSupabaseConfig && isRemoteCoupleId(couple.id)) {
@@ -3064,10 +3086,12 @@ function EmojiSticker({
 
 function MainShell({
   allowActorSwitch,
+  authError,
   chatContextCardId,
   couple,
   debugEnabled,
   enviesFocusCategory,
+  providerLoading,
   revealedMatchIds,
   session,
   syncError,
@@ -3085,6 +3109,7 @@ function MainShell({
   onNotificationPreference,
   onOpenChat,
   onJoinPartner,
+  onProvider,
   onRevealMatch,
   onRequestLeaveCouple,
   onReplayTutorial,
@@ -3102,10 +3127,12 @@ function MainShell({
   onVote,
 }: {
   allowActorSwitch: boolean;
+  authError: string;
   chatContextCardId?: string;
   couple: CoupleState;
   debugEnabled: boolean;
   enviesFocusCategory: DesireCategory | null;
+  providerLoading: AuthProvider | null;
   revealedMatchIds: string[];
   session: Session | null;
   syncError: string;
@@ -3123,6 +3150,7 @@ function MainShell({
   onNotificationPreference: (key: NotificationToggleKey, enabled: boolean) => void;
   onOpenChat: (cardId?: string) => void;
   onJoinPartner: () => void;
+  onProvider: (provider: AuthProvider) => void;
   onRevealMatch: (cardId: string) => void;
   onRequestLeaveCouple: () => void;
   onReplayTutorial: () => void;
@@ -3196,11 +3224,14 @@ function MainShell({
         ) : null}
         {tab === "profil" ? (
           <ProfileScreen
+            authError={authError}
             couple={couple}
+            providerLoading={providerLoading}
             session={session}
             onLogout={onLogout}
             onMoodNotificationPreference={onMoodNotificationPreference}
             onNotificationPreference={onNotificationPreference}
+            onProvider={onProvider}
             onRequestLeaveCouple={onRequestLeaveCouple}
             onReplayTutorial={onReplayTutorial}
             onRestorePurchases={onRestorePurchases}
@@ -6757,22 +6788,28 @@ function PurchaseSuccessScreen({ purchase, onDiscover }: { purchase: PurchaseSuc
 }
 
 function ProfileScreen({
+  authError,
   couple,
+  providerLoading,
   session,
   onLogout,
   onMoodNotificationPreference,
   onNotificationPreference,
+  onProvider,
   onRequestLeaveCouple,
   onReplayTutorial,
   onRestorePurchases,
   onReset,
   onStatusEmojiChange,
 }: {
+  authError: string;
   couple: CoupleState;
+  providerLoading: AuthProvider | null;
   session: Session | null;
   onLogout: () => void;
   onMoodNotificationPreference: (enabled: boolean) => void;
   onNotificationPreference: (key: NotificationToggleKey, enabled: boolean) => void;
+  onProvider: (provider: AuthProvider) => void;
   onRequestLeaveCouple: () => void;
   onReplayTutorial: () => void;
   onRestorePurchases: () => void;
@@ -6783,6 +6820,7 @@ function ProfileScreen({
   const profileIcon = profileEmoji(activeProfile);
   const activePartnerId = couple.activePartnerId;
   const settings = notificationSettings(couple);
+  const account = authAccountInfo(session);
   const notificationRows: Array<{
     emoji: string;
     eyebrow: string;
@@ -6855,11 +6893,23 @@ function ProfileScreen({
           <Text style={styles.profileAvatarEmoji}>{profileIcon}</Text>
         </View>
         <Text style={styles.profileTitle}>{activeProfile.displayName}</Text>
-        <Text style={styles.profileMeta}>{session ? session.user.email ?? "Connecté" : "Mode test local"}</Text>
+        <Text numberOfLines={1} selectable style={styles.profileMeta}>
+          {account.connected ? `${account.providerLabel} · ${account.email || account.displayName}` : "Mode test local"}
+        </Text>
       </LinearGradient>
         <View style={styles.profileSettingsSection}>
           <Text style={styles.profileSectionTitle}>Statut</Text>
           <StatusEmojiEditor profile={activeProfile} onChange={onStatusEmojiChange} />
+        </View>
+        <View style={styles.profileSettingsSection}>
+          <Text style={styles.profileSectionTitle}>Compte</Text>
+          <ProfileAccountPanel
+            account={account}
+            authError={authError}
+            isRemoteCouple={isRemoteCoupleId(couple.id)}
+            providerLoading={providerLoading}
+            onProvider={onProvider}
+          />
         </View>
         <View style={styles.profileSettingsSection}>
           <Text style={styles.profileSectionTitle}>Notifications</Text>
@@ -6903,7 +6953,7 @@ function ProfileScreen({
         </View>
 
         <View style={styles.profileSettingsSection}>
-          <Text style={styles.profileSectionTitle}>Compte</Text>
+          <Text style={styles.profileSectionTitle}>Actions</Text>
           <View style={styles.profileBottomActions}>
             <SpringPressable onPress={onRequestLeaveCouple} style={styles.profileLeaveAction}>
               <Users size={18} color={candy.red} />
@@ -7298,7 +7348,15 @@ function AuthGate({
   );
 }
 
-function WelcomeTutorialScreen({ onStart }: { onStart: () => void }) {
+function WelcomeTutorialScreen({
+  account,
+  guestMode,
+  onStart,
+}: {
+  account: AuthAccountInfo;
+  guestMode: boolean;
+  onStart: () => void;
+}) {
   const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
   const [page, setPage] = useState(0);
   const [demoVote, setDemoVote] = useState<VoteLevel | null>(null);
@@ -7489,6 +7547,7 @@ function WelcomeTutorialScreen({ onStart }: { onStart: () => void }) {
         <View style={[styles.welcomeTopBar, compactWelcome && styles.welcomeTopBarCompact]}>
           <WeSpiceLogo compact style={styles.welcomeLogo} />
         </View>
+        <SessionStatusPill account={account} guestMode={guestMode} />
 
         <Entrance delay={60} key={currentPage.eyebrow} style={[styles.welcomeSlide, compactWelcome && styles.welcomeSlideCompact]}>
           <View style={styles.welcomeSlideCard}>
@@ -7837,8 +7896,12 @@ function LeaveCoupleConfirmScreen({
 }
 
 function OnboardingScreen({
+  account,
+  guestMode,
   onComplete,
 }: {
+  account: AuthAccountInfo;
+  guestMode: boolean;
   onComplete: (
     mode: OnboardingMode,
     profile: Omit<PartnerProfile, "id">,
@@ -7907,6 +7970,7 @@ function OnboardingScreen({
         ]}
       >
         <Entrance style={styles.onboardingHero}>
+          <SessionStatusPill account={account} guestMode={guestMode} />
           <Text style={styles.onboardingEyebrow}>Dernière étape</Text>
           <Text style={styles.onboardingTitle}>Crée ton espace</Text>
           <Text style={styles.onboardingText}>Un prénom, une icône de profil, et tu pourras inviter ton/ta partenaire.</Text>

@@ -5,6 +5,7 @@ import { CoupleState, DailyResponseUsage, NotificationSettings, PartnerId, Partn
 const STORAGE_KEY = "cocoon-couple-state-v1";
 const GUEST_KEY = "cocoon-guest-mode-v1";
 const DEBUG_BACKUP_KEY = "cocoon-debug-backup-v1";
+const INTRO_SEEN_KEY = "cocoon-intro-seen-v1";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -206,4 +207,17 @@ export async function saveGuestMode(enabled: boolean) {
   }
 
   await AsyncStorage.removeItem(GUEST_KEY);
+}
+
+export async function loadIntroSeen() {
+  return (await AsyncStorage.getItem(INTRO_SEEN_KEY)) === "true";
+}
+
+export async function saveIntroSeen(seen: boolean) {
+  if (seen) {
+    await AsyncStorage.setItem(INTRO_SEEN_KEY, "true");
+    return;
+  }
+
+  await AsyncStorage.removeItem(INTRO_SEEN_KEY);
 }
