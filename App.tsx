@@ -1,5 +1,6 @@
 ﻿import { StatusBar } from "expo-status-bar";
 import * as Clipboard from "expo-clipboard";
+import * as Crypto from "expo-crypto";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
@@ -61,6 +62,7 @@ import { AuthProvider, signInWithProvider, signOut } from "./src/lib/auth";
 import {
   createSignedChatAttachmentUrl,
   createRemoteCouple,
+  fetchRemoteChatMessages,
   fetchRemoteCoupleMembers,
   fetchMyCoupleState,
   hydrateRemoteShell,
@@ -75,6 +77,7 @@ import {
   sendRemoteNotificationEvent,
   sendRemoteChatMessage,
   subscribeToCoupleRealtime,
+  type RemoteChatMessage,
   type RemoteCoupleState,
 } from "./src/lib/coupleApi";
 import {
@@ -137,6 +140,11 @@ type RemoteRefreshState = {
   coupleKey: string | null;
   inFlight: Promise<boolean> | null;
   lastCompletedAt: number;
+  lastStartedAt: number;
+};
+type ChatRefreshState = {
+  coupleId: string | null;
+  inFlight: Promise<boolean> | null;
   lastStartedAt: number;
 };
 type HomeNextStepConfig = {
@@ -203,6 +211,7 @@ const AD_GAME_MIN_RESPONSES = 6;
 const AD_GAME_VOTE_INTERVAL = 8;
 const AD_GAME_MATCH_INTERVAL = 3;
 const AD_AFTER_VOTE_DELAY_MS = GAME_CARD_SETTLE_MS + HEART_BURST_MS + 260;
+const CHAT_REFRESH_COOLDOWN_MS = 300;
 const REMOTE_REFRESH_COOLDOWN_MS = 1500;
 const SIGNED_CHAT_ATTACHMENT_URL_CACHE_MS = 5 * 60 * 60 * 1000;
 const PERSONAL_CATEGORY: DesireCategory = "Perso";
@@ -768,17 +777,19 @@ function createChatMessage({
   attachments,
   authorId,
   body,
+  id,
   linkedCardId,
 }: {
   attachments: ChatAttachment[];
   authorId: PartnerId;
   body: string;
+  id?: string;
   linkedCardId?: string;
 }): ChatMessage {
   const now = new Date();
 
   return {
-    id: `chat-${now.getTime()}-${Math.random().toString(16).slice(2)}`,
+    id: id ?? `chat-${now.getTime()}-${Math.random().toString(16).slice(2)}`,
     authorId,
     body,
     createdAt: now.toISOString(),
@@ -1080,23 +1091,8 @@ async function getSignedChatAttachmentUrl(storagePath: string) {
   return url;
 }
 
-async function coupleFromRemoteState(remote: RemoteCoupleState, fallback?: CoupleState | null): Promise<CoupleState> {
-  const currentMember = remote.members.find((member) => member.is_current_user);
-  const partnerMember = remote.members.find((member) => !member.is_current_user);
-  const now = new Date().toISOString();
-  const ownVotes = { ...(remote.own_votes ?? {}) } as Record<string, VoteLevel>;
-  const partnerVotes: Record<string, VoteLevel> = {};
-
-  (remote.matches ?? []).forEach((match) => {
-    if (typeof match.my_level === "number") {
-      ownVotes[match.card_id] = match.my_level;
-    }
-    if (typeof match.partner_level === "number") {
-      partnerVotes[match.card_id] = match.partner_level;
-    }
-  });
-
-  const chatMessages = await Promise.all((remote.chat_messages ?? []).map(async (message) => {
+async function chatMessagesFromRemote(remoteMessages: RemoteChatMessage[]): Promise<ChatMessage[]> {
+  return Promise.all((remoteMessages ?? []).map(async (message) => {
     const attachments = await Promise.all((message.attachments ?? []).map(async (attachment) => {
       let signedUrl = "";
 
@@ -1130,6 +1126,25 @@ async function coupleFromRemoteState(remote: RemoteCoupleState, fallback?: Coupl
       linkedCardId: message.linked_card_id ?? undefined,
     };
   }));
+}
+
+async function coupleFromRemoteState(remote: RemoteCoupleState, fallback?: CoupleState | null): Promise<CoupleState> {
+  const currentMember = remote.members.find((member) => member.is_current_user);
+  const partnerMember = remote.members.find((member) => !member.is_current_user);
+  const now = new Date().toISOString();
+  const ownVotes = { ...(remote.own_votes ?? {}) } as Record<string, VoteLevel>;
+  const partnerVotes: Record<string, VoteLevel> = {};
+
+  (remote.matches ?? []).forEach((match) => {
+    if (typeof match.my_level === "number") {
+      ownVotes[match.card_id] = match.my_level;
+    }
+    if (typeof match.partner_level === "number") {
+      partnerVotes[match.card_id] = match.partner_level;
+    }
+  });
+
+  const chatMessages = await chatMessagesFromRemote(remote.chat_messages ?? []);
 
   return {
     id: remote.couple.id,
@@ -1638,6 +1653,11 @@ function Root() {
   const fakeAdStats = useRef({ matchesSinceAd: 0, votesSinceAd: 0 });
   const soloServerRecoveryRunning = useRef(false);
   const coupleRef = useRef<CoupleState | null>(null);
+  const chatRefreshRef = useRef<ChatRefreshState>({
+    coupleId: null,
+    inFlight: null,
+    lastStartedAt: 0,
+  });
   const remoteRefreshRef = useRef<RemoteRefreshState>({
     coupleKey: null,
     inFlight: null,
@@ -1725,6 +1745,72 @@ function Root() {
         coupleKey,
         inFlight: refreshTask,
         lastCompletedAt: currentRefresh.lastCompletedAt,
+        lastStartedAt: now,
+      };
+
+      return refreshTask;
+    },
+    [session],
+  );
+
+  const refreshRemoteChatMessages = useCallback(
+    async (preferredCoupleId?: string | null, options: RemoteRefreshOptions = {}) => {
+      if (!session || !hasSupabaseConfig || !preferredCoupleId || !isRemoteCoupleId(preferredCoupleId)) {
+        return false;
+      }
+
+      const coupleId = preferredCoupleId;
+      const now = Date.now();
+      const currentRefresh = chatRefreshRef.current;
+
+      if (!options.force && currentRefresh.inFlight && currentRefresh.coupleId === coupleId) {
+        return currentRefresh.inFlight;
+      }
+
+      if (!options.force && currentRefresh.coupleId === coupleId && now - currentRefresh.lastStartedAt < CHAT_REFRESH_COOLDOWN_MS) {
+        return false;
+      }
+
+      let refreshTask: Promise<boolean> = Promise.resolve(false);
+      refreshTask = (async () => {
+        try {
+          const remoteMessages = await fetchRemoteChatMessages(coupleId);
+          const messages = await chatMessagesFromRemote(remoteMessages);
+
+          setCouple((current) => {
+            if (!current || current.id !== coupleId) {
+              return current;
+            }
+
+            const cleanCouple = purgeExpiredChat(current);
+
+            return {
+              ...cleanCouple,
+              chat: {
+                ...cleanCouple.chat,
+                messages,
+              },
+            };
+          });
+
+          return true;
+        } catch (error) {
+          console.warn("Silent chat refresh failed", error);
+          return false;
+        } finally {
+          if (chatRefreshRef.current.inFlight === refreshTask) {
+            chatRefreshRef.current = {
+              coupleId,
+              inFlight: null,
+              lastStartedAt: chatRefreshRef.current.lastStartedAt,
+            };
+          }
+        }
+      })();
+
+      chatRefreshRef.current = {
+        coupleId,
+        inFlight: refreshTask,
         lastStartedAt: now,
       };
 
@@ -1949,8 +2035,20 @@ function Root() {
       return undefined;
     }
 
+    let chatRefreshTimer: ReturnType<typeof setTimeout> | null = null;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
-    const unsubscribe = subscribeToCoupleRealtime(couple.id, () => {
+    const unsubscribe = subscribeToCoupleRealtime(couple.id, (table) => {
+      if (table === "chat_messages" || table === "chat_attachments") {
+        if (chatRefreshTimer) {
+          clearTimeout(chatRefreshTimer);
+        }
+
+        chatRefreshTimer = setTimeout(() => {
+          void refreshRemoteChatMessages(couple.id);
+        }, 120);
+        return;
+      }
+
       if (refreshTimer) {
         clearTimeout(refreshTimer);
       }
@@ -1961,12 +2059,15 @@ function Root() {
     });
 
     return () => {
+      if (chatRefreshTimer) {
+        clearTimeout(chatRefreshTimer);
+      }
       if (refreshTimer) {
         clearTimeout(refreshTimer);
       }
       unsubscribe();
     };
-  }, [couple?.id, refreshRemoteCoupleState, session?.user.id]);
+  }, [couple?.id, refreshRemoteChatMessages, refreshRemoteCoupleState, session?.user.id]);
 
   useEffect(() => {
     return () => {
@@ -2595,10 +2696,14 @@ function Root() {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [couple]);
 
-  const handleOpenChat = useCallback((cardId?: string) => {
-    setChatContextCardId(cardId);
-    setTab("chat");
-  }, []);
+  const handleOpenChat = useCallback(
+    (cardId?: string) => {
+      setChatContextCardId(cardId);
+      setTab("chat");
+      void refreshRemoteChatMessages(coupleRef.current?.id, { force: true });
+    },
+    [refreshRemoteChatMessages],
+  );
 
   const handleTabChange = useCallback(
     (nextTab: TabKey) => {
@@ -2607,8 +2712,12 @@ function Root() {
       if (nextTab === "couple") {
         void refreshRemoteCoupleState(coupleRef.current?.id);
       }
+
+      if (nextTab === "chat") {
+        void refreshRemoteChatMessages(coupleRef.current?.id, { force: true });
+      }
     },
-    [refreshRemoteCoupleState],
+    [refreshRemoteChatMessages, refreshRemoteCoupleState],
   );
 
   const handleSendChatMessage = useCallback(
@@ -2623,15 +2732,37 @@ function Root() {
       }
 
       if (session && hasSupabaseConfig && isRemoteCoupleId(couple.id)) {
+        const messageId = Crypto.randomUUID();
+        const cleanCouple = purgeExpiredChat(couple);
+        const optimisticMessage = createChatMessage({
+          attachments,
+          authorId: cleanCouple.activePartnerId,
+          body: trimmedBody || "Photo",
+          id: messageId,
+          linkedCardId: chatContextCardId,
+        });
+
+        setCouple({
+          ...cleanCouple,
+          chat: {
+            ...cleanCouple.chat,
+            messages: [
+              ...(cleanCouple.chat?.messages ?? []).filter((message) => message.id !== messageId),
+              optimisticMessage,
+            ],
+          },
+        });
+
         try {
-          const messageId = await sendRemoteChatMessage({
+          await sendRemoteChatMessage({
             attachments,
             body: trimmedBody,
             coupleId: couple.id,
             linkedCardId: chatContextCardId,
+            messageId,
           });
-          await sendRemoteNotificationEvent({ coupleId: couple.id, messageId, type: "chat_message" }).catch(() => undefined);
-          await refreshRemoteCoupleState(couple.id);
+          void sendRemoteNotificationEvent({ coupleId: couple.id, messageId, type: "chat_message" }).catch(() => undefined);
+          await refreshRemoteChatMessages(couple.id, { force: true });
           await Haptics.selectionAsync();
         } catch (error) {
           const message = errorMessage(error);
@@ -2649,22 +2780,6 @@ function Root() {
               }, 5000);
             })
             .catch(() => undefined);
-
-          const cleanCouple = purgeExpiredChat(couple);
-          const queuedMessage = createChatMessage({
-            attachments,
-            authorId: cleanCouple.activePartnerId,
-            body: trimmedBody || "Photo",
-            linkedCardId: chatContextCardId,
-          });
-
-          setCouple({
-            ...cleanCouple,
-            chat: {
-              ...cleanCouple.chat,
-              messages: [...(cleanCouple.chat?.messages ?? []), queuedMessage],
-            },
-          });
           setSyncError(`Message gardé en attente. Retry automatique dès que possible. (${message})`);
         }
         return;
@@ -2687,7 +2802,7 @@ function Root() {
       });
       await Haptics.selectionAsync();
     },
-    [chatContextCardId, couple, flushQueuedRemoteWork, refreshRemoteCoupleState, session],
+    [chatContextCardId, couple, flushQueuedRemoteWork, refreshRemoteChatMessages, session],
   );
 
   const handleReplayTutorial = useCallback(() => {
@@ -3352,6 +3467,7 @@ function MainShell({
   onVote: (cardId: string, level: VoteLevel) => boolean;
 }) {
   const syncNotice = userFacingSyncNotice(syncError);
+  const chatNotificationsEnabled = isNotificationPreferenceEnabled(couple, couple.activePartnerId, "chatMessageEnabled");
 
   return (
     <View style={styles.app}>
@@ -3467,7 +3583,12 @@ function MainShell({
           pointerEvents="none"
           style={styles.tabDockFade}
         />
-        <CandyTabs active={tab === "rules" || (!debugEnabled && tab === "debug") ? "envies" : tab} showDebug={debugEnabled} onChange={onTabChange} />
+        <CandyTabs
+          active={tab === "rules" || (!debugEnabled && tab === "debug") ? "envies" : tab}
+          chatNotificationsEnabled={chatNotificationsEnabled}
+          showDebug={debugEnabled}
+          onChange={onTabChange}
+        />
       </View>
     </View>
   );
@@ -3494,7 +3615,17 @@ function WeSpiceLogo({
   );
 }
 
-function CandyTabs({ active, onChange, showDebug }: { active: VisibleTabKey; onChange: (tab: TabKey) => void; showDebug: boolean }) {
+function CandyTabs({
+  active,
+  chatNotificationsEnabled,
+  onChange,
+  showDebug,
+}: {
+  active: VisibleTabKey;
+  chatNotificationsEnabled: boolean;
+  onChange: (tab: TabKey) => void;
+  showDebug: boolean;
+}) {
   const allItems: Array<{ key: VisibleTabKey; label: string; icon: React.ReactNode }> = [
     { key: "home", label: "Accueil", icon: <Home size={18} /> },
     { key: "envies", label: "Envies", icon: <Flame size={18} /> },
@@ -3512,7 +3643,24 @@ function CandyTabs({ active, onChange, showDebug }: { active: VisibleTabKey; onC
         const isActive = item.key === active;
         return (
           <SpringPressable key={item.key} onPress={() => onChange(item.key)} style={[styles.tab, isActive && styles.tabActive]}>
-            {React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: isActive ? candy.red : candy.text })}
+            <View style={styles.tabIconWrap}>
+              {React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: isActive ? candy.red : candy.text })}
+              {item.key === "chat" ? (
+                <View
+                  style={[
+                    styles.tabNotificationBadge,
+                    chatNotificationsEnabled && styles.tabNotificationBadgeOn,
+                    chatNotificationsEnabled && isActive && styles.tabNotificationBadgeActive,
+                  ]}
+                >
+                  {chatNotificationsEnabled ? (
+                    <Bell size={8} color={isActive ? candy.white : candy.red} />
+                  ) : (
+                    <BellOff size={8} color="rgba(35,18,36,0.55)" />
+                  )}
+                </View>
+              ) : null}
+            </View>
             <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.tabText, isActive && styles.tabTextActive]}>
               {item.label}
             </Text>
@@ -8753,6 +8901,33 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 1,
     shadowRadius: 12,
+  },
+  tabIconWrap: {
+    alignItems: "center",
+    height: 20,
+    justifyContent: "center",
+    width: 24,
+  },
+  tabNotificationBadge: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderColor: "rgba(35,18,36,0.18)",
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 14,
+    justifyContent: "center",
+    position: "absolute",
+    right: -4,
+    top: -3,
+    width: 14,
+  },
+  tabNotificationBadgeOn: {
+    backgroundColor: candy.white,
+    borderColor: candy.red,
+  },
+  tabNotificationBadgeActive: {
+    backgroundColor: candy.red,
+    borderColor: candy.white,
   },
   tabText: {
     color: candy.ink,

@@ -400,6 +400,20 @@ export async function fetchRemoteCoupleMembers(coupleId: string) {
   return (data ?? []) as RemoteCoupleMember[];
 }
 
+export async function fetchRemoteChatMessages(coupleId: string) {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("get_chat_messages", {
+    p_couple_id: coupleId,
+    p_limit: 80,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as RemoteChatMessage[];
+}
+
 async function uploadRemoteChatAttachment({
   attachment,
   coupleId,
@@ -449,14 +463,16 @@ export async function sendRemoteChatMessage({
   body,
   coupleId,
   linkedCardId,
+  messageId: requestedMessageId,
 }: {
   attachments: PendingRemoteAttachment[];
   body: string;
   coupleId: string;
   linkedCardId?: string;
+  messageId?: string;
 }) {
   const client = requireSupabase();
-  const messageId = Crypto.randomUUID();
+  const messageId = requestedMessageId ?? Crypto.randomUUID();
   const uploadedAttachments: Awaited<ReturnType<typeof uploadRemoteChatAttachment>>[] = [];
 
   try {
@@ -501,17 +517,15 @@ export async function createSignedChatAttachmentUrl(storagePath: string) {
   return data.signedUrl;
 }
 
-export function subscribeToCoupleRealtime(coupleId: string, onChange: () => void) {
+export function subscribeToCoupleRealtime(coupleId: string, onChange: (table: string) => void) {
   const client = requireSupabase();
   const channel = client.channel(`couple-state:${coupleId}`);
-  const notify = () => onChange();
   const coupleTables = [
     "chat_messages",
     "chat_attachments",
     "match_reveals",
     "notification_preferences",
     "couple_moods",
-    "notification_events",
     "purchase_entitlements",
     "couple_category_unlocks",
     "couple_feature_unlocks",
@@ -523,11 +537,11 @@ export function subscribeToCoupleRealtime(coupleId: string, onChange: () => void
     channel.on(
       "postgres_changes",
       { event: "*", schema: "public", table, filter: `couple_id=eq.${coupleId}` },
-      notify,
+      () => onChange(table),
     );
   });
 
-  channel.on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, notify);
+  channel.on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => onChange("profiles"));
 
   channel.subscribe();
 
