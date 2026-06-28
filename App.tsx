@@ -28,7 +28,7 @@ import {
   Users,
   X,
 } from "lucide-react-native";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -216,13 +216,24 @@ const REMOTE_REFRESH_COOLDOWN_MS = 1500;
 const SIGNED_CHAT_ATTACHMENT_URL_CACHE_MS = 5 * 60 * 60 * 1000;
 const PERSONAL_CATEGORY: DesireCategory = "Perso";
 const PACK_CATEGORIES: DesireCategory[] = DESIRE_CATEGORIES.filter((category) => category !== PERSONAL_CATEGORY);
+const COUPLE_PACK_CATEGORIES: DesireCategory[] = [...PACK_CATEGORIES, PERSONAL_CATEGORY];
+const PAID_PACK_CATEGORIES: DesireCategory[] = PACK_CATEGORIES.filter((category) => category !== "Vanille");
 const FREE_CATEGORIES: DesireCategory[] = ["Vanille", PERSONAL_CATEGORY];
+const PARTNER_IDS: PartnerId[] = ["me", "partner"];
 const CATEGORY_PRICES = Object.fromEntries(
-  PACK_CATEGORIES.filter((category) => category !== "Vanille").map((category) => [category, "4,99 €"]),
+  PAID_PACK_CATEGORIES.map((category) => [category, "4,99 €"]),
 ) as Partial<Record<DesireCategory, string>>;
 const desirePackByCategory = new Map(DESIRE_PACKS.map((pack) => [pack.category as DesireCategory, pack]));
+const desireCardCountsByCategory = desireCards.reduce((counts, card) => {
+  counts.set(card.category, (counts.get(card.category) ?? 0) + 1);
+  return counts;
+}, new Map<DesireCategory, number>());
 const useNativeAnimations = Platform.OS !== "web";
 const localModeEnabled = process.env.NODE_ENV !== "production" || process.env.EXPO_PUBLIC_ENABLE_LOCAL_MODE === "true";
+
+function desireCardCount(category: DesireCategory) {
+  return desireCardCountsByCategory.get(category) ?? 0;
+}
 
 function errorMessage(error: unknown, fallback = "erreur inconnue") {
   if (error instanceof Error && error.message) {
@@ -1128,6 +1139,45 @@ async function chatMessagesFromRemote(remoteMessages: RemoteChatMessage[]): Prom
   }));
 }
 
+function areChatAttachmentsEqual(left: ChatAttachment[], right: ChatAttachment[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((attachment, index) => {
+    const other = right[index];
+
+    return Boolean(other)
+      && attachment.id === other.id
+      && attachment.storagePath === other.storagePath
+      && attachment.uri === other.uri
+      && attachment.name === other.name
+      && attachment.mimeType === other.mimeType
+      && attachment.width === other.width
+      && attachment.height === other.height
+      && attachment.sizeBytes === other.sizeBytes;
+  });
+}
+
+function areChatMessagesEqual(left: ChatMessage[], right: ChatMessage[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((message, index) => {
+    const other = right[index];
+
+    return Boolean(other)
+      && message.id === other.id
+      && message.authorId === other.authorId
+      && message.body === other.body
+      && message.createdAt === other.createdAt
+      && message.expiresAt === other.expiresAt
+      && message.linkedCardId === other.linkedCardId
+      && areChatAttachmentsEqual(message.attachments, other.attachments);
+  });
+}
+
 async function coupleFromRemoteState(remote: RemoteCoupleState, fallback?: CoupleState | null): Promise<CoupleState> {
   const currentMember = remote.members.find((member) => member.is_current_user);
   const partnerMember = remote.members.find((member) => !member.is_current_user);
@@ -1783,6 +1833,11 @@ function Root() {
             }
 
             const cleanCouple = purgeExpiredChat(current);
+            const currentMessages = cleanCouple.chat?.messages ?? [];
+
+            if (areChatMessagesEqual(currentMessages, messages)) {
+              return cleanCouple;
+            }
 
             return {
               ...cleanCouple,
@@ -3708,15 +3763,19 @@ function EnviesScreen({
   const gameTransitionTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const ownVotes = couple.votes[couple.activePartnerId] ?? {};
   const [answeredInSession, setAnsweredInSession] = useState<Record<string, boolean>>({});
-  const categoryCards = allDesireCards(couple).filter((card) => card.category === category);
-  const unansweredCards = categoryCards.filter((card) => ownVotes[card.id] === undefined);
-  const filterCounts: Record<DesireFilterKey, number> = {
+  const allCards = useMemo(() => allDesireCards(couple), [couple]);
+  const categoryCards = useMemo(() => allCards.filter((card) => card.category === category), [allCards, category]);
+  const unansweredCards = useMemo(
+    () => categoryCards.filter((card) => ownVotes[card.id] === undefined),
+    [categoryCards, ownVotes],
+  );
+  const filterCounts = useMemo<Record<DesireFilterKey, number>>(() => ({
     todo: unansweredCards.length,
     flame: categoryCards.filter((card) => isFlameVote(ownVotes[card.id])).length,
     curious: categoryCards.filter((card) => ownVotes[card.id] === 1).length,
     matches: categoryCards.filter((card) => isCardMatch(couple, card.id)).length,
-  };
-  const buildLibraryCardIds = (nextCategory = category, nextFilter = filter) => allDesireCards(couple).filter((card) => {
+  }), [categoryCards, couple, ownVotes, unansweredCards.length]);
+  const buildLibraryCardIds = useCallback((nextCategory: DesireCategory, nextFilter: DesireFilterKey) => allCards.filter((card) => {
     if (card.category !== nextCategory) {
       return false;
     }
@@ -3734,18 +3793,21 @@ function EnviesScreen({
     }
 
     return isCardMatch(couple, card.id);
-  }).map((card) => card.id);
-  const libraryCardLookup = new Map(categoryCards.map((card) => [card.id, card]));
-  const libraryCards = libraryCardIds
-    .map((cardId) => libraryCardLookup.get(cardId))
-    .filter((card): card is DesireCard => Boolean(card));
-  const gameCards = categoryCards.filter((card) => {
+  }).map((card) => card.id), [allCards, couple, ownVotes]);
+  const libraryCardLookup = useMemo(() => new Map(categoryCards.map((card) => [card.id, card])), [categoryCards]);
+  const libraryCards = useMemo(
+    () => libraryCardIds
+      .map((cardId) => libraryCardLookup.get(cardId))
+      .filter((card): card is DesireCard => Boolean(card)),
+    [libraryCardIds, libraryCardLookup],
+  );
+  const gameCards = useMemo(() => categoryCards.filter((card) => {
     if (answeredInSession[card.id]) {
       return false;
     }
 
     return ownVotes[card.id] === undefined || card.id === gameTransitionCardId;
-  });
+  }), [answeredInSession, categoryCards, gameTransitionCardId, ownVotes]);
   const activeGameCard = gameCards[0];
   const customCount = customDesireCount(couple);
   const customUnlimited = hasCustomCardsUnlimited(couple);
@@ -3755,9 +3817,9 @@ function EnviesScreen({
   const dailyLeft = dailyResponsesLeft(couple, couple.activePartnerId);
   const dailyQuotaLabel = unlimitedResponses ? "Réponses illimitées" : `${dailyLeft}/${DAILY_FREE_RESPONSE_LIMIT} choix restants`;
   const openCustomDesire = () => (canCreateCustom ? setEditorOpen(true) : setStoreOpen(true));
-  const refreshLibrarySnapshot = (nextCategory = category, nextFilter = filter) => {
+  const refreshLibrarySnapshot = useCallback((nextCategory = category, nextFilter = filter) => {
     setLibraryCardIds(buildLibraryCardIds(nextCategory, nextFilter));
-  };
+  }, [buildLibraryCardIds, category, filter]);
   const openLibrary = () => {
     refreshLibrarySnapshot();
     setLibraryOpen(true);
@@ -3829,7 +3891,7 @@ function EnviesScreen({
         refreshLibrarySnapshot(focusCategory, filter);
       }
     }
-  }, [focusCategory]);
+  }, [filter, focusCategory, libraryOpen, refreshLibrarySnapshot]);
 
   useEffect(() => {
     clearGameTransitionTimers();
@@ -3842,7 +3904,7 @@ function EnviesScreen({
     if (libraryOpen) {
       refreshLibrarySnapshot(category, filter);
     }
-  }, [category, filter, couple.activePartnerId, libraryOpen]);
+  }, [category, couple.activePartnerId, filter, libraryOpen, refreshLibrarySnapshot]);
 
   useEffect(() => () => clearGameTransitionTimers(), []);
 
@@ -4908,17 +4970,21 @@ function MatchScreen({
   onBeforeRevealMatch: (cardId: string) => Promise<boolean>;
   onRevealMatch: (cardId: string) => void;
 }) {
-  const matches = matchedCards(couple);
-  const hiddenMatches = matches.filter((card) => !revealedMatchIds.includes(card.id));
-  const revealedMatches = matches.filter((card) => revealedMatchIds.includes(card.id));
+  const revealedMatchSet = useMemo(() => new Set(revealedMatchIds), [revealedMatchIds]);
+  const matches = useMemo(() => matchedCards(couple), [couple]);
+  const hiddenMatches = useMemo(() => matches.filter((card) => !revealedMatchSet.has(card.id)), [matches, revealedMatchSet]);
+  const revealedMatches = useMemo(() => matches.filter((card) => revealedMatchSet.has(card.id)), [matches, revealedMatchSet]);
   const newestMatch = hiddenMatches[0] ?? revealedMatches[0] ?? matches[0];
   const [revealingMatchId, setRevealingMatchId] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<DesireCard | null>(null);
   const revealAnim = useRef(new Animated.Value(0)).current;
-  const hotVotes = allDesireCards(couple).filter((card) => isFlameVote(couple.votes[couple.activePartnerId][card.id])).length;
+  const hotVotes = useMemo(
+    () => allDesireCards(couple).filter((card) => isFlameVote(couple.votes[couple.activePartnerId][card.id])).length,
+    [couple],
+  );
   const pulse = useLoop(1700);
   const heat = Math.min(1, Math.max(matches.length / 4, hotVotes / 8, 0.15));
-  const isNewestRevealed = !newestMatch || revealedMatchIds.includes(newestMatch.id);
+  const isNewestRevealed = !newestMatch || revealedMatchSet.has(newestMatch.id);
   const isNewestOpening = Boolean(newestMatch && revealingMatchId === newestMatch.id);
   const hasHiddenReveal = Boolean(newestMatch && !isNewestRevealed);
   const listedMatches = hasHiddenReveal ? revealedMatches : matches;
@@ -5334,18 +5400,26 @@ function ChatScreen({
   const activeId = couple.activePartnerId;
   const partnerId = otherPartnerId(activeId);
   const partnerName = couple.profiles[partnerId].displayName;
-  const contextCard = contextCardId ? allDesireCards(couple).find((card) => card.id === contextCardId) : undefined;
-  const messages = (couple.chat?.messages ?? [])
-    .filter((message) => new Date(message.expiresAt) > new Date())
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const contextCard = useMemo(
+    () => (contextCardId ? allDesireCards(couple).find((card) => card.id === contextCardId) : undefined),
+    [contextCardId, couple],
+  );
+  const messages = useMemo(() => {
+    const now = Date.now();
+
+    return (couple.chat?.messages ?? [])
+      .filter((message) => new Date(message.expiresAt).getTime() > now)
+      .slice()
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }, [couple.chat?.messages]);
   const hasMessages = messages.length > 0;
   const hasMessageContent = draft.trim().length > 0 || pendingAttachments.length > 0;
   const messageCountLabel = messages.length ? `${messages.length} message${messages.length > 1 ? "s" : ""} ce soir` : "Aucun message";
-  const quickPrompts = chatSuggestionPrompts({
+  const quickPrompts = useMemo(() => chatSuggestionPrompts({
     contextCard,
     hasMessages,
     partnerName,
-  });
+  }), [contextCard, hasMessages, partnerName]);
 
   async function pickPhoto() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -5599,7 +5673,7 @@ function chatSuggestionPrompts({
   ];
 }
 
-function ChatLiveSignal() {
+const ChatLiveSignal = React.memo(function ChatLiveSignal() {
   return (
     <View style={styles.chatLiveSignal}>
       <Text style={styles.chatLiveText}>Chat ouvert</Text>
@@ -5610,9 +5684,9 @@ function ChatLiveSignal() {
       </View>
     </View>
   );
-}
+});
 
-function ChatBubble({ message, mine, name }: { message: ChatMessage; mine: boolean; name: string }) {
+const ChatBubble = React.memo(function ChatBubble({ message, mine, name }: { message: ChatMessage; mine: boolean; name: string }) {
   const sentAt = new Date(message.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
   return (
@@ -5631,7 +5705,7 @@ function ChatBubble({ message, mine, name }: { message: ChatMessage; mine: boole
       </View>
     </View>
   );
-}
+});
 
 function RulesScreen({ onBack }: { onBack: () => void }) {
   const steps = [
@@ -5917,19 +5991,27 @@ function HomeNextStepPanel({
   onOpenStore: () => void;
   revealedMatchIds: string[];
 }) {
-  const matches = matchedCards(couple);
+  const revealedMatchSet = useMemo(() => new Set(revealedMatchIds), [revealedMatchIds]);
+  const matches = useMemo(() => matchedCards(couple), [couple]);
   const activeVotes = couple.votes[couple.activePartnerId] ?? {};
-  const unansweredCount = availableDesireCards(couple).filter((card) => activeVotes[card.id] === undefined).length;
-  const lockedPackCount = PACK_CATEGORIES.filter((category) => !isCategoryUnlocked(couple, category)).length;
-  const hasStoreOffer = lockedPackCount > 0 || !hasCustomCardsUnlimited(couple) || !hasUnlimitedResponses(couple) || !hasNoAds(couple);
+  const availableCards = useMemo(() => availableDesireCards(couple), [couple]);
+  const unansweredCount = useMemo(
+    () => availableCards.filter((card) => activeVotes[card.id] === undefined).length,
+    [activeVotes, availableCards],
+  );
+  const lockedPackCount = useMemo(() => PACK_CATEGORIES.filter((category) => !isCategoryUnlocked(couple, category)).length, [couple]);
+  const customUnlimited = hasCustomCardsUnlimited(couple);
+  const unlimitedResponses = hasUnlimitedResponses(couple);
+  const noAds = hasNoAds(couple);
+  const hasStoreOffer = lockedPackCount > 0 || !customUnlimited || !unlimitedResponses || !noAds;
   const linked = hasLinkedPartner(couple);
-  const hiddenMatches = matches.filter((card) => !revealedMatchIds.includes(card.id));
-  const revealedMatches = matches.filter((card) => revealedMatchIds.includes(card.id));
+  const hiddenMatches = useMemo(() => matches.filter((card) => !revealedMatchSet.has(card.id)), [matches, revealedMatchSet]);
+  const revealedMatches = useMemo(() => matches.filter((card) => revealedMatchSet.has(card.id)), [matches, revealedMatchSet]);
   const firstHiddenMatch = hiddenMatches[0];
   const firstRevealedMatch = revealedMatches[0];
-  const dailyLimitReached = !hasUnlimitedResponses(couple) && dailyResponsesLeft(couple, couple.activePartnerId) <= 0;
-  const hasFewAnswers = activeResponseCount(couple) < 5;
-  const responseCount = activeResponseCount(couple);
+  const dailyLimitReached = !unlimitedResponses && dailyResponsesLeft(couple, couple.activePartnerId) <= 0;
+  const responseCount = useMemo(() => activeResponseCount(couple), [couple]);
+  const hasFewAnswers = responseCount < 5;
   const stateSummary = !linked
     ? "En solo pour l'instant"
     : firstHiddenMatch
@@ -6090,7 +6172,7 @@ function HomeStoreModule({
   onGoEnvies: () => void;
   onOpenStore: () => void;
 }) {
-  const paidPacks = PACK_CATEGORIES.filter((category) => category !== "Vanille");
+  const paidPacks = PAID_PACK_CATEGORIES;
   const lockedPacks = paidPacks.filter((category) => !isCategoryUnlocked(couple, category));
   const unlockedCount = paidPacks.length - lockedPacks.length;
   const customUnlimited = hasCustomCardsUnlimited(couple);
@@ -6119,7 +6201,7 @@ function HomeStoreModule({
         {previewPacks.map((category) => {
           const tone = categoryCardTone(category);
           const unlocked = isCategoryUnlocked(couple, category);
-          const cardCount = desireCards.filter((card) => card.category === category).length;
+          const cardCount = desireCardCount(category);
 
           return (
             <SpringPressable
@@ -6183,7 +6265,7 @@ function StoreScreen({
     return null;
   }
 
-  const paidPacks = PACK_CATEGORIES.filter((category) => category !== "Vanille");
+  const paidPacks = PAID_PACK_CATEGORIES;
   const unlockedPaidCount = paidPacks.filter((category) => isCategoryUnlocked(couple, category)).length;
   const customUnlimited = hasCustomCardsUnlimited(couple);
   const noAdsUnlocked = hasNoAds(couple);
@@ -6284,7 +6366,7 @@ function StoreCategoryOffer({
 }) {
   const tone = categoryCardTone(category);
   const unlocked = included || isCategoryUnlocked(couple, category);
-  const cardCount = desireCards.filter((card) => card.category === category).length;
+  const cardCount = desireCardCount(category);
   const price = included ? "Inclus" : CATEGORY_PRICES[category];
   const description = categoryDescription(category);
 
@@ -6456,8 +6538,11 @@ function HomeSurpriseDeck({
   onVote: (cardId: string, level: VoteLevel) => boolean;
 }) {
   const activeId = couple.activePartnerId;
-  const unansweredCards = availableDesireCards(couple).filter((card) => couple.votes[activeId][card.id] === undefined);
-  const unansweredKey = unansweredCards.map((card) => card.id).join("|");
+  const unansweredCards = useMemo(
+    () => availableDesireCards(couple).filter((card) => couple.votes[activeId][card.id] === undefined),
+    [activeId, couple],
+  );
+  const unansweredKey = useMemo(() => unansweredCards.map((card) => card.id).join("|"), [unansweredCards]);
   const [deck, setDeck] = useState<DesireCard[]>(() => shuffledCards(unansweredCards));
   const [transitioningCardId, setTransitioningCardId] = useState<string | null>(null);
   const [exitingCardId, setExitingCardId] = useState<string | null>(null);
@@ -6578,20 +6663,26 @@ function CoupleScreen({
   onJoinPartner: () => void;
 }) {
   const { height: viewportHeight } = useWindowDimensions();
-  const matches = matchedCards(couple);
+  const revealedMatchSet = useMemo(() => new Set(revealedMatchIds), [revealedMatchIds]);
+  const matches = useMemo(() => matchedCards(couple), [couple]);
   const linked = hasLinkedPartner(couple);
   const activeProfile = couple.profiles[couple.activePartnerId];
   const profileNames = [couple.profiles.me.displayName, couple.profiles.partner.displayName];
   const hasPlaceholderName = profileNames.some((name) => name.toLowerCase().includes("partenaire"));
   const coupleTitle = hasPlaceholderName ? "Notre couple" : `${profileNames[0]} + ${profileNames[1]}`;
   const customCount = couple.customDesires?.length ?? 0;
-  const crossedResponseCount = availableDesireCards(couple).filter(
-    (card) => couple.votes.me[card.id] !== undefined && couple.votes.partner[card.id] !== undefined,
-  ).length;
-  const revealedMatches = matches.filter((card) => revealedMatchIds.includes(card.id));
-  const recentMatches = revealedMatches.slice(0, 3);
-  const packCategories = [...PACK_CATEGORIES, PERSONAL_CATEGORY];
-  const activeProfiles: PartnerId[] = ["me", "partner"];
+  const crossedResponseCount = useMemo(
+    () => availableDesireCards(couple).filter(
+      (card) => couple.votes.me[card.id] !== undefined && couple.votes.partner[card.id] !== undefined,
+    ).length,
+    [couple],
+  );
+  const revealedMatches = useMemo(
+    () => matches.filter((card) => revealedMatchSet.has(card.id)),
+    [matches, revealedMatchSet],
+  );
+  const recentMatches = useMemo(() => revealedMatches.slice(0, 3), [revealedMatches]);
+  const activeProfiles = PARTNER_IDS;
   const soloPanelMinHeight = Math.max(520, viewportHeight - 128);
 
   if (!linked) {
@@ -6712,9 +6803,9 @@ function CoupleScreen({
           </View>
         </View>
         <View style={styles.couplePackCompactGrid}>
-          {packCategories.map((category) => {
+          {COUPLE_PACK_CATEGORIES.map((category) => {
             const unlocked = isCategoryUnlocked(couple, category);
-            const count = category === PERSONAL_CATEGORY ? customCount : desireCards.filter((card) => card.category === category).length;
+            const count = category === PERSONAL_CATEGORY ? customCount : desireCardCount(category);
 
             return (
               <CouplePackMini category={category} count={count} key={category} unlocked={unlocked} />
@@ -6841,7 +6932,7 @@ function CategoryPurchaseModal({
 
   const tone = categoryCardTone(category);
   const price = CATEGORY_PRICES[category] ?? "Inclus";
-  const cardCount = desireCards.filter((card) => card.category === category).length;
+  const cardCount = desireCardCount(category);
 
   return (
     <Modal animationType="fade" transparent visible onRequestClose={onClose}>
@@ -7103,9 +7194,9 @@ function PurchaseSuccessScreen({ purchase, onDiscover }: { purchase: PurchaseSuc
     ? "Les écrans sponsorisés sont retirés. Vous gardez les révélations et les cartes sans pause pub."
     : isUnlimitedResponses
       ? "La limite quotidienne est retirée. Vous pouvez répondre à autant de cartes que vous voulez."
-      : isCustom
-        ? "Vous pouvez créer autant de cartes perso que vous voulez. Elles restent privées jusqu'au match."
-        : `${desireCards.filter((card) => card.category === category).length} nouvelles cartes à explorer. Les réponses restent privées jusqu'au match.`;
+    : isCustom
+      ? "Vous pouvez créer autant de cartes perso que vous voulez. Elles restent privées jusqu'au match."
+      : `${desireCardCount(category)} nouvelles cartes à explorer. Les réponses restent privées jusqu'au match.`;
   const successText = isNoAds
     ? "WeSpice est maintenant plus fluide pour votre couple."
     : isUnlimitedResponses

@@ -3,7 +3,7 @@
     "name": "WeSpice",
     "slug": "wespice",
     "scheme": "wespice",
-    "version": "1.0.13",
+    "version": "1.0.14",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
