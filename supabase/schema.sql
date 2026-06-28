@@ -856,23 +856,23 @@ begin
     raise exception 'not_authenticated';
   end if;
 
-  select * into v_couple
-  from public.couples
-  where invite_code = upper(trim(p_invite_code));
+  select couples.* into v_couple
+  from public.couples as couples
+  where couples.invite_code = upper(trim(p_invite_code));
 
   if v_couple.id is null then
     raise exception 'invalid_invite_code';
   end if;
 
   select count(*) into v_member_count
-  from public.couple_members
-  where couple_id = v_couple.id;
+  from public.couple_members as members
+  where members.couple_id = v_couple.id;
 
   select exists (
     select 1
-    from public.couple_members
-    where couple_id = v_couple.id
-      and user_id = v_user_id
+    from public.couple_members as members
+    where members.couple_id = v_couple.id
+      and members.user_id = v_user_id
   ) into v_already_member;
 
   if v_member_count >= 2 and not v_already_member then

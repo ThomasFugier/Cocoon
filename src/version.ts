@@ -1,5 +1,5 @@
 export const PROJECT_VERSION = {
   name: "WeSpice",
-  version: "1.0.3",
-  label: "v1.0.3",
+  version: "1.0.4",
+  label: "v1.0.4",
 } as const;
