@@ -74,6 +74,7 @@ test("RLS guardrails: sensitive tables have RLS and client cannot insert paid un
     "chat_messages",
     "chat_attachments",
     "push_tokens",
+    "app_rate_limits",
     "notification_preferences",
     "couple_moods",
     "notification_events",

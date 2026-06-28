@@ -1,5 +1,6 @@
 import * as Crypto from "expo-crypto";
 import * as ImageManipulator from "expo-image-manipulator";
+import type { Action } from "expo-image-manipulator";
 
 import {
   ChatAttachment,
@@ -128,12 +129,33 @@ type PendingRemoteAttachment = ChatAttachment & {
   mimeType?: string;
 };
 
+const CHAT_ATTACHMENT_JPEG_QUALITY = 0.72;
+const CHAT_ATTACHMENT_MAX_EDGE = 1600;
+
 function requireSupabase() {
   if (!supabase) {
     throw new Error("Supabase n'est pas configuré.");
   }
 
   return supabase;
+}
+
+function resizeActionsForAttachment(attachment: PendingRemoteAttachment): Action[] {
+  const width = attachment.width ?? 0;
+  const height = attachment.height ?? 0;
+  const longestEdge = Math.max(width, height);
+
+  if (!width || !height || longestEdge <= CHAT_ATTACHMENT_MAX_EDGE) {
+    return [];
+  }
+
+  return [
+    {
+      resize: width >= height
+        ? { width: CHAT_ATTACHMENT_MAX_EDGE }
+        : { height: CHAT_ATTACHMENT_MAX_EDGE },
+    },
+  ];
 }
 
 export async function createRemoteCouple(profile: Omit<PartnerProfile, "id">) {
@@ -390,9 +412,9 @@ async function uploadRemoteChatAttachment({
   const client = requireSupabase();
   const compressed = await ImageManipulator.manipulateAsync(
     attachment.uri,
-    [],
+    resizeActionsForAttachment(attachment),
     {
-      compress: 0.76,
+      compress: CHAT_ATTACHMENT_JPEG_QUALITY,
       format: ImageManipulator.SaveFormat.JPEG,
     },
   );

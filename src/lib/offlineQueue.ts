@@ -5,6 +5,8 @@ import { saveRemoteVote, sendRemoteChatMessage, sendRemoteNotificationEvent } fr
 
 const OFFLINE_QUEUE_KEY = "wespice-offline-queue-v1";
 const MAX_ATTEMPTS = 8;
+const RETRY_BASE_DELAY_MS = 5000;
+const RETRY_MAX_DELAY_MS = 5 * 60 * 1000;
 
 export type OfflineQueueItem =
   | {
@@ -72,6 +74,25 @@ async function enqueueItem(item: OfflineQueueItem) {
   await writeQueue([...queue.filter((queued) => queued.id !== item.id), item]);
 
   return item.id;
+}
+
+function retryDelayForAttempts(attempts: number) {
+  const exponent = Math.max(0, attempts - 1);
+  return Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** exponent);
+}
+
+function isRetryDue(item: OfflineQueueItem, now: number) {
+  if (!item.lastAttemptAt) {
+    return true;
+  }
+
+  const lastAttemptAt = Date.parse(item.lastAttemptAt);
+
+  if (Number.isNaN(lastAttemptAt)) {
+    return true;
+  }
+
+  return now - lastAttemptAt >= retryDelayForAttempts(item.attempts);
 }
 
 export async function enqueueRemoteVote({
@@ -158,10 +179,16 @@ function shouldDropFailedItem(item: OfflineQueueItem, error: unknown) {
 export async function flushRemoteQueue(): Promise<FlushQueueResult> {
   const queue = await readQueue();
   const remaining: OfflineQueueItem[] = [];
+  const now = Date.now();
   let sent = 0;
   let failed = 0;
 
   for (const item of queue) {
+    if (!isRetryDue(item, now)) {
+      remaining.push(item);
+      continue;
+    }
+
     try {
       await flushItem(item);
       sent += 1;

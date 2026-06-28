@@ -32,6 +32,9 @@ create table if not exists public.couple_members (
   primary key (couple_id, user_id)
 );
 
+create index if not exists couple_members_user_joined_idx
+on public.couple_members (user_id, joined_at desc);
+
 create table if not exists public.desire_cards (
   id text primary key,
   title text not null,
@@ -133,6 +136,9 @@ create table if not exists public.desire_votes (
   primary key (couple_id, user_id, card_id)
 );
 
+create index if not exists desire_votes_couple_card_idx
+on public.desire_votes (couple_id, card_id);
+
 alter table public.desire_votes
 drop constraint if exists desire_votes_card_id_fkey;
 
@@ -187,6 +193,18 @@ create table if not exists public.push_tokens (
 
 create index if not exists push_tokens_user_idx
 on public.push_tokens (user_id, enabled, last_seen_at desc);
+
+create table if not exists public.app_rate_limits (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  action text not null check (char_length(action) between 1 and 80),
+  window_start timestamptz not null,
+  count int not null default 0 check (count >= 0),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, action, window_start)
+);
+
+create index if not exists app_rate_limits_updated_idx
+on public.app_rate_limits (updated_at);
 
 create table if not exists public.notification_preferences (
   couple_id uuid not null references public.couples (id) on delete cascade,
@@ -286,7 +304,7 @@ values (
   'chat-attachments',
   'chat-attachments',
   false,
-  10485760,
+  5242880,
   array['image/jpeg', 'image/png', 'image/webp']
 )
 on conflict (id) do update
@@ -345,6 +363,7 @@ alter table public.desire_votes enable row level security;
 alter table public.chat_messages enable row level security;
 alter table public.chat_attachments enable row level security;
 alter table public.push_tokens enable row level security;
+alter table public.app_rate_limits enable row level security;
 alter table public.notification_preferences enable row level security;
 alter table public.couple_moods enable row level security;
 alter table public.notification_events enable row level security;
@@ -522,6 +541,121 @@ exception when others then
 end;
 $$;
 
+create or replace function public.check_rate_limit(
+  p_action text,
+  p_limit int,
+  p_window_seconds int
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_now timestamptz := clock_timestamp();
+  v_window_start timestamptz;
+  v_count int;
+begin
+  if v_user_id is null then
+    raise exception 'not_authenticated';
+  end if;
+
+  if nullif(trim(p_action), '') is null or char_length(p_action) > 80 then
+    raise exception 'invalid_rate_limit_action';
+  end if;
+
+  if p_limit < 1 or p_window_seconds < 1 then
+    raise exception 'invalid_rate_limit_window';
+  end if;
+
+  v_window_start := to_timestamp(floor(extract(epoch from v_now) / p_window_seconds) * p_window_seconds);
+
+  insert into public.app_rate_limits (user_id, action, window_start, count, updated_at)
+  values (v_user_id, trim(p_action), v_window_start, 1, v_now)
+  on conflict (user_id, action, window_start) do update
+  set count = public.app_rate_limits.count + 1,
+      updated_at = excluded.updated_at
+  returning count into v_count;
+
+  if random() < 0.01 then
+    delete from public.app_rate_limits
+    where updated_at < v_now - interval '2 days';
+  end if;
+
+  if v_count > p_limit then
+    raise exception 'rate_limited' using detail = trim(p_action);
+  end if;
+end;
+$$;
+
+create or replace function public.apply_write_rate_limit()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_action text;
+  v_limit int;
+  v_window_seconds int;
+begin
+  if auth.uid() is null then
+    return new;
+  end if;
+
+  if TG_TABLE_NAME = 'couples' then
+    v_action := 'create_couple';
+    v_limit := 6;
+    v_window_seconds := 3600;
+  elsif TG_TABLE_NAME = 'desire_votes' then
+    v_action := 'save_desire_vote';
+    v_limit := 120;
+    v_window_seconds := 60;
+  elsif TG_TABLE_NAME = 'chat_messages' then
+    v_action := 'send_chat_message';
+    v_limit := 30;
+    v_window_seconds := 60;
+  elsif TG_TABLE_NAME = 'chat_attachments' then
+    v_action := 'send_chat_attachment';
+    v_limit := 120;
+    v_window_seconds := 60;
+  elsif TG_TABLE_NAME = 'custom_desire_cards' then
+    v_action := 'create_custom_desire';
+    v_limit := 20;
+    v_window_seconds := 3600;
+  elsif TG_TABLE_NAME = 'couple_moods' then
+    v_action := 'update_couple_mood';
+    v_limit := 30;
+    v_window_seconds := 60;
+  elsif TG_TABLE_NAME = 'notification_preferences' then
+    v_action := 'notification_preferences';
+    v_limit := 40;
+    v_window_seconds := 3600;
+  elsif TG_TABLE_NAME = 'push_tokens' then
+    v_action := 'register_push_token';
+    v_limit := 20;
+    v_window_seconds := 3600;
+  elsif TG_TABLE_NAME = 'match_reveals' then
+    v_action := 'mark_match_revealed';
+    v_limit := 200;
+    v_window_seconds := 60;
+  elsif TG_TABLE_NAME = 'profiles' then
+    if TG_OP = 'UPDATE' and old.status_emoji is distinct from new.status_emoji then
+      v_action := 'profile_status';
+      v_limit := 30;
+      v_window_seconds := 60;
+    end if;
+  end if;
+
+  if v_action is not null then
+    perform public.check_rate_limit(v_action, v_limit, v_window_seconds);
+  end if;
+
+  return new;
+end;
+$$;
+
 create or replace function public.ensure_match_reveal(p_couple_id uuid, p_card_id text)
 returns void
 language plpgsql
@@ -560,6 +694,56 @@ drop trigger if exists desire_votes_create_match_reveal on public.desire_votes;
 create trigger desire_votes_create_match_reveal
 after insert or update on public.desire_votes
 for each row execute function public.desire_vote_after_write();
+
+drop trigger if exists app_rate_limit_couples on public.couples;
+create trigger app_rate_limit_couples
+before insert on public.couples
+for each row execute function public.apply_write_rate_limit();
+
+drop trigger if exists app_rate_limit_desire_votes on public.desire_votes;
+create trigger app_rate_limit_desire_votes
+before insert or update on public.desire_votes
+for each row execute function public.apply_write_rate_limit();
+
+drop trigger if exists app_rate_limit_chat_messages on public.chat_messages;
+create trigger app_rate_limit_chat_messages
+before insert on public.chat_messages
+for each row execute function public.apply_write_rate_limit();
+
+drop trigger if exists app_rate_limit_chat_attachments on public.chat_attachments;
+create trigger app_rate_limit_chat_attachments
+before insert on public.chat_attachments
+for each row execute function public.apply_write_rate_limit();
+
+drop trigger if exists app_rate_limit_custom_desire_cards on public.custom_desire_cards;
+create trigger app_rate_limit_custom_desire_cards
+before insert on public.custom_desire_cards
+for each row execute function public.apply_write_rate_limit();
+
+drop trigger if exists app_rate_limit_couple_moods on public.couple_moods;
+create trigger app_rate_limit_couple_moods
+before insert or update on public.couple_moods
+for each row execute function public.apply_write_rate_limit();
+
+drop trigger if exists app_rate_limit_notification_preferences on public.notification_preferences;
+create trigger app_rate_limit_notification_preferences
+before insert or update on public.notification_preferences
+for each row execute function public.apply_write_rate_limit();
+
+drop trigger if exists app_rate_limit_push_tokens on public.push_tokens;
+create trigger app_rate_limit_push_tokens
+before insert or update on public.push_tokens
+for each row execute function public.apply_write_rate_limit();
+
+drop trigger if exists app_rate_limit_match_reveals on public.match_reveals;
+create trigger app_rate_limit_match_reveals
+before insert or update on public.match_reveals
+for each row execute function public.apply_write_rate_limit();
+
+drop trigger if exists app_rate_limit_profiles on public.profiles;
+create trigger app_rate_limit_profiles
+before update on public.profiles
+for each row execute function public.apply_write_rate_limit();
 
 drop policy if exists "profiles_read_couple" on public.profiles;
 create policy "profiles_read_couple"
@@ -855,6 +1039,8 @@ begin
   if v_user_id is null then
     raise exception 'not_authenticated';
   end if;
+
+  perform public.check_rate_limit('join_couple', 10, 3600);
 
   select couples.* into v_couple
   from public.couples as couples
@@ -1165,6 +1351,8 @@ begin
     return null;
   end if;
 
+  perform public.check_rate_limit('get_my_couple_state', 120, 60);
+
   return jsonb_build_object(
     'couple', (
       select to_jsonb(c)
@@ -1330,9 +1518,14 @@ begin
         )
         order by messages.created_at asc
       )
-      from public.chat_messages messages
-      where messages.couple_id = v_couple_id
-        and messages.expires_at > now()
+      from (
+        select messages.*
+        from public.chat_messages messages
+        where messages.couple_id = v_couple_id
+          and messages.expires_at > now()
+        order by messages.created_at desc
+        limit 80
+      ) messages
     ), '[]'::jsonb)
   );
 end;
@@ -1954,6 +2147,8 @@ revoke execute on function public.create_custom_desire(uuid, text, text, text, t
 revoke execute on function public.unlock_category_for_couple(uuid, text, text) from public;
 revoke execute on function public.unlock_feature_for_couple(uuid, text, text) from public;
 revoke execute on function public.leave_couple(uuid) from public;
+revoke execute on function public.check_rate_limit(text, int, int) from public;
+revoke execute on function public.apply_write_rate_limit() from public;
 
 revoke execute on function public.create_couple(text, text, text, text) from anon;
 revoke execute on function public.join_couple(text, text, text, text, text) from anon;
@@ -1973,6 +2168,12 @@ revoke execute on function public.create_custom_desire(uuid, text, text, text, t
 revoke execute on function public.unlock_category_for_couple(uuid, text, text) from anon;
 revoke execute on function public.unlock_feature_for_couple(uuid, text, text) from anon;
 revoke execute on function public.leave_couple(uuid) from anon;
+revoke execute on function public.check_rate_limit(text, int, int) from anon;
+revoke execute on function public.apply_write_rate_limit() from anon;
+revoke execute on function public.check_rate_limit(text, int, int) from authenticated;
+revoke execute on function public.apply_write_rate_limit() from authenticated;
+
+revoke all on table public.app_rate_limits from anon, authenticated;
 
 grant execute on function public.create_couple(text, text, text, text) to authenticated;
 grant execute on function public.join_couple(text, text, text, text, text) to authenticated;

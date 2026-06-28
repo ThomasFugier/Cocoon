@@ -130,6 +130,15 @@ type TabKey = "home" | "envies" | "match" | "couple" | "profil" | "debug" | "cha
 type VisibleTabKey = Exclude<TabKey, "rules">;
 type DebugPresetId = "empty" | "mood" | "reveal" | "full";
 type DesireFilterKey = "todo" | "flame" | "curious" | "matches";
+type RemoteRefreshOptions = {
+  force?: boolean;
+};
+type RemoteRefreshState = {
+  coupleKey: string | null;
+  inFlight: Promise<boolean> | null;
+  lastCompletedAt: number;
+  lastStartedAt: number;
+};
 type HomeNextStepConfig = {
   badge: string;
   cta: string;
@@ -194,6 +203,8 @@ const AD_GAME_MIN_RESPONSES = 6;
 const AD_GAME_VOTE_INTERVAL = 8;
 const AD_GAME_MATCH_INTERVAL = 3;
 const AD_AFTER_VOTE_DELAY_MS = GAME_CARD_SETTLE_MS + HEART_BURST_MS + 260;
+const REMOTE_REFRESH_COOLDOWN_MS = 1500;
+const SIGNED_CHAT_ATTACHMENT_URL_CACHE_MS = 5 * 60 * 60 * 1000;
 const PERSONAL_CATEGORY: DesireCategory = "Perso";
 const PACK_CATEGORIES: DesireCategory[] = DESIRE_CATEGORIES.filter((category) => category !== PERSONAL_CATEGORY);
 const FREE_CATEGORIES: DesireCategory[] = ["Vanille", PERSONAL_CATEGORY];
@@ -1050,6 +1061,25 @@ function moodLevelFromRemote(
   return level === 0 || level === 1 || level === 2 || level === 3 ? level : fallback;
 }
 
+const signedChatAttachmentUrlCache = new Map<string, { expiresAt: number; url: string }>();
+
+async function getSignedChatAttachmentUrl(storagePath: string) {
+  const cached = signedChatAttachmentUrlCache.get(storagePath);
+  const now = Date.now();
+
+  if (cached && cached.expiresAt > now) {
+    return cached.url;
+  }
+
+  const url = await createSignedChatAttachmentUrl(storagePath);
+  signedChatAttachmentUrlCache.set(storagePath, {
+    expiresAt: now + SIGNED_CHAT_ATTACHMENT_URL_CACHE_MS,
+    url,
+  });
+
+  return url;
+}
+
 async function coupleFromRemoteState(remote: RemoteCoupleState, fallback?: CoupleState | null): Promise<CoupleState> {
   const currentMember = remote.members.find((member) => member.is_current_user);
   const partnerMember = remote.members.find((member) => !member.is_current_user);
@@ -1071,8 +1101,9 @@ async function coupleFromRemoteState(remote: RemoteCoupleState, fallback?: Coupl
       let signedUrl = "";
 
       try {
-        signedUrl = await createSignedChatAttachmentUrl(attachment.storage_path);
+        signedUrl = await getSignedChatAttachmentUrl(attachment.storage_path);
       } catch {
+        signedChatAttachmentUrlCache.delete(attachment.storage_path);
         signedUrl = "";
       }
 
@@ -1607,6 +1638,12 @@ function Root() {
   const fakeAdStats = useRef({ matchesSinceAd: 0, votesSinceAd: 0 });
   const soloServerRecoveryRunning = useRef(false);
   const coupleRef = useRef<CoupleState | null>(null);
+  const remoteRefreshRef = useRef<RemoteRefreshState>({
+    coupleKey: null,
+    inFlight: null,
+    lastCompletedAt: 0,
+    lastStartedAt: 0,
+  });
   const [providerLoading, setProviderLoading] = useState<AuthProvider | null>(null);
   const [syncError, setSyncError] = useState("");
   const [tab, setTab] = useState<TabKey>("home");
@@ -1637,29 +1674,61 @@ function Root() {
   }, []);
 
   const refreshRemoteCoupleState = useCallback(
-    async (preferredCoupleId?: string | null) => {
+    async (preferredCoupleId?: string | null, options: RemoteRefreshOptions = {}) => {
       if (!session || !hasSupabaseConfig) {
         return false;
       }
 
       const coupleId = preferredCoupleId && isRemoteCoupleId(preferredCoupleId) ? preferredCoupleId : null;
+      const coupleKey = coupleId ?? "latest";
+      const now = Date.now();
+      const currentRefresh = remoteRefreshRef.current;
 
-      try {
-        const remote = await fetchMyCoupleState(coupleId);
-        if (!remote) {
-          return false;
-        }
+      if (!options.force && currentRefresh.inFlight && currentRefresh.coupleKey === coupleKey) {
+        return currentRefresh.inFlight;
+      }
 
-        const nextCouple = await coupleFromRemoteState(remote, coupleRef.current);
-        setCouple(purgeExpiredChat(nextCouple));
-        setRevealedMatchIds((remote.match_reveals ?? []).filter((reveal) => reveal.revealed_at).map((reveal) => reveal.card_id));
-        setSyncError("");
-        return true;
-      } catch (error) {
-        const message = errorMessage(error);
-        setSyncError(`La synchro serveur n'a pas abouti: ${message}`);
+      if (!options.force && currentRefresh.coupleKey === coupleKey && now - currentRefresh.lastStartedAt < REMOTE_REFRESH_COOLDOWN_MS) {
         return false;
       }
+
+      let refreshTask: Promise<boolean> = Promise.resolve(false);
+      refreshTask = (async () => {
+        try {
+          const remote = await fetchMyCoupleState(coupleId);
+          if (!remote) {
+            return false;
+          }
+
+          const nextCouple = await coupleFromRemoteState(remote, coupleRef.current);
+          setCouple(purgeExpiredChat(nextCouple));
+          setRevealedMatchIds((remote.match_reveals ?? []).filter((reveal) => reveal.revealed_at).map((reveal) => reveal.card_id));
+          setSyncError("");
+          return true;
+        } catch (error) {
+          const message = errorMessage(error);
+          setSyncError(`La synchro serveur n'a pas abouti: ${message}`);
+          return false;
+        } finally {
+          if (remoteRefreshRef.current.inFlight === refreshTask) {
+            remoteRefreshRef.current = {
+              coupleKey,
+              inFlight: null,
+              lastCompletedAt: Date.now(),
+              lastStartedAt: remoteRefreshRef.current.lastStartedAt,
+            };
+          }
+        }
+      })();
+
+      remoteRefreshRef.current = {
+        coupleKey,
+        inFlight: refreshTask,
+        lastCompletedAt: currentRefresh.lastCompletedAt,
+        lastStartedAt: now,
+      };
+
+      return refreshTask;
     },
     [session],
   );
@@ -2531,6 +2600,17 @@ function Root() {
     setTab("chat");
   }, []);
 
+  const handleTabChange = useCallback(
+    (nextTab: TabKey) => {
+      setTab(nextTab);
+
+      if (nextTab === "couple") {
+        void refreshRemoteCoupleState(coupleRef.current?.id);
+      }
+    },
+    [refreshRemoteCoupleState],
+  );
+
   const handleSendChatMessage = useCallback(
     async ({ attachments, body }: { attachments: ChatAttachment[]; body: string }) => {
       if (!couple) {
@@ -2971,7 +3051,7 @@ function Root() {
         onShowInvitePrompt={handleShowInvitePrompt}
         onShowOnboarding={handleShowOnboarding}
         onStatusEmojiChange={handleStatusEmojiChange}
-        onTabChange={setTab}
+        onTabChange={handleTabChange}
         onUnlockCustomCards={handleUnlockCustomCards}
         onUnlockCategory={handleUnlockCategory}
         onUnlockNoAds={handleUnlockNoAds}
