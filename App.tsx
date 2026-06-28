@@ -195,6 +195,30 @@ const CATEGORY_PRICES = Object.fromEntries(
 const desirePackByCategory = new Map(DESIRE_PACKS.map((pack) => [pack.category as DesireCategory, pack]));
 const useNativeAnimations = Platform.OS !== "web";
 const localModeEnabled = process.env.NODE_ENV !== "production" || process.env.EXPO_PUBLIC_ENABLE_LOCAL_MODE === "true";
+
+function errorMessage(error: unknown, fallback = "erreur inconnue") {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    const messageParts = ["message", "details", "hint", "code"]
+      .map((key) => record[key])
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+    if (messageParts.length) {
+      return messageParts.join(" ");
+    }
+  }
+
+  return fallback;
+}
+
 type BurstParticle = { emoji: string; floatX: number; rotate: string; size: number; x: number; y: number };
 const responseBurstParticles: Partial<Record<VoteLevel, BurstParticle[]>> = {
   0: [
@@ -1569,7 +1593,7 @@ function Root() {
         setSyncError("");
         return true;
       } catch (error) {
-        const message = error instanceof Error ? error.message : "erreur inconnue";
+        const message = errorMessage(error);
         setSyncError(`La synchro serveur n'a pas abouti: ${message}`);
         return false;
       }
@@ -1835,7 +1859,7 @@ function Root() {
       await saveGuestMode(false);
       setGuestMode(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Connexion impossible.";
+      const message = errorMessage(error, "Connexion impossible.");
       setAuthError(message);
     } finally {
       setProviderLoading(null);
@@ -1860,7 +1884,7 @@ function Root() {
           void refreshRemoteCoupleState(remote.couple_id);
           setSyncError("");
         } catch (error) {
-          const message = error instanceof Error ? error.message : "erreur inconnue";
+          const message = errorMessage(error);
           setCouple(localCouple);
           setSyncError(`Compte créé localement. Synchro serveur à corriger: ${message}`);
         }
@@ -1964,7 +1988,7 @@ function Root() {
             await refreshRemoteCoupleState(coupleId);
           })
           .catch((error) => {
-            const message = error instanceof Error ? error.message : "";
+            const message = errorMessage(error, "");
             if (message.includes("daily_limit_reached")) {
               setResponseLimitPromptVisible(true);
               setSyncError("Limite quotidienne atteinte côté serveur.");
@@ -2194,7 +2218,7 @@ function Root() {
           setPurchaseSuccess(success);
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (error) {
-          const message = error instanceof Error ? error.message : "achat impossible";
+          const message = errorMessage(error, "achat impossible");
           setSyncError(`Achat non validé: ${message}`);
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         }
@@ -2343,7 +2367,7 @@ function Root() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSyncError("Achats restaurés.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "restauration impossible";
+      const message = errorMessage(error, "restauration impossible");
       setSyncError(`Restauration impossible: ${message}`);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
@@ -2386,7 +2410,7 @@ function Root() {
           await refreshRemoteCoupleState(couple.id);
           await Haptics.selectionAsync();
         } catch (error) {
-          const message = error instanceof Error ? error.message : "erreur inconnue";
+          const message = errorMessage(error);
           await enqueueRemoteChatMessage({
             attachments,
             body: trimmedBody,

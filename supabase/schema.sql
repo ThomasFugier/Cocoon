@@ -990,14 +990,14 @@ begin
   return query
   with available_cards as (
     select
-      id,
-      title,
-      emoji,
-      category,
-      kind,
-      mood,
-      blurb,
-      safety
+      cards.id,
+      cards.title,
+      cards.emoji,
+      cards.category,
+      cards.kind,
+      cards.mood,
+      cards.blurb,
+      cards.safety
     from public.desire_cards cards
     where cards.category in ('Vanille', 'Perso')
       or exists (
@@ -1010,13 +1010,13 @@ begin
     union all
 
     select
-      id,
-      title,
-      emoji,
-      category,
-      kind,
-      mood,
-      blurb,
+      cards.id,
+      cards.title,
+      cards.emoji,
+      cards.category,
+      cards.kind,
+      cards.mood,
+      cards.blurb,
       null::text as safety
     from public.custom_desire_cards cards
     where cards.couple_id = p_couple_id
