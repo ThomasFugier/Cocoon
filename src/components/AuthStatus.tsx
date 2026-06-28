@@ -50,7 +50,7 @@ export function authAccountInfo(session: unknown): AuthAccountInfo {
   const candidates = [metadata?.full_name, metadata?.name, email.split("@")[0]];
   const name = candidates.find((value) => typeof value === "string" && value.trim());
   const displayName = typeof name === "string" ? name.trim() : "Compte connecté";
-  let providerLabel = authSession ? "Supabase" : "Mode test";
+  let providerLabel = authSession ? "Compte" : "Mode test";
 
   if (providerKey.includes("google")) {
     providerLabel = "Google";
@@ -100,22 +100,14 @@ export function SessionStatusPill({
 export function ProfileAccountPanel({
   account,
   authError,
-  isRemoteCouple,
   providerLoading,
   onProvider,
 }: {
   account: AuthAccountInfo;
   authError: string;
-  isRemoteCouple: boolean;
   providerLoading: AuthProvider | null;
   onProvider: (provider: AuthProvider) => void;
 }) {
-  const syncStatus = account.connected
-    ? isRemoteCouple
-      ? "Synchro serveur active"
-      : "Connecté, espace encore local"
-    : "Non synchronisé";
-
   return (
     <View style={styles.accountPanel}>
       <View style={styles.accountHeader}>
@@ -128,8 +120,8 @@ export function ProfileAccountPanel({
           </Text>
           <Text numberOfLines={2} style={styles.accountText}>
             {account.connected
-              ? "Ce compte sert à retrouver ton couple, synchroniser les votes et sécuriser les achats."
-              : "Le mode test reste sur cet appareil. Connecte-toi pour utiliser la synchro Supabase."}
+              ? "Ce compte sert à retrouver ton espace et sécuriser les achats."
+              : "Le mode test reste sur cet appareil. Connecte-toi pour retrouver ton espace plus tard."}
           </Text>
         </View>
       </View>
@@ -139,13 +131,7 @@ export function ProfileAccountPanel({
           <View style={styles.accountDetailGrid}>
             <AccountDetail label="Nom" value={account.displayName} />
             <AccountDetail label="Email" selectable value={account.email || "Non fourni"} />
-            <AccountDetail label="Synchro" value={syncStatus} />
           </View>
-          {!isRemoteCouple ? (
-            <Text style={styles.accountSyncText}>
-              Cet espace a été créé localement. Crée ou rejoins un couple avec Supabase pour une synchro complète.
-            </Text>
-          ) : null}
         </>
       ) : (
         <View style={styles.accountProviderActions}>
@@ -272,19 +258,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     marginTop: 3,
-  },
-  accountSyncText: {
-    backgroundColor: "rgba(255,36,95,0.08)",
-    borderColor: "rgba(255,36,95,0.16)",
-    borderRadius: 16,
-    borderWidth: 1,
-    color: candy.text,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 16,
-    overflow: "hidden",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
   },
   accountProviderActions: {
     gap: 10,

@@ -227,6 +227,22 @@ function errorMessage(error: unknown, fallback = "erreur inconnue") {
   return fallback;
 }
 
+function userFacingSyncNotice(message: string) {
+  if (!message) {
+    return "";
+  }
+
+  if (/achat/i.test(message)) {
+    return "Achat impossible pour le moment. Réessaie dans un instant.";
+  }
+
+  if (/connecte-toi|connexion/i.test(message)) {
+    return message;
+  }
+
+  return "Connexion instable. Tes changements sont gardés automatiquement.";
+}
+
 type BurstParticle = { emoji: string; floatX: number; rotate: string; size: number; x: number; y: number };
 const responseBurstParticles: Partial<Record<VoteLevel, BurstParticle[]>> = {
   0: [
@@ -919,6 +935,16 @@ function profileEmoji(profile: PartnerProfile) {
   return first;
 }
 
+function profilePayload(profile: PartnerProfile): Omit<PartnerProfile, "id"> {
+  return {
+    color: profile.color,
+    displayName: profile.displayName,
+    statusEmoji: profileEmoji(profile),
+    statusUpdatedAt: profile.statusUpdatedAt ?? new Date().toISOString(),
+    vibe: profile.vibe,
+  };
+}
+
 function withUpdatedProfileStatus(couple: CoupleState, partnerId: PartnerId, statusEmoji: string): CoupleState {
   return {
     ...couple,
@@ -1139,6 +1165,27 @@ async function coupleFromRemoteState(remote: RemoteCoupleState, fallback?: Coupl
       lastPurgedAt: fallback?.chat?.lastPurgedAt,
     },
   };
+}
+
+async function mirrorSoloStateToRemote(couple: CoupleState, remoteCoupleId: string) {
+  const activeId = couple.activePartnerId;
+  const customDesires = (couple.customDesires ?? []).filter((desire) => desire.createdBy === activeId);
+  const ownVotes = Object.entries(couple.votes[activeId] ?? {}) as Array<[string, VoteLevel]>;
+  const tasks: Array<Promise<unknown>> = [
+    ...ownVotes.map(([cardId, level]) => saveRemoteVote(remoteCoupleId, cardId, level)),
+    ...customDesires.map((desire) => saveRemoteCustomDesire({
+      blurb: desire.blurb,
+      cardId: desire.id,
+      category: desire.category,
+      coupleId: remoteCoupleId,
+      emoji: desire.emoji ?? stickers.heart,
+      title: desire.title,
+    })),
+    saveRemoteMood(remoteCoupleId, moodLevel(couple, activeId)),
+    saveRemoteNotificationPreferences(remoteCoupleId, notificationSettings(couple), activeId),
+  ];
+
+  await Promise.allSettled(tasks);
 }
 
 function voteRevealLabel(level?: VoteLevel) {
@@ -1558,6 +1605,7 @@ function Root() {
   const fakeAdLastShownAt = useRef(0);
   const fakeAdScheduleTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const fakeAdStats = useRef({ matchesSinceAd: 0, votesSinceAd: 0 });
+  const soloServerRecoveryRunning = useRef(false);
   const coupleRef = useRef<CoupleState | null>(null);
   const [providerLoading, setProviderLoading] = useState<AuthProvider | null>(null);
   const [syncError, setSyncError] = useState("");
@@ -1752,6 +1800,80 @@ function Root() {
       cancelled = true;
     };
   }, [session?.user.id]);
+
+  useEffect(() => {
+    if (
+      !session
+      || !hasSupabaseConfig
+      || !couple
+      || isRemoteCoupleId(couple.id)
+      || hasLinkedPartner(couple)
+      || isDebugCouple(couple)
+      || soloServerRecoveryRunning.current
+    ) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function recoverSoloServerState() {
+      soloServerRecoveryRunning.current = true;
+
+      try {
+        const existingRemote = await fetchMyCoupleState(null);
+
+        if (cancelled) {
+          return;
+        }
+
+        if (existingRemote) {
+          const nextCouple = await coupleFromRemoteState(existingRemote, coupleRef.current);
+
+          if (!cancelled) {
+            setCouple(purgeExpiredChat(nextCouple));
+            setRevealedMatchIds((existingRemote.match_reveals ?? []).filter((reveal) => reveal.revealed_at).map((reveal) => reveal.card_id));
+            setSyncError("");
+          }
+
+          return;
+        }
+
+        const current = coupleRef.current;
+
+        if (!current || isRemoteCoupleId(current.id) || hasLinkedPartner(current) || isDebugCouple(current)) {
+          return;
+        }
+
+        const remote = await createRemoteCouple(profilePayload(current.profiles[current.activePartnerId]));
+
+        if (cancelled) {
+          return;
+        }
+
+        const latest = coupleRef.current;
+
+        if (!latest || isRemoteCoupleId(latest.id) || hasLinkedPartner(latest) || isDebugCouple(latest)) {
+          return;
+        }
+
+        const remoteShell = hydrateRemoteShell(latest, remote);
+        setCouple(remoteShell);
+        setSyncError("");
+        await mirrorSoloStateToRemote(remoteShell, remote.couple_id);
+        await refreshRemoteCoupleState(remote.couple_id);
+      } catch (error) {
+        console.warn("Silent solo server recovery failed", error);
+      } finally {
+        soloServerRecoveryRunning.current = false;
+      }
+    }
+
+    void recoverSoloServerState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [couple?.id, refreshRemoteCoupleState, session?.user.id]);
 
   useEffect(() => {
     if (!session || !couple || !hasSupabaseConfig || !isRemoteCoupleId(couple.id)) {
@@ -2573,13 +2695,7 @@ function Root() {
       }
 
       const activeProfile = couple.profiles[couple.activePartnerId];
-      const profile = {
-        color: activeProfile.color,
-        displayName: activeProfile.displayName,
-        statusEmoji: profileEmoji(activeProfile),
-        statusUpdatedAt: activeProfile.statusUpdatedAt ?? new Date().toISOString(),
-        vibe: activeProfile.vibe,
-      };
+      const profile = profilePayload(activeProfile);
       const trimmedCode = inviteCode.trim();
       const localCouple = createJoinedCouple(profile, trimmedCode);
 
@@ -2634,13 +2750,7 @@ function Root() {
     }
 
     const activeProfile = couple.profiles[couple.activePartnerId];
-    const soloCouple = createInitialCouple({
-      color: activeProfile.color,
-      displayName: activeProfile.displayName,
-      statusEmoji: profileEmoji(activeProfile),
-      statusUpdatedAt: activeProfile.statusUpdatedAt ?? new Date().toISOString(),
-      vibe: activeProfile.vibe,
-    });
+    const soloCouple = createInitialCouple(profilePayload(activeProfile));
     let nextCouple = soloCouple;
 
     if (session && hasSupabaseConfig) {
@@ -2649,13 +2759,7 @@ function Root() {
           await leaveRemoteCouple(couple.id);
         }
 
-        const remote = await createRemoteCouple({
-          color: activeProfile.color,
-          displayName: activeProfile.displayName,
-          statusEmoji: profileEmoji(activeProfile),
-          statusUpdatedAt: activeProfile.statusUpdatedAt ?? new Date().toISOString(),
-          vibe: activeProfile.vibe,
-        });
+        const remote = await createRemoteCouple(profilePayload(activeProfile));
         nextCouple = hydrateRemoteShell(soloCouple, remote);
         setSyncError("");
       } catch {
@@ -3167,9 +3271,11 @@ function MainShell({
   onUnlockUnlimitedResponses: () => void;
   onVote: (cardId: string, level: VoteLevel) => boolean;
 }) {
+  const syncNotice = userFacingSyncNotice(syncError);
+
   return (
     <View style={styles.app}>
-      {syncError ? <Text style={styles.syncText}>{syncError}</Text> : null}
+      {syncNotice ? <Text style={styles.syncText}>{syncNotice}</Text> : null}
 
       <View style={styles.content}>
         {tab === "home" ? (
@@ -6227,17 +6333,62 @@ function CoupleScreen({
   onJoinPartner: () => void;
 }) {
   const matches = matchedCards(couple);
+  const linked = hasLinkedPartner(couple);
+  const activeProfile = couple.profiles[couple.activePartnerId];
   const profileNames = [couple.profiles.me.displayName, couple.profiles.partner.displayName];
   const hasPlaceholderName = profileNames.some((name) => name.toLowerCase().includes("partenaire"));
   const coupleTitle = hasPlaceholderName ? "Notre couple" : `${profileNames[0]} + ${profileNames[1]}`;
   const customCount = couple.customDesires?.length ?? 0;
-  const linked = hasLinkedPartner(couple);
   const crossedResponseCount = availableDesireCards(couple).filter(
     (card) => couple.votes.me[card.id] !== undefined && couple.votes.partner[card.id] !== undefined,
   ).length;
   const recentMatches = matches.slice(0, 3);
   const packCategories = [...PACK_CATEGORIES, PERSONAL_CATEGORY];
   const activeProfiles: PartnerId[] = ["me", "partner"];
+
+  if (!linked) {
+    return (
+      <ScrollView contentContainerStyle={[styles.profileScreen, styles.coupleScreen]} showsVerticalScrollIndicator={false}>
+        <LinearGradient colors={[candy.roseMist, candy.pinkSoft, candy.pink]} style={[styles.couplePanel, styles.coupleSoloPanel]}>
+          <View pointerEvents="none" style={styles.coupleGlow} />
+          <Text style={styles.coupleEyebrow}>En solo pour l'instant</Text>
+          <View style={styles.coupleSoloAvatarStage}>
+            <View style={styles.coupleAvatarBubble}>
+              <Text style={styles.coupleAvatarEmoji}>{profileEmoji(activeProfile)}</Text>
+            </View>
+            <View style={[styles.coupleAvatarBubble, styles.coupleMissingBubble]}>
+              <Users size={42} color={candy.red} />
+            </View>
+          </View>
+          <Text style={styles.coupleTitle}>Il manque ton/ta partenaire</Text>
+          <Text style={styles.coupleSub}>
+            Cette section se remplira quand vous serez deux. Invite avec ton code ou rejoins le code de ton/ta partenaire.
+          </Text>
+
+          <View style={styles.coupleSoloInviteCard}>
+            <View style={styles.inviteCodeBlock}>
+              <Text style={styles.inviteLabel}>Ton code d'invitation</Text>
+              <Text selectable style={styles.inviteCode}>{couple.inviteCode}</Text>
+            </View>
+            <SpringPressable onPress={onCopyInvite} style={styles.copyButton}>
+              <Copy size={20} color={candy.white} />
+            </SpringPressable>
+          </View>
+
+          <View style={styles.coupleSoloActions}>
+            <SpringPressable onPress={onCopyInvite} style={styles.coupleSoloPrimaryAction}>
+              <Copy size={18} color={candy.white} />
+              <Text style={styles.coupleSoloPrimaryText}>Inviter</Text>
+            </SpringPressable>
+            <SpringPressable onPress={onJoinPartner} style={styles.coupleSoloSecondaryAction}>
+              <Users size={18} color={candy.red} />
+              <Text style={styles.coupleSoloSecondaryText}>Rejoindre</Text>
+            </SpringPressable>
+          </View>
+        </LinearGradient>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={[styles.profileScreen, styles.coupleScreen]} showsVerticalScrollIndicator={false}>
@@ -6268,23 +6419,6 @@ function CoupleScreen({
           <CoupleStat value={`${crossedResponseCount}`} label="Cartes croisées" />
           <CoupleStat value={`${customCount}`} label="Perso" />
         </View>
-        {!linked ? (
-          <View style={styles.inviteRow}>
-            <View style={styles.inviteCodeBlock}>
-              <Text style={styles.inviteLabel}>Code d'invitation</Text>
-              <Text style={styles.inviteCode}>{couple.inviteCode}</Text>
-            </View>
-            <View style={styles.inviteRowActions}>
-              <SpringPressable onPress={onJoinPartner} style={styles.inviteJoinButton}>
-                <Users size={16} color={candy.red} />
-                <Text style={styles.inviteJoinText}>Rejoindre</Text>
-              </SpringPressable>
-              <SpringPressable onPress={onCopyInvite} style={styles.copyButton}>
-                <Copy size={20} color={candy.white} />
-              </SpringPressable>
-            </View>
-          </View>
-        ) : null}
       </LinearGradient>
 
       <View style={styles.coupleSection}>
@@ -6906,7 +7040,6 @@ function ProfileScreen({
           <ProfileAccountPanel
             account={account}
             authError={authError}
-            isRemoteCouple={isRemoteCoupleId(couple.id)}
             providerLoading={providerLoading}
             onProvider={onProvider}
           />
@@ -12402,6 +12535,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 28,
   },
+  coupleSoloPanel: {
+    justifyContent: "center",
+    minHeight: 520,
+  },
   coupleSticker: {
     height: 90,
     opacity: 0.72,
@@ -12463,6 +12600,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 14,
   },
+  coupleSoloAvatarStage: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 22,
+  },
   coupleAvatarBubble: {
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.72)",
@@ -12479,6 +12622,13 @@ const styles = StyleSheet.create({
   },
   coupleAvatarBubbleSecond: {
     marginLeft: -18,
+    marginTop: 18,
+  },
+  coupleMissingBubble: {
+    backgroundColor: "rgba(255,255,255,0.42)",
+    borderColor: candy.red,
+    borderStyle: "dashed",
+    marginLeft: -14,
     marginTop: 18,
   },
   coupleAvatarEmoji: {
@@ -12558,18 +12708,61 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "900",
   },
-  inviteRow: {
+  coupleSoloInviteCard: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.7)",
-    borderColor: "rgba(255,255,255,0.84)",
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderColor: "rgba(255,255,255,0.9)",
     borderRadius: 24,
-    borderWidth: 1,
+    borderWidth: 1.5,
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 16,
+    gap: 12,
+    marginTop: 20,
     maxWidth: 430,
     padding: 14,
     width: "100%",
+  },
+  coupleSoloActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+    maxWidth: 430,
+    width: "100%",
+  },
+  coupleSoloPrimaryAction: {
+    alignItems: "center",
+    backgroundColor: candy.red,
+    borderColor: candy.white,
+    borderRadius: 18,
+    borderWidth: 2,
+    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 52,
+    paddingHorizontal: 12,
+  },
+  coupleSoloPrimaryText: {
+    color: candy.white,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  coupleSoloSecondaryAction: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.76)",
+    borderColor: candy.white,
+    borderRadius: 18,
+    borderWidth: 2,
+    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 52,
+    paddingHorizontal: 12,
+  },
+  coupleSoloSecondaryText: {
+    color: candy.red,
+    fontSize: 14,
+    fontWeight: "900",
   },
   inviteLabel: {
     color: candy.black,
@@ -12584,27 +12777,6 @@ const styles = StyleSheet.create({
     color: candy.red,
     fontFamily: displayFont,
     fontSize: 24,
-    fontWeight: "900",
-  },
-  inviteRowActions: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
-  },
-  inviteJoinButton: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.76)",
-    borderColor: candy.white,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    flexDirection: "row",
-    gap: 5,
-    minHeight: 42,
-    paddingHorizontal: 12,
-  },
-  inviteJoinText: {
-    color: candy.red,
-    fontSize: 12,
     fontWeight: "900",
   },
   copyButton: {
