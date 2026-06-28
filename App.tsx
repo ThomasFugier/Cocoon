@@ -2867,7 +2867,7 @@ function Root() {
       <CandyFrame>
         {introSeen ? (
           <Entrance delay={30} style={styles.flex}>
-            <OnboardingScreen account={authAccountInfo(session)} guestMode={guestMode} onComplete={handleOnboardingComplete} />
+            <OnboardingScreen onComplete={handleOnboardingComplete} />
           </Entrance>
         ) : (
           <WelcomeTutorialScreen account={authAccountInfo(session)} guestMode={guestMode} onStart={() => updateIntroSeen(true)} />
@@ -7680,7 +7680,7 @@ function WelcomeTutorialScreen({
         <View style={[styles.welcomeTopBar, compactWelcome && styles.welcomeTopBarCompact]}>
           <WeSpiceLogo compact style={styles.welcomeLogo} />
         </View>
-        <SessionStatusPill account={account} guestMode={guestMode} />
+        {page === 0 ? <SessionStatusPill account={account} guestMode={guestMode} /> : null}
 
         <Entrance delay={60} key={currentPage.eyebrow} style={[styles.welcomeSlide, compactWelcome && styles.welcomeSlideCompact]}>
           <View style={styles.welcomeSlideCard}>
@@ -8029,12 +8029,8 @@ function LeaveCoupleConfirmScreen({
 }
 
 function OnboardingScreen({
-  account,
-  guestMode,
   onComplete,
 }: {
-  account: AuthAccountInfo;
-  guestMode: boolean;
   onComplete: (
     mode: OnboardingMode,
     profile: Omit<PartnerProfile, "id">,
@@ -8103,7 +8099,6 @@ function OnboardingScreen({
         ]}
       >
         <Entrance style={styles.onboardingHero}>
-          <SessionStatusPill account={account} guestMode={guestMode} />
           <Text style={styles.onboardingEyebrow}>Dernière étape</Text>
           <Text style={styles.onboardingTitle}>Crée ton espace</Text>
           <Text style={styles.onboardingText}>Un prénom, une icône de profil, et tu pourras inviter ton/ta partenaire.</Text>
