@@ -23,7 +23,7 @@ type PreferenceRow = {
 };
 
 function hasValidSecret(request: Request) {
-  const secret = Deno.env.get("SUPABASE_NOTIFICATION_SECRET");
+  const secret = Deno.env.get("WESPICE_NOTIFICATION_SECRET") ?? Deno.env.get("SUPABASE_NOTIFICATION_SECRET");
 
   if (!secret) {
     return false;

@@ -48,9 +48,9 @@ supabase link --project-ref <prod-project-ref>
 supabase db push
 supabase functions deploy verify-purchase
 supabase functions deploy notify-event
-supabase functions deploy notify-scheduled
+supabase functions deploy notify-scheduled --no-verify-jwt
 supabase secrets set REVENUECAT_SECRET_API_KEY=...
-supabase secrets set SUPABASE_NOTIFICATION_SECRET=...
+supabase secrets set WESPICE_NOTIFICATION_SECRET=...
 supabase secrets set EXPO_ACCESS_TOKEN=... # only if Expo push security is enabled
 ```
 
@@ -106,4 +106,3 @@ Still needed before App Store / Google Play submission:
 - Store metadata, age rating, content descriptions, and screenshots.
 - App Store Connect / Play Console product IDs matching RevenueCat.
 - Apple and Google OAuth client configuration for the final bundle/package IDs.
-

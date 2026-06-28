@@ -89,10 +89,10 @@ EXPO_PUBLIC_EAS_PROJECT_ID=...
 Secrets Supabase :
 
 ```bash
-supabase secrets set SUPABASE_NOTIFICATION_SECRET=notif_...
+supabase secrets set WESPICE_NOTIFICATION_SECRET=notif_...
 supabase secrets set EXPO_ACCESS_TOKEN=... # optionnel si la securite Expo Push est activee
 supabase functions deploy notify-event
-supabase functions deploy notify-scheduled
+supabase functions deploy notify-scheduled --no-verify-jwt
 ```
 
 Evenements temps reel envoyes par `notify-event` :
@@ -114,7 +114,7 @@ Exemple d'appel cron pour le rappel quotidien :
 
 ```bash
 curl -X POST "$SUPABASE_FUNCTIONS_URL/notify-scheduled" \
-  -H "Authorization: Bearer $SUPABASE_NOTIFICATION_SECRET" \
+  -H "Authorization: Bearer $WESPICE_NOTIFICATION_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"type":"daily_reminder"}'
 ```
