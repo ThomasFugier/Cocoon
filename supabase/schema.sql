@@ -20,7 +20,7 @@ add column if not exists status_updated_at timestamptz not null default now();
 create table if not exists public.couples (
   id uuid primary key default gen_random_uuid(),
   invite_code text not null unique,
-  created_by uuid not null references auth.users (id) on delete cascade,
+  created_by uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -34,6 +34,9 @@ create table if not exists public.couple_members (
 
 create index if not exists couple_members_user_joined_idx
 on public.couple_members (user_id, joined_at desc);
+
+create unique index if not exists couple_members_one_active_couple_per_user_idx
+on public.couple_members (user_id);
 
 create table if not exists public.desire_cards (
   id text primary key,
@@ -180,6 +183,39 @@ on public.chat_attachments (message_id);
 create index if not exists chat_attachments_couple_idx
 on public.chat_attachments (couple_id, created_at desc);
 
+create table if not exists public.chat_attachment_tombstones (
+  id uuid primary key,
+  message_id uuid not null references public.chat_messages (id) on delete cascade,
+  couple_id uuid not null references public.couples (id) on delete cascade,
+  consumed_by uuid not null references public.profiles (id) on delete cascade,
+  consumed_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists chat_attachment_tombstones_message_idx
+on public.chat_attachment_tombstones (message_id);
+
+create index if not exists chat_attachment_tombstones_couple_idx
+on public.chat_attachment_tombstones (couple_id, consumed_at desc);
+
+create table if not exists public.chat_attachment_upload_intents (
+  storage_path text primary key,
+  couple_id uuid not null references public.couples (id) on delete cascade,
+  message_id uuid not null,
+  attachment_id uuid not null,
+  user_id uuid not null default auth.uid() references public.profiles (id) on delete cascade,
+  expires_at timestamptz not null default now() + interval '15 minutes',
+  consumed_at timestamptz,
+  created_at timestamptz not null default now(),
+  check (expires_at > created_at)
+);
+
+create index if not exists chat_attachment_upload_intents_user_idx
+on public.chat_attachment_upload_intents (user_id, expires_at);
+
+create index if not exists chat_attachment_upload_intents_couple_message_idx
+on public.chat_attachment_upload_intents (couple_id, message_id);
+
 create table if not exists public.push_tokens (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references public.profiles (id) on delete cascade,
@@ -246,6 +282,25 @@ on public.notification_events (couple_id, recipient_id, event_type, dedupe_key);
 
 create index if not exists notification_events_couple_idx
 on public.notification_events (couple_id, created_at desc);
+
+create table if not exists public.push_receipts (
+  id uuid primary key default gen_random_uuid(),
+  notification_event_id uuid references public.notification_events (id) on delete cascade,
+  expo_ticket_id text not null unique,
+  expo_push_token text not null,
+  status text not null default 'pending' check (status in ('pending', 'ok', 'error')),
+  error text,
+  details jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  checked_at timestamptz
+);
+
+create index if not exists push_receipts_pending_idx
+on public.push_receipts (status, created_at)
+where status = 'pending';
+
+create index if not exists push_receipts_event_idx
+on public.push_receipts (notification_event_id);
 
 create table if not exists public.daily_response_usage (
   couple_id uuid not null references public.couples (id) on delete cascade,
@@ -365,11 +420,14 @@ alter table public.couple_feature_unlocks enable row level security;
 alter table public.desire_votes enable row level security;
 alter table public.chat_messages enable row level security;
 alter table public.chat_attachments enable row level security;
+alter table public.chat_attachment_tombstones enable row level security;
+alter table public.chat_attachment_upload_intents enable row level security;
 alter table public.push_tokens enable row level security;
 alter table public.app_rate_limits enable row level security;
 alter table public.notification_preferences enable row level security;
 alter table public.couple_moods enable row level security;
 alter table public.notification_events enable row level security;
+alter table public.push_receipts enable row level security;
 alter table public.daily_response_usage enable row level security;
 alter table public.purchase_entitlements enable row level security;
 alter table public.match_reveals enable row level security;
@@ -863,6 +921,16 @@ with check (
   and public.is_couple_member(couple_id)
 );
 
+drop policy if exists "chat_attachment_tombstones_read_members" on public.chat_attachment_tombstones;
+create policy "chat_attachment_tombstones_read_members"
+on public.chat_attachment_tombstones for select
+using (public.is_couple_member(couple_id));
+
+drop policy if exists "chat_attachment_upload_intents_read_own" on public.chat_attachment_upload_intents;
+create policy "chat_attachment_upload_intents_read_own"
+on public.chat_attachment_upload_intents for select
+using (user_id = auth.uid());
+
 drop policy if exists "push_tokens_read_own" on public.push_tokens;
 create policy "push_tokens_read_own"
 on public.push_tokens for select
@@ -940,20 +1008,24 @@ using (
 );
 
 drop policy if exists "chat_storage_insert_members" on storage.objects;
-create policy "chat_storage_insert_members"
+drop policy if exists "chat_storage_insert_pending_chat_attachment" on storage.objects;
+create policy "chat_storage_insert_pending_chat_attachment"
 on storage.objects for insert
 with check (
   bucket_id = 'chat-attachments'
-  and public.is_couple_member(public.storage_path_couple_id(name))
+  and exists (
+    select 1
+    from public.chat_attachment_upload_intents intents
+    where intents.storage_path = name
+      and intents.user_id = auth.uid()
+      and intents.couple_id = public.storage_path_couple_id(name)
+      and intents.expires_at > now()
+      and intents.consumed_at is null
+      and public.is_couple_member(intents.couple_id)
+  )
 );
 
 drop policy if exists "chat_storage_delete_members" on storage.objects;
-create policy "chat_storage_delete_members"
-on storage.objects for delete
-using (
-  bucket_id = 'chat-attachments'
-  and public.is_couple_member(public.storage_path_couple_id(name))
-);
 
 create or replace function public.generate_invite_code()
 returns text
@@ -987,11 +1059,28 @@ set search_path = public
 as $$
 declare
   v_user_id uuid := auth.uid();
+  v_existing_couple_id uuid;
+  v_existing_invite_code text;
   v_code text;
   v_couple_id uuid;
 begin
   if v_user_id is null then
     raise exception 'not_authenticated';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext(v_user_id::text));
+
+  select c.id, c.invite_code
+  into v_existing_couple_id, v_existing_invite_code
+  from public.couple_members cm
+  join public.couples c on c.id = cm.couple_id
+  where cm.user_id = v_user_id
+  order by cm.joined_at desc, c.created_at desc
+  limit 1;
+
+  if v_existing_couple_id is not null then
+    return query select v_existing_couple_id, v_existing_invite_code;
+    return;
   end if;
 
   insert into public.profiles (id, display_name, color, vibe, status_emoji, status_updated_at)
@@ -1016,8 +1105,7 @@ begin
   end loop;
 
   insert into public.couple_members (couple_id, user_id, role)
-  values (v_couple_id, v_user_id, 'creator')
-  on conflict do nothing;
+  values (v_couple_id, v_user_id, 'creator');
 
   return query select v_couple_id, v_code;
 end;
@@ -1045,11 +1133,13 @@ begin
     raise exception 'not_authenticated';
   end if;
 
+  perform pg_advisory_xact_lock(hashtext(v_user_id::text));
   perform public.check_rate_limit('join_couple', 10, 3600);
 
   select couples.* into v_couple
   from public.couples as couples
-  where couples.invite_code = upper(trim(p_invite_code));
+  where couples.invite_code = upper(trim(p_invite_code))
+  for update;
 
   if v_couple.id is null then
     raise exception 'invalid_invite_code';
@@ -1078,6 +1168,41 @@ begin
       vibe = excluded.vibe,
       status_emoji = excluded.status_emoji,
       status_updated_at = now();
+
+  with old_couples as (
+    select members.couple_id
+    from public.couple_members as members
+    where members.user_id = v_user_id
+      and members.couple_id <> v_couple.id
+  ),
+  deleted_votes as (
+    delete from public.desire_votes votes
+    using old_couples
+    where votes.couple_id = old_couples.couple_id
+      and votes.user_id = v_user_id
+    returning votes.couple_id
+  ),
+  deleted_custom_cards as (
+    delete from public.custom_desire_cards cards
+    using old_couples
+    where cards.couple_id = old_couples.couple_id
+      and cards.created_by = v_user_id
+    returning cards.couple_id
+  ),
+  deleted_memberships as (
+    delete from public.couple_members members
+    using old_couples
+    where members.couple_id = old_couples.couple_id
+      and members.user_id = v_user_id
+    returning members.couple_id
+  )
+  delete from public.couples couples
+  where couples.id in (select couple_id from deleted_memberships)
+    and not exists (
+      select 1
+      from public.couple_members remaining
+      where remaining.couple_id = couples.id
+    );
 
   insert into public.couple_members (couple_id, user_id, role)
   values (v_couple.id, v_user_id, 'partner')
@@ -1274,14 +1399,14 @@ begin
   return query
   with available_cards as (
     select
-      id,
-      title,
-      emoji,
-      category,
-      kind,
-      mood,
-      blurb,
-      safety
+      cards.id,
+      cards.title,
+      cards.emoji,
+      cards.category,
+      cards.kind,
+      cards.mood,
+      cards.blurb,
+      cards.safety
     from public.desire_cards cards
     where cards.category in ('Vanille', 'Perso')
       or exists (
@@ -1294,13 +1419,13 @@ begin
     union all
 
     select
-      id,
-      title,
-      emoji,
-      category,
-      kind,
-      mood,
-      blurb,
+      cards.id,
+      cards.title,
+      cards.emoji,
+      cards.category,
+      cards.kind,
+      cards.mood,
+      cards.blurb,
       null::text as safety
     from public.custom_desire_cards cards
     where cards.couple_id = v_couple_id
@@ -1329,10 +1454,11 @@ begin
     max(reveals.revealed_at) as revealed_at
   from available_cards cards
   join public.desire_votes votes on votes.card_id = cards.id
-  left join public.match_reveals reveals
+  join public.match_reveals reveals
     on reveals.couple_id = v_couple_id
     and reveals.card_id = cards.id
     and reveals.user_id = auth.uid()
+    and reveals.revealed_at is not null
   where votes.couple_id = v_couple_id
   group by cards.id, cards.title, cards.emoji, cards.category, cards.kind, cards.mood, cards.blurb, cards.safety
   having count(*) filter (where votes.level >= p_threshold) = 2;
@@ -1396,20 +1522,20 @@ begin
     'custom_desires', coalesce((
       select jsonb_agg(
         jsonb_build_object(
-          'id', id,
-          'title', title,
-          'emoji', emoji,
-          'category', category,
-          'kind', kind,
-          'mood', mood,
-          'blurb', blurb,
-          'created_at', created_at,
-          'created_by_current_user', created_by = auth.uid()
+          'id', custom_cards.id,
+          'title', custom_cards.title,
+          'emoji', custom_cards.emoji,
+          'category', custom_cards.category,
+          'kind', custom_cards.kind,
+          'mood', custom_cards.mood,
+          'blurb', custom_cards.blurb,
+          'created_at', custom_cards.created_at,
+          'created_by_current_user', custom_cards.created_by = auth.uid()
         )
-        order by created_at desc
+        order by custom_cards.created_at desc
       )
-      from public.custom_desire_cards
-      where couple_id = v_couple_id
+      from public.custom_desire_cards custom_cards
+      where custom_cards.couple_id = v_couple_id
     ), '[]'::jsonb),
     'category_unlocks', coalesce((
       select jsonb_agg(category order by unlocked_at desc)
@@ -1483,6 +1609,22 @@ begin
           and date_key = v_today
       ) usage
     ),
+    'hidden_match_count', (
+      select count(*)
+      from public.match_reveals reveals
+      where reveals.couple_id = v_couple_id
+        and reveals.user_id = auth.uid()
+        and reveals.revealed_at is null
+        and public.card_available_to_couple(v_couple_id, reveals.card_id)
+        and exists (
+          select 1
+          from public.desire_votes votes
+          where votes.couple_id = v_couple_id
+            and votes.card_id = reveals.card_id
+          group by votes.couple_id, votes.card_id
+          having count(*) filter (where votes.level >= 1) = 2
+        )
+    ),
     'matches', coalesce((
       select jsonb_agg(to_jsonb(matches) order by matches.first_matched_at desc nulls last)
       from public.get_revealable_matches(v_couple_id, 1) matches
@@ -1491,48 +1633,11 @@ begin
       select jsonb_agg(to_jsonb(reveals) order by first_matched_at desc)
       from (
         select card_id, first_matched_at, revealed_at, true as revealed_by_current_user
-        from public.match_reveals
-        where couple_id = v_couple_id
-          and user_id = auth.uid()
-      ) reveals
-    ), '[]'::jsonb),
-    'chat_messages', coalesce((
-      select jsonb_agg(
-        jsonb_build_object(
-          'id', messages.id,
-          'author_id', messages.author_id,
-          'author_is_current_user', messages.author_id = auth.uid(),
-          'body', messages.body,
-          'linked_card_id', messages.linked_card_id,
-          'created_at', messages.created_at,
-          'expires_at', messages.expires_at,
-          'attachments', coalesce((
-            select jsonb_agg(
-              jsonb_build_object(
-                'id', attachments.id,
-                'storage_path', attachments.storage_path,
-                'mime_type', attachments.mime_type,
-                'name', attachments.name,
-                'width', attachments.width,
-                'height', attachments.height,
-                'size_bytes', attachments.size_bytes
-              )
-              order by attachments.created_at asc
-            )
-            from public.chat_attachments attachments
-            where attachments.message_id = messages.id
-          ), '[]'::jsonb)
-        )
-        order by messages.created_at asc
-      )
-      from (
-        select messages.*
-        from public.chat_messages messages
-        where messages.couple_id = v_couple_id
-          and messages.expires_at > now()
-        order by messages.created_at desc
-        limit 80
-      ) messages
+      from public.match_reveals
+      where couple_id = v_couple_id
+        and user_id = auth.uid()
+        and revealed_at is not null
+    ) reveals
     ), '[]'::jsonb)
   );
 end;
@@ -1569,19 +1674,42 @@ begin
         'expires_at', messages.expires_at,
         'attachments', coalesce((
           select jsonb_agg(
-            jsonb_build_object(
-              'id', attachments.id,
-              'storage_path', attachments.storage_path,
-              'mime_type', attachments.mime_type,
-              'name', attachments.name,
-              'width', attachments.width,
-              'height', attachments.height,
-              'size_bytes', attachments.size_bytes
-            )
-            order by attachments.created_at asc
+            message_attachments.payload
+            order by message_attachments.sort_at asc
           )
-          from public.chat_attachments attachments
-          where attachments.message_id = messages.id
+          from (
+            select
+              jsonb_build_object(
+                'id', attachments.id,
+                'storage_path', attachments.storage_path,
+                'mime_type', attachments.mime_type,
+                'name', attachments.name,
+                'width', attachments.width,
+                'height', attachments.height,
+                'size_bytes', attachments.size_bytes,
+                'disappeared', false,
+                'consumed_at', null
+              ) as payload,
+              attachments.created_at as sort_at
+            from public.chat_attachments attachments
+            where attachments.message_id = messages.id
+            union all
+            select
+              jsonb_build_object(
+                'id', tombstones.id,
+                'storage_path', null,
+                'mime_type', 'image/jpeg',
+                'name', 'Photo disparue',
+                'width', null,
+                'height', null,
+                'size_bytes', null,
+                'disappeared', true,
+                'consumed_at', tombstones.consumed_at
+              ) as payload,
+              tombstones.consumed_at as sort_at
+            from public.chat_attachment_tombstones tombstones
+            where tombstones.message_id = messages.id
+          ) message_attachments
         ), '[]'::jsonb)
       )
       order by messages.created_at asc
@@ -1595,6 +1723,64 @@ begin
       limit v_limit
     ) messages
   ), '[]'::jsonb);
+end;
+$$;
+
+create or replace function public.get_chat_sync_marker(
+  p_couple_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_couple_id uuid := public.current_couple_id(p_couple_id);
+begin
+  if v_couple_id is null then
+    return jsonb_build_object(
+      'latest_message_at', null,
+      'latest_message_id', null,
+      'message_count', 0
+    );
+  end if;
+
+  perform public.check_rate_limit('get_chat_sync_marker', 60, 60);
+
+  return coalesce((
+    select jsonb_build_object(
+      'latest_message_at', latest.event_at,
+      'latest_message_id', latest.event_id,
+      'message_count', stats.message_count
+    )
+    from (
+      select count(*)::int as message_count
+      from public.chat_messages messages
+      where messages.couple_id = v_couple_id
+        and messages.expires_at > now()
+    ) stats
+    left join lateral (
+      select events.event_id, events.event_at
+      from (
+        select messages.id as event_id, messages.created_at as event_at
+        from public.chat_messages messages
+        where messages.couple_id = v_couple_id
+          and messages.expires_at > now()
+        union all
+        select tombstones.id as event_id, tombstones.consumed_at as event_at
+        from public.chat_attachment_tombstones tombstones
+        join public.chat_messages messages on messages.id = tombstones.message_id
+        where tombstones.couple_id = v_couple_id
+          and messages.expires_at > now()
+      ) events
+      order by events.event_at desc, events.event_id desc
+      limit 1
+    ) latest on true
+  ), jsonb_build_object(
+    'latest_message_at', null,
+    'latest_message_id', null,
+    'message_count', 0
+  ));
 end;
 $$;
 
@@ -1676,6 +1862,136 @@ begin
 end;
 $$;
 
+drop function if exists public.prepare_chat_attachment_upload(uuid, uuid, uuid);
+
+create or replace function public.prepare_chat_attachment_upload(
+  p_couple_id uuid,
+  p_message_id uuid,
+  p_attachment_id uuid
+)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_storage_path text;
+  v_created_path text;
+  v_now timestamptz := now();
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+
+  if p_message_id is null or p_attachment_id is null then
+    raise exception 'missing_attachment_id';
+  end if;
+
+  if not public.is_couple_member(p_couple_id) then
+    raise exception 'not_couple_member';
+  end if;
+
+  perform public.check_rate_limit('prepare_chat_attachment_upload', 120, 60);
+
+  v_storage_path := p_couple_id::text || '/' || p_message_id::text || '/' || p_attachment_id::text || '.jpg';
+
+  insert into public.chat_attachment_upload_intents (
+    storage_path,
+    couple_id,
+    message_id,
+    attachment_id,
+    user_id,
+    expires_at,
+    consumed_at,
+    created_at
+  )
+  values (
+    v_storage_path,
+    p_couple_id,
+    p_message_id,
+    p_attachment_id,
+    auth.uid(),
+    v_now + interval '15 minutes',
+    null,
+    v_now
+  )
+  on conflict (storage_path) do update
+  set expires_at = excluded.expires_at,
+      consumed_at = null,
+      created_at = excluded.created_at
+  where public.chat_attachment_upload_intents.user_id = auth.uid()
+    and public.chat_attachment_upload_intents.consumed_at is null
+  returning public.chat_attachment_upload_intents.storage_path into v_created_path;
+
+  if v_created_path is null then
+    raise exception 'attachment_upload_intent_conflict';
+  end if;
+
+  if random() < 0.02 then
+    delete from public.chat_attachment_upload_intents
+    where expires_at < v_now - interval '1 day'
+       or consumed_at < v_now - interval '1 day';
+  end if;
+
+  return v_created_path;
+end;
+$$;
+
+drop function if exists public.discard_chat_attachment_uploads(text[]);
+
+create or replace function public.discard_chat_attachment_uploads(
+  p_storage_paths text[]
+)
+returns int
+language plpgsql
+security definer
+set search_path = public, storage
+as $$
+declare
+  v_deleted int := 0;
+  v_paths text[];
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+
+  if coalesce(array_length(p_storage_paths, 1), 0) = 0 then
+    return 0;
+  end if;
+
+  if array_length(p_storage_paths, 1) > 16 then
+    raise exception 'too_many_attachments';
+  end if;
+
+  perform public.check_rate_limit('discard_chat_attachment_uploads', 120, 60);
+
+  select array_agg(distinct intents.storage_path)
+  into v_paths
+  from public.chat_attachment_upload_intents intents
+  where intents.storage_path = any(p_storage_paths)
+    and intents.user_id = auth.uid()
+    and intents.consumed_at is null
+    and public.is_couple_member(intents.couple_id);
+
+  if coalesce(array_length(v_paths, 1), 0) = 0 then
+    return 0;
+  end if;
+
+  delete from storage.objects objects
+  where objects.bucket_id = 'chat-attachments'
+    and objects.name = any(v_paths);
+
+  get diagnostics v_deleted = row_count;
+
+  delete from public.chat_attachment_upload_intents intents
+  where intents.storage_path = any(v_paths)
+    and intents.user_id = auth.uid()
+    and intents.consumed_at is null;
+
+  return v_deleted;
+end;
+$$;
+
 drop function if exists public.send_chat_message(uuid, uuid, text, text, jsonb);
 
 create or replace function public.send_chat_message(
@@ -1750,6 +2066,19 @@ begin
       raise exception 'attachment_message_mismatch';
     end if;
 
+    if not exists (
+      select 1
+      from public.chat_attachment_upload_intents intents
+      where intents.storage_path = v_storage_path
+        and intents.couple_id = p_couple_id
+        and intents.message_id = p_message_id
+        and intents.user_id = auth.uid()
+        and intents.consumed_at is null
+        and intents.expires_at > now()
+    ) then
+      raise exception 'missing_attachment_upload_intent';
+    end if;
+
     insert into public.chat_attachments (
       message_id,
       couple_id,
@@ -1773,9 +2102,81 @@ begin
       nullif(v_attachment->>'size_bytes', '')::int
     )
     on conflict (storage_path) do nothing;
+
+    update public.chat_attachment_upload_intents intents
+    set consumed_at = coalesce(intents.consumed_at, now())
+    where intents.storage_path = v_storage_path
+      and intents.user_id = auth.uid();
   end loop;
 
   return p_message_id;
+end;
+$$;
+
+drop function if exists public.consume_chat_attachment(uuid, uuid, uuid);
+
+create or replace function public.consume_chat_attachment(
+  p_couple_id uuid,
+  p_message_id uuid,
+  p_attachment_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, storage
+as $$
+declare
+  v_attachment record;
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+
+  if not public.is_couple_member(p_couple_id) then
+    raise exception 'not_couple_member';
+  end if;
+
+  perform public.check_rate_limit('consume_chat_attachment', 60, 60);
+
+  select attachments.* into v_attachment
+  from public.chat_attachments attachments
+  join public.chat_messages messages on messages.id = attachments.message_id
+  where attachments.id = p_attachment_id
+    and attachments.message_id = p_message_id
+    and attachments.couple_id = p_couple_id
+    and messages.couple_id = p_couple_id
+    and messages.expires_at > now();
+
+  if not found then
+    return;
+  end if;
+
+  if v_attachment.uploaded_by = auth.uid() then
+    raise exception 'own_attachment_not_consumable';
+  end if;
+
+  insert into public.chat_attachment_tombstones (
+    id,
+    message_id,
+    couple_id,
+    consumed_by,
+    consumed_at
+  )
+  values (
+    v_attachment.id,
+    v_attachment.message_id,
+    v_attachment.couple_id,
+    auth.uid(),
+    now()
+  )
+  on conflict (id) do nothing;
+
+  delete from storage.objects objects
+  where objects.bucket_id = 'chat-attachments'
+    and objects.name = v_attachment.storage_path;
+
+  delete from public.chat_attachments attachments
+  where attachments.id = v_attachment.id;
 end;
 $$;
 
@@ -1924,6 +2325,74 @@ begin
 end;
 $$;
 
+drop function if exists public.reveal_next_match(uuid);
+
+create or replace function public.reveal_next_match(
+  p_couple_id uuid
+)
+returns table (
+  card_id text,
+  title text,
+  emoji text,
+  category text,
+  kind text,
+  mood text,
+  blurb text,
+  safety text,
+  my_level int,
+  partner_level int,
+  first_matched_at timestamptz,
+  revealed_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_couple_id uuid := public.current_couple_id(p_couple_id);
+  v_card_id text;
+begin
+  if v_couple_id is null then
+    raise exception 'not_couple_member';
+  end if;
+
+  with candidate as (
+    select reveals.card_id
+    from public.match_reveals reveals
+    where reveals.couple_id = v_couple_id
+      and reveals.user_id = auth.uid()
+      and reveals.revealed_at is null
+      and public.card_available_to_couple(v_couple_id, reveals.card_id)
+      and exists (
+        select 1
+        from public.desire_votes votes
+        where votes.couple_id = v_couple_id
+          and votes.card_id = reveals.card_id
+        group by votes.couple_id, votes.card_id
+        having count(*) filter (where votes.level >= 1) = 2
+      )
+    order by reveals.first_matched_at desc
+    limit 1
+  )
+  update public.match_reveals reveals
+  set revealed_at = coalesce(revealed_at, now())
+  from candidate
+  where reveals.couple_id = v_couple_id
+    and reveals.user_id = auth.uid()
+    and reveals.card_id = candidate.card_id
+  returning reveals.card_id into v_card_id;
+
+  if v_card_id is null then
+    return;
+  end if;
+
+  return query
+  select matches.*
+  from public.get_revealable_matches(v_couple_id, 1) matches
+  where matches.card_id = v_card_id;
+end;
+$$;
+
 drop function if exists public.mark_match_revealed(uuid, text);
 
 create or replace function public.mark_match_revealed(
@@ -1949,10 +2418,14 @@ begin
   where couple_id = v_couple_id
     and user_id = auth.uid()
     and card_id = p_card_id
+    and public.card_available_to_couple(v_couple_id, p_card_id)
     and exists (
       select 1
-      from public.get_revealable_matches(v_couple_id, 1) matches
-      where matches.card_id = p_card_id
+      from public.desire_votes votes
+      where votes.couple_id = v_couple_id
+        and votes.card_id = p_card_id
+      group by votes.couple_id, votes.card_id
+      having count(*) filter (where votes.level >= 1) = 2
     );
 end;
 $$;
@@ -1978,10 +2451,24 @@ begin
         and messages.expires_at <= now()
     );
 
+  delete from storage.objects objects
+  where objects.bucket_id = 'chat-attachments'
+    and objects.created_at < now() - interval '30 minutes'
+    and not exists (
+      select 1
+      from public.chat_attachments attachments
+      where attachments.storage_path = objects.name
+    );
+
   delete from public.chat_messages
   where expires_at <= now();
 
   get diagnostics v_deleted = row_count;
+
+  delete from public.chat_attachment_upload_intents
+  where expires_at < now()
+     or consumed_at < now() - interval '1 day';
+
   return v_deleted;
 end;
 $$;
@@ -2204,12 +2691,15 @@ revoke execute on function public.get_couple_matches(uuid, int) from public;
 revoke execute on function public.get_revealable_matches(uuid, int) from public;
 revoke execute on function public.get_my_couple_state(uuid) from public;
 revoke execute on function public.get_chat_messages(uuid, int) from public;
+revoke execute on function public.get_chat_sync_marker(uuid) from public;
 revoke execute on function public.save_desire_vote(uuid, text, int) from public;
 revoke execute on function public.send_chat_message(uuid, uuid, text, text, jsonb) from public;
+revoke execute on function public.consume_chat_attachment(uuid, uuid, uuid) from public;
 revoke execute on function public.upsert_notification_preferences(uuid, boolean, boolean, boolean, boolean, boolean, boolean) from public;
 revoke execute on function public.update_couple_mood(uuid, int) from public;
 revoke execute on function public.register_push_token(text, text, text, boolean) from public;
 revoke execute on function public.mark_match_revealed(uuid, text) from public;
+revoke execute on function public.reveal_next_match(uuid) from public;
 revoke execute on function public.cleanup_expired_chat() from public;
 revoke execute on function public.create_custom_desire(uuid, text, text, text, text, text) from public;
 revoke execute on function public.unlock_category_for_couple(uuid, text, text) from public;
@@ -2217,6 +2707,8 @@ revoke execute on function public.unlock_feature_for_couple(uuid, text, text) fr
 revoke execute on function public.leave_couple(uuid) from public;
 revoke execute on function public.check_rate_limit(text, int, int) from public;
 revoke execute on function public.apply_write_rate_limit() from public;
+revoke execute on function public.prepare_chat_attachment_upload(uuid, uuid, uuid) from public;
+revoke execute on function public.discard_chat_attachment_uploads(text[]) from public;
 
 revoke execute on function public.create_couple(text, text, text, text) from anon;
 revoke execute on function public.join_couple(text, text, text, text, text) from anon;
@@ -2226,12 +2718,15 @@ revoke execute on function public.get_couple_matches(uuid, int) from anon;
 revoke execute on function public.get_revealable_matches(uuid, int) from anon;
 revoke execute on function public.get_my_couple_state(uuid) from anon;
 revoke execute on function public.get_chat_messages(uuid, int) from anon;
+revoke execute on function public.get_chat_sync_marker(uuid) from anon;
 revoke execute on function public.save_desire_vote(uuid, text, int) from anon;
 revoke execute on function public.send_chat_message(uuid, uuid, text, text, jsonb) from anon;
+revoke execute on function public.consume_chat_attachment(uuid, uuid, uuid) from anon;
 revoke execute on function public.upsert_notification_preferences(uuid, boolean, boolean, boolean, boolean, boolean, boolean) from anon;
 revoke execute on function public.update_couple_mood(uuid, int) from anon;
 revoke execute on function public.register_push_token(text, text, text, boolean) from anon;
 revoke execute on function public.mark_match_revealed(uuid, text) from anon;
+revoke execute on function public.reveal_next_match(uuid) from anon;
 revoke execute on function public.cleanup_expired_chat() from anon;
 revoke execute on function public.create_custom_desire(uuid, text, text, text, text, text) from anon;
 revoke execute on function public.unlock_category_for_couple(uuid, text, text) from anon;
@@ -2239,10 +2734,16 @@ revoke execute on function public.unlock_feature_for_couple(uuid, text, text) fr
 revoke execute on function public.leave_couple(uuid) from anon;
 revoke execute on function public.check_rate_limit(text, int, int) from anon;
 revoke execute on function public.apply_write_rate_limit() from anon;
+revoke execute on function public.prepare_chat_attachment_upload(uuid, uuid, uuid) from anon;
+revoke execute on function public.discard_chat_attachment_uploads(text[]) from anon;
 revoke execute on function public.check_rate_limit(text, int, int) from authenticated;
 revoke execute on function public.apply_write_rate_limit() from authenticated;
 
 revoke all on table public.app_rate_limits from anon, authenticated;
+revoke all on table public.chat_attachment_upload_intents from anon, authenticated;
+revoke all on table public.chat_attachment_tombstones from anon, authenticated;
+grant select on table public.chat_attachment_upload_intents to authenticated;
+grant select on table public.chat_attachment_tombstones to authenticated;
 
 grant execute on function public.create_couple(text, text, text, text) to authenticated;
 grant execute on function public.join_couple(text, text, text, text, text) to authenticated;
@@ -2252,17 +2753,22 @@ grant execute on function public.get_couple_matches(uuid, int) to authenticated;
 grant execute on function public.get_revealable_matches(uuid, int) to authenticated;
 grant execute on function public.get_my_couple_state(uuid) to authenticated;
 grant execute on function public.get_chat_messages(uuid, int) to authenticated;
+grant execute on function public.get_chat_sync_marker(uuid) to authenticated;
 grant execute on function public.save_desire_vote(uuid, text, int) to authenticated;
 grant execute on function public.send_chat_message(uuid, uuid, text, text, jsonb) to authenticated;
+grant execute on function public.consume_chat_attachment(uuid, uuid, uuid) to authenticated;
 grant execute on function public.upsert_notification_preferences(uuid, boolean, boolean, boolean, boolean, boolean, boolean) to authenticated;
 grant execute on function public.update_couple_mood(uuid, int) to authenticated;
 grant execute on function public.register_push_token(text, text, text, boolean) to authenticated;
 grant execute on function public.mark_match_revealed(uuid, text) to authenticated;
+grant execute on function public.reveal_next_match(uuid) to authenticated;
 grant execute on function public.cleanup_expired_chat() to service_role;
 grant execute on function public.create_custom_desire(uuid, text, text, text, text, text) to authenticated;
 grant execute on function public.unlock_category_for_couple(uuid, text, text) to service_role;
 grant execute on function public.unlock_feature_for_couple(uuid, text, text) to service_role;
 grant execute on function public.leave_couple(uuid) to authenticated;
+grant execute on function public.prepare_chat_attachment_upload(uuid, uuid, uuid) to authenticated;
+grant execute on function public.discard_chat_attachment_uploads(text[]) to authenticated;
 
 do $$
 begin
@@ -2275,6 +2781,14 @@ $$;
 do $$
 begin
   alter publication supabase_realtime add table public.chat_attachments;
+exception when duplicate_object or undefined_object then
+  null;
+end;
+$$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.chat_attachment_tombstones;
 exception when duplicate_object or undefined_object then
   null;
 end;

@@ -29,6 +29,16 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "CHANGE_ME_ASC_APP_ID",
+        "appleTeamId": "CHANGE_ME_APPLE_TEAM_ID"
+      },
+      "android": {
+        "serviceAccountKeyPath": "@secret:GOOGLE_SERVICE_ACCOUNT",
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
+    }
   }
 }

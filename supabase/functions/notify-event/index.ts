@@ -5,6 +5,7 @@ import {
   ExpoPushMessage,
   jsonResponse,
   pushTokensForUsers,
+  recordExpoPushTickets,
   sendExpoPushMessages,
   serviceClient,
   todayKey,
@@ -56,35 +57,19 @@ async function coupleMembers(client: SupabaseServiceClient, coupleId: string) {
   return (data ?? []).map((member) => member.user_id as string);
 }
 
-async function profileName(client: SupabaseServiceClient, userId: string) {
-  const { data } = await client
-    .from("profiles")
-    .select("display_name")
-    .eq("id", userId)
-    .maybeSingle();
+async function privateDedupeKey(prefix: string, ...parts: string[]) {
+  const secret = Deno.env.get("WESPICE_NOTIFICATION_SECRET")
+    ?? Deno.env.get("SUPABASE_NOTIFICATION_SECRET")
+    ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+    ?? "";
+  const payload = `${secret}:${parts.join(":")}`;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
+  const hash = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 32);
 
-  return typeof data?.display_name === "string" ? data.display_name : "Ton/ta partenaire";
-}
-
-async function cardTitle(client: SupabaseServiceClient, coupleId: string, cardId: string) {
-  const { data: baseCard } = await client
-    .from("desire_cards")
-    .select("title")
-    .eq("id", cardId)
-    .maybeSingle();
-
-  if (baseCard?.title) {
-    return baseCard.title as string;
-  }
-
-  const { data: customCard } = await client
-    .from("custom_desire_cards")
-    .select("title")
-    .eq("couple_id", coupleId)
-    .eq("id", cardId)
-    .maybeSingle();
-
-  return typeof customCard?.title === "string" ? customCard.title : "Une carte";
+  return `${prefix}:${hash}`;
 }
 
 async function insertNotificationEvent({
@@ -156,7 +141,7 @@ async function dispatchToRecipients({
     .filter((pref) => Boolean(pref[payload.prefKey]))
     .map((pref) => pref.user_id as string);
 
-  const queuedEventIds: string[] = [];
+  const queuedEvents: Array<{ id: string; recipientId: string }> = [];
   for (const recipientId of optedInRecipients) {
     const eventId = await insertNotificationEvent({
       client,
@@ -168,14 +153,15 @@ async function dispatchToRecipients({
     });
 
     if (eventId) {
-      queuedEventIds.push(eventId);
+      queuedEvents.push({ id: eventId, recipientId });
     }
   }
 
-  if (!queuedEventIds.length) {
+  if (!queuedEvents.length) {
     return { queued: 0, sent: 0 };
   }
 
+  const queuedEventIds = queuedEvents.map((event) => event.id);
   const tokens = await pushTokensForUsers(client, optedInRecipients);
   if (!tokens.length) {
     await client
@@ -193,10 +179,16 @@ async function dispatchToRecipients({
     title: payload.title,
     to: token.expo_push_token,
   }));
+  const eventIdByRecipient = new Map(queuedEvents.map((event) => [event.recipientId, event.id]));
+  const deliveries = tokens.map((token) => ({
+    expoPushToken: token.expo_push_token,
+    notificationEventId: eventIdByRecipient.get(token.user_id) ?? null,
+  }));
 
   try {
     const expoResponse = await sendExpoPushMessages(messages);
     await disableUnregisteredTokens(client, tokens.map((token) => token.expo_push_token), expoResponse);
+    await recordExpoPushTickets(client, deliveries, expoResponse);
     await client
       .from("notification_events")
       .update({ sent_at: new Date().toISOString(), status: "sent" })
@@ -219,7 +211,7 @@ async function chatPayload(client: SupabaseServiceClient, body: NotificationBody
 
   const { data: message, error } = await client
     .from("chat_messages")
-    .select("id, author_id, body")
+    .select("id, author_id")
     .eq("couple_id", body.couple_id)
     .eq("id", body.message_id)
     .maybeSingle();
@@ -232,17 +224,12 @@ async function chatPayload(client: SupabaseServiceClient, body: NotificationBody
     return null;
   }
 
-  const senderName = await profileName(client, senderId);
-  const preview = typeof message.body === "string" && message.body.trim()
-    ? message.body.trim().slice(0, 120)
-    : "Photo envoyée dans votre chat privé.";
-
   return {
-    body: preview,
+    body: "Nouveau message privé",
     data: { couple_id: body.couple_id, message_id: body.message_id, type: "chat_message" },
     dedupeKey: `chat:${body.message_id}`,
     prefKey: "chat_message_enabled",
-    title: `${senderName} t'a écrit`,
+    title: "WeSpice",
   };
 }
 
@@ -265,12 +252,10 @@ async function matchPayload(client: SupabaseServiceClient, body: NotificationBod
     return null;
   }
 
-  const title = await cardTitle(client, body.couple_id, body.card_id);
-
   return {
-    body: `${title} est prêt à être révélé.`,
-    data: { card_id: body.card_id, couple_id: body.couple_id, type: "new_match" },
-    dedupeKey: `match:${body.card_id}`,
+    body: "Un match est prêt à être révélé.",
+    data: { couple_id: body.couple_id, type: "new_match" },
+    dedupeKey: await privateDedupeKey("match", body.couple_id, body.card_id),
     prefKey: "match_reveal_enabled",
     title: "Nouveau match d'envie 🔥",
   };

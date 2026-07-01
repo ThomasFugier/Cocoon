@@ -54,6 +54,7 @@ Secret Supabase :
 ```bash
 supabase secrets set REVENUECAT_SECRET_API_KEY=sk_...
 supabase functions deploy verify-purchase
+supabase functions deploy delete-account
 ```
 
 Produits et entitlements RevenueCat attendus :

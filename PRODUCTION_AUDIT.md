@@ -15,9 +15,11 @@ Date: 2026-06-28
 ## Changes made locally
 
 - `app.json`: added build-time native config for notifications, SecureStore, image picker permissions, and iOS export compliance.
-- `eas.json`: switched EAS version source to remote, raised EAS CLI requirement, added development simulator profile, and added production submit scaffold.
+- `eas.json`: switched EAS version source to remote, raised EAS CLI requirement, added development simulator profile, and added production submit configuration for iOS/App Store Connect and Android internal draft.
 - `App.tsx`: production builds now disable guest/local mode, debug presets, debug tab, and local purchase unlocks unless `EXPO_PUBLIC_ENABLE_LOCAL_MODE=true`.
 - `.env.example` and `src/env.d.ts`: documented and typed `EXPO_PUBLIC_ENABLE_LOCAL_MODE`.
+- `App.tsx` and `supabase/functions/delete-account`: added an authenticated in-app account/data deletion path.
+- `public/privacy.html`, `public/terms.html`, and `public/delete-account.html`: added public legal pages ready to host.
 
 ## Production readiness audit
 
@@ -47,6 +49,7 @@ npx.cmd eas-cli@latest build -p android --profile development
 supabase link --project-ref <prod-project-ref>
 supabase db push
 supabase functions deploy verify-purchase
+supabase functions deploy delete-account
 supabase functions deploy notify-event
 supabase functions deploy notify-scheduled --no-verify-jwt
 supabase secrets set REVENUECAT_SECRET_API_KEY=...
@@ -56,7 +59,7 @@ supabase secrets set EXPO_ACCESS_TOKEN=... # only if Expo push security is enabl
 
 - Supabase Auth console must enable Google and Apple and allow `wespice://auth`.
 - Storage console should confirm `chat-attachments` is private, max 10 MB, and only image MIME types.
-- Recommended follow-up: add a first-class account/data deletion Edge Function before store submission, including deletion of chat storage objects.
+- Account/data deletion is implemented through the authenticated `delete-account` Edge Function. It removes the user's private chat storage objects, cleans the whole couple only when it becomes empty, deletes the Supabase auth user, clears local state on the client, and preserves a partner's account when one remains.
 
 ### RevenueCat
 
@@ -98,11 +101,19 @@ Must be done on real dev builds, not Expo Go:
 
 ### Store submission
 
+Now implemented in the repo:
+
+- Privacy policy content: `public/privacy.html`.
+- Terms content: `public/terms.html`.
+- Account/data deletion instructions: `public/delete-account.html`.
+- In-app account/data deletion path: Profil > Application > Supprimer mon compte.
+- EAS submit profile with iOS placeholders and Android internal draft upload using `@secret:GOOGLE_SERVICE_ACCOUNT`.
+
 Still needed before App Store / Google Play submission:
 
-- Privacy policy URL.
-- Terms URL.
-- In-app account/data deletion path.
+- Host the public pages on an HTTPS domain and use the final URLs in App Store Connect / Play Console.
+- Replace `CHANGE_ME_ASC_APP_ID` and `CHANGE_ME_APPLE_TEAM_ID` in `eas.json`.
+- Create the EAS file secret `GOOGLE_SERVICE_ACCOUNT` from the Play Console service account JSON.
 - Store metadata, age rating, content descriptions, and screenshots.
 - App Store Connect / Play Console product IDs matching RevenueCat.
 - Apple and Google OAuth client configuration for the final bundle/package IDs.

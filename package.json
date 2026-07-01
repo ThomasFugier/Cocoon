@@ -1,6 +1,6 @@
 {
   "name": "wespice",
-  "version": "1.0.18",
+  "version": "1.0.39",
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",
@@ -13,6 +13,7 @@
     "expo-crypto": "~56.0.4",
     "expo-dev-client": "~56.0.20",
     "expo-device": "~56.0.4",
+    "expo-file-system": "~56.0.8",
     "expo-haptics": "~56.0.3",
     "expo-image-manipulator": "~56.0.19",
     "expo-image-picker": "~56.0.18",
@@ -53,6 +54,8 @@
     "build:prod": "npm run version:prod && npx eas-cli@latest build --profile production",
     "build:prod:ios": "npm run version:prod && npx eas-cli@latest build -p ios --profile production",
     "build:prod:android": "npm run version:prod && npx eas-cli@latest build -p android --profile production",
+    "submit:ios": "npx eas-cli@latest submit -p ios --profile production --latest",
+    "submit:android": "npx eas-cli@latest submit -p android --profile production --latest",
     "cards:generate": "node scripts/generate-desires.js",
     "cards:check": "node scripts/generate-desires.js --check",
     "test": "node --test tests/*.test.mjs"

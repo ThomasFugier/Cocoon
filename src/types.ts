@@ -48,6 +48,8 @@ export type ChatAttachment = {
   height?: number;
   sizeBytes?: number;
   optimized?: boolean;
+  disappeared?: boolean;
+  consumedAt?: string;
 };
 
 export type ChatMessage = {
@@ -55,6 +57,7 @@ export type ChatMessage = {
   authorId: PartnerId;
   body: string;
   createdAt: string;
+  deliveryStatus?: "sending" | "queued" | "failed";
   expiresAt: string;
   attachments: ChatAttachment[];
   linkedCardId?: string;
@@ -81,6 +84,7 @@ export type PartnerProfile = {
   id: PartnerId;
   displayName: string;
   color: string;
+  remoteUserId?: string;
   statusEmoji: string;
   statusUpdatedAt?: string;
   vibe: string;
@@ -90,6 +94,7 @@ export type CoupleState = {
   id: string;
   inviteCode: string;
   createdAt: string;
+  hiddenMatchCount: number;
   profiles: Record<PartnerId, PartnerProfile>;
   votes: Record<PartnerId, Record<string, VoteLevel>>;
   dailyResponses: Record<PartnerId, DailyResponseUsage>;

@@ -24,6 +24,7 @@ import {
   Search,
   Send,
   Sparkles,
+  Trash2,
   User,
   Users,
   X,
@@ -32,6 +33,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Animated,
   Easing,
   Image,
@@ -48,6 +50,9 @@ import {
   useWindowDimensions,
   View,
   ViewStyle,
+  type AppStateStatus,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
@@ -62,20 +67,23 @@ import { AuthProvider, signInWithProvider, signOut } from "./src/lib/auth";
 import {
   createSignedChatAttachmentUrl,
   compressChatAttachmentForUpload,
+  consumeRemoteChatAttachment,
   createRemoteCouple,
+  deleteRemoteAccount,
   fetchRemoteChatMessages,
+  fetchRemoteChatSyncMarker,
   fetchRemoteCoupleMembers,
   fetchMyCoupleState,
   hydrateRemoteShell,
   joinRemoteCouple,
   leaveRemoteCouple,
   markRemoteMatchRevealed,
+  markRemoteNextMatchRevealed,
   saveRemoteCustomDesire,
   saveRemoteMood,
   saveRemoteNotificationPreferences,
   saveRemoteProfileStatus,
   saveRemoteVote,
-  sendRemoteNotificationEvent,
   sendRemoteChatMessage,
   subscribeToCoupleRealtime,
   type RemoteChatMessage,
@@ -103,9 +111,12 @@ import {
 } from "./src/lib/localStore";
 import {
   enqueueRemoteChatMessage,
+  enqueueRemoteChatAttachmentConsumption,
   enqueueRemoteVote,
   flushRemoteQueue,
   loadOfflineQueueCount,
+  removeRemoteChatAttachmentConsumption,
+  sendOrQueueRemoteNotificationEvent,
 } from "./src/lib/offlineQueue";
 import {
   configureNotificationChannel,
@@ -131,9 +142,9 @@ import {
 import { PROJECT_VERSION } from "./src/version";
 
 type TabKey = "home" | "envies" | "match" | "couple" | "profil" | "debug" | "chat" | "rules";
-type VisibleTabKey = Exclude<TabKey, "rules">;
+type VisibleTabKey = Exclude<TabKey, "profil" | "rules">;
 type DebugPresetId = "empty" | "mood" | "reveal" | "full";
-type DesireFilterKey = "todo" | "flame" | "curious" | "matches";
+type DesireFilterKey = "all" | "todo" | "flame" | "curious" | "matches";
 type RemoteRefreshOptions = {
   force?: boolean;
 };
@@ -149,14 +160,11 @@ type ChatRefreshState = {
   lastStartedAt: number;
 };
 type HomeNextStepConfig = {
-  badge: string;
   cta: string;
   emoji: string;
   onPress: () => void;
-  phase: string;
   secondary?: string;
   secondaryPress?: () => void;
-  text: string;
   title: string;
 };
 type DailyAdvice = {
@@ -213,6 +221,8 @@ const AD_GAME_VOTE_INTERVAL = 8;
 const AD_GAME_MATCH_INTERVAL = 3;
 const AD_AFTER_VOTE_DELAY_MS = GAME_CARD_SETTLE_MS + HEART_BURST_MS + 260;
 const CHAT_REFRESH_COOLDOWN_MS = 300;
+const CHAT_ACTIVE_SYNC_POLL_MS = 8000;
+const EPHEMERAL_PHOTO_VIEW_MS = 10000;
 const REMOTE_REFRESH_COOLDOWN_MS = 1500;
 const SIGNED_CHAT_ATTACHMENT_URL_CACHE_MS = 5 * 60 * 60 * 1000;
 const PERSONAL_CATEGORY: DesireCategory = "Perso";
@@ -346,6 +356,9 @@ const emojiFont = Platform.select({
 });
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const weSpiceLogoAsset = require("./ASO/WeSpice_Logo.png");
+const PROFILE_SHORTCUT_TOP = 14;
+const PROFILE_SHORTCUT_SIZE = 54;
+const APP_HEADER_TOP_SPACE = PROFILE_SHORTCUT_TOP + PROFILE_SHORTCUT_SIZE + 8;
 
 const stickers = {
   cherries: "🍒",
@@ -396,6 +409,7 @@ const moodOptions: Array<{ emoji: string; hint: string; label: string; level: Co
 ];
 
 const desireFilterOptions: Array<{ key: DesireFilterKey; label: string }> = [
+  { key: "all", label: "Toutes" },
   { key: "todo", label: "À répondre" },
   { key: "flame", label: "Flamme" },
   { key: "curious", label: "Pourquoi pas" },
@@ -618,6 +632,14 @@ function matchedCards(couple: CoupleState) {
   return availableDesireCards(couple).filter((card) => isCardMatch(couple, card.id));
 }
 
+function hiddenMatchCountForCouple(couple: CoupleState, matches: DesireCard[], revealedMatchSet: Set<string>) {
+  if (isRemoteCoupleId(couple.id)) {
+    return couple.hiddenMatchCount ?? 0;
+  }
+
+  return matches.filter((card) => !revealedMatchSet.has(card.id)).length;
+}
+
 function hasLinkedPartner(couple: CoupleState) {
   const partner = couple.profiles.partner;
   return !(partner.displayName === "Partenaire" && partner.vibe === "Invitation en attente");
@@ -783,11 +805,6 @@ function nextSixAM(date = new Date()) {
   return next;
 }
 
-function chatExpiryLabel(now = new Date()) {
-  const expiry = nextSixAM(now);
-  return expiry.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-}
-
 function purgeExpiredChat(couple: CoupleState, now = new Date()): CoupleState {
   const messages = couple.chat?.messages ?? [];
   const nextMessages = messages.filter((message) => new Date(message.expiresAt) > now);
@@ -809,12 +826,14 @@ function createChatMessage({
   attachments,
   authorId,
   body,
+  deliveryStatus,
   id,
   linkedCardId,
 }: {
   attachments: ChatAttachment[];
   authorId: PartnerId;
   body: string;
+  deliveryStatus?: ChatMessage["deliveryStatus"];
   id?: string;
   linkedCardId?: string;
 }): ChatMessage {
@@ -825,9 +844,88 @@ function createChatMessage({
     authorId,
     body,
     createdAt: now.toISOString(),
+    deliveryStatus,
     expiresAt: nextSixAM(now).toISOString(),
     attachments,
     linkedCardId,
+  };
+}
+
+function withChatMessageDeliveryStatus(
+  couple: CoupleState,
+  messageId: string,
+  deliveryStatus?: ChatMessage["deliveryStatus"],
+) {
+  const messages = couple.chat?.messages ?? [];
+  let changed = false;
+  const nextMessages = messages.map((message) => {
+    if (message.id !== messageId) {
+      return message;
+    }
+
+    if (message.deliveryStatus === deliveryStatus) {
+      return message;
+    }
+
+    changed = true;
+    return { ...message, deliveryStatus };
+  });
+
+  if (!changed) {
+    return couple;
+  }
+
+  return {
+    ...couple,
+    chat: {
+      ...couple.chat,
+      messages: nextMessages,
+    },
+  };
+}
+
+function withChatAttachmentDisappeared(
+  couple: CoupleState,
+  messageId: string,
+  attachmentId: string,
+  consumedAt = new Date().toISOString(),
+) {
+  const messages = couple.chat?.messages ?? [];
+  let changed = false;
+  const nextMessages = messages.map((message) => {
+    if (message.id !== messageId) {
+      return message;
+    }
+
+    const nextAttachments = message.attachments.map((attachment) => {
+      if (attachment.id !== attachmentId || attachment.disappeared) {
+        return attachment;
+      }
+
+      changed = true;
+      return {
+        ...attachment,
+        consumedAt,
+        disappeared: true,
+        name: "Photo disparue",
+        storagePath: undefined,
+        uri: "",
+      };
+    });
+
+    return changed ? { ...message, attachments: nextAttachments } : message;
+  });
+
+  if (!changed) {
+    return couple;
+  }
+
+  return {
+    ...couple,
+    chat: {
+      ...couple.chat,
+      messages: nextMessages,
+    },
   };
 }
 
@@ -865,6 +963,7 @@ function createDebugCouple(preset: DebugPresetId): CoupleState {
     id: `debug-${preset}-${Date.now()}`,
     inviteCode: "DEV420",
     createdAt: new Date().toISOString(),
+    hiddenMatchCount: 0,
     activePartnerId: "me",
     profiles: {
       me: {
@@ -1021,10 +1120,17 @@ function profileFromRemoteMember(
     id: partnerId,
     color: row.color || "rose",
     displayName: row.display_name || (partnerId === "me" ? "Moi" : "Partenaire"),
+    remoteUserId: row.user_id,
     statusEmoji: normalizeStatusEmoji(row.status_emoji || stickers.heart),
     statusUpdatedAt: row.status_updated_at ?? undefined,
     vibe: row.vibe || "",
   };
+}
+
+function coupleRemoteProfileIds(couple: CoupleState) {
+  return Array.from(new Set(PARTNER_IDS
+    .map((partnerId) => couple.profiles[partnerId].remoteUserId)
+    .filter((id): id is string => Boolean(id))));
 }
 
 function withRemoteCoupleMembers(
@@ -1126,6 +1232,18 @@ async function getSignedChatAttachmentUrl(storagePath: string) {
 async function chatMessagesFromRemote(remoteMessages: RemoteChatMessage[]): Promise<ChatMessage[]> {
   return Promise.all((remoteMessages ?? []).map(async (message) => {
     const attachments = await Promise.all((message.attachments ?? []).map(async (attachment) => {
+      if (attachment.disappeared || !attachment.storage_path) {
+        return {
+          consumedAt: attachment.consumed_at ?? undefined,
+          disappeared: true,
+          id: attachment.id,
+          mimeType: attachment.mime_type,
+          name: attachment.name ?? "Photo disparue",
+          type: "image" as const,
+          uri: "",
+        };
+      }
+
       let signedUrl = "";
 
       try {
@@ -1160,6 +1278,19 @@ async function chatMessagesFromRemote(remoteMessages: RemoteChatMessage[]): Prom
   }));
 }
 
+function chatSyncMarkerKey(marker: { latest_message_at?: string | null; latest_message_id?: string | null }) {
+  return `${marker.latest_message_id ?? ""}:${marker.latest_message_at ?? ""}`;
+}
+
+function chatSyncMarkerKeyFromMessages(remoteMessages: RemoteChatMessage[]) {
+  const latestMessage = remoteMessages[remoteMessages.length - 1];
+
+  return chatSyncMarkerKey({
+    latest_message_at: latestMessage?.created_at ?? null,
+    latest_message_id: latestMessage?.id ?? null,
+  });
+}
+
 function areChatAttachmentsEqual(left: ChatAttachment[], right: ChatAttachment[]) {
   if (left.length !== right.length) {
     return false;
@@ -1176,7 +1307,9 @@ function areChatAttachmentsEqual(left: ChatAttachment[], right: ChatAttachment[]
       && attachment.mimeType === other.mimeType
       && attachment.width === other.width
       && attachment.height === other.height
-      && attachment.sizeBytes === other.sizeBytes;
+      && attachment.sizeBytes === other.sizeBytes
+      && attachment.disappeared === other.disappeared
+      && attachment.consumedAt === other.consumedAt;
   });
 }
 
@@ -1193,6 +1326,7 @@ function areChatMessagesEqual(left: ChatMessage[], right: ChatMessage[]) {
       && message.authorId === other.authorId
       && message.body === other.body
       && message.createdAt === other.createdAt
+      && message.deliveryStatus === other.deliveryStatus
       && message.expiresAt === other.expiresAt
       && message.linkedCardId === other.linkedCardId
       && areChatAttachmentsEqual(message.attachments, other.attachments);
@@ -1215,12 +1349,15 @@ async function coupleFromRemoteState(remote: RemoteCoupleState, fallback?: Coupl
     }
   });
 
-  const chatMessages = await chatMessagesFromRemote(remote.chat_messages ?? []);
+  const chatMessages = Array.isArray(remote.chat_messages)
+    ? await chatMessagesFromRemote(remote.chat_messages)
+    : fallback?.chat?.messages ?? [];
 
   return {
     id: remote.couple.id,
     inviteCode: remote.couple.invite_code,
     createdAt: remote.couple.created_at,
+    hiddenMatchCount: remote.hidden_match_count ?? fallback?.hiddenMatchCount ?? 0,
     activePartnerId: "me",
     profiles: {
       me: currentMember ? profileFromRemoteMember(currentMember, "me") : fallback?.profiles.me ?? {
@@ -1282,6 +1419,17 @@ async function coupleFromRemoteState(remote: RemoteCoupleState, fallback?: Coupl
       lastPurgedAt: fallback?.chat?.lastPurgedAt,
     },
   };
+}
+
+function revealedMatchIdsFromRemote(remote: RemoteCoupleState) {
+  const ids = new Set<string>();
+  (remote.matches ?? []).forEach((match) => ids.add(match.card_id));
+  (remote.match_reveals ?? []).forEach((reveal) => {
+    if (reveal.revealed_at) {
+      ids.add(reveal.card_id);
+    }
+  });
+  return Array.from(ids);
 }
 
 async function mirrorSoloStateToRemote(couple: CoupleState, remoteCoupleId: string) {
@@ -1698,6 +1846,9 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, Ap
 function Root() {
   const [booting, setBooting] = useState(true);
   const [remoteHydrating, setRemoteHydrating] = useState(false);
+  const [remoteAccountCheckedUserId, setRemoteAccountCheckedUserId] = useState<string | null>(null);
+  const [remoteAccountLookupError, setRemoteAccountLookupError] = useState("");
+  const [remoteAccountLookupRetry, setRemoteAccountLookupRetry] = useState(0);
   const [session, setSession] = useState<Session | null>(null);
   const [guestMode, setGuestMode] = useState(false);
   const [couple, setCouple] = useState<CoupleState | null>(null);
@@ -1717,6 +1868,7 @@ function Root() {
   const [responseLimitPromptVisible, setResponseLimitPromptVisible] = useState(false);
   const [fakeAd, setFakeAd] = useState<FakeAdRequest | null>(null);
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+  const [appForeground, setAppForeground] = useState(() => AppState.currentState === "active");
   const secretToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fakeAdResolver = useRef<(() => void) | null>(null);
   const fakeAdLastShownAt = useRef(0);
@@ -1729,6 +1881,7 @@ function Root() {
     inFlight: null,
     lastStartedAt: 0,
   });
+  const chatSyncMarkerRef = useRef<{ coupleId: string; key: string } | null>(null);
   const remoteRefreshRef = useRef<RemoteRefreshState>({
     coupleKey: null,
     inFlight: null,
@@ -1738,15 +1891,56 @@ function Root() {
   const [providerLoading, setProviderLoading] = useState<AuthProvider | null>(null);
   const [syncError, setSyncError] = useState("");
   const [tab, setTab] = useState<TabKey>("home");
+  const remoteAccountReady = Boolean(
+    session
+    && hasSupabaseConfig
+    && remoteAccountCheckedUserId === session.user.id
+    && !remoteHydrating
+    && !remoteAccountLookupError,
+  );
+
+  const canWriteRemoteCouple = useCallback(
+    (targetCouple?: CoupleState | null): targetCouple is CoupleState =>
+      Boolean(remoteAccountReady && targetCouple && isRemoteCoupleId(targetCouple.id)),
+    [remoteAccountReady],
+  );
 
   const updateIntroSeen = useCallback((seen: boolean) => {
     setIntroSeen(seen);
     void saveIntroSeen(seen);
   }, []);
 
+  const applyRemoteCoupleState = useCallback(
+    async (remote: RemoteCoupleState, isCancelled?: () => boolean) => {
+      const nextCouple = await coupleFromRemoteState(remote, coupleRef.current);
+
+      if (isCancelled?.()) {
+        return false;
+      }
+
+      setCouple(purgeExpiredChat(nextCouple));
+      setRevealedMatchIds(revealedMatchIdsFromRemote(remote));
+      setSyncError("");
+      return true;
+    },
+    [],
+  );
+
   useEffect(() => {
     coupleRef.current = couple;
   }, [couple]);
+
+  useEffect(() => {
+    function handleAppStateChange(nextState: AppStateStatus) {
+      setAppForeground(nextState === "active");
+    }
+
+    const subscription = AppState.addEventListener("change", handleAppStateChange);
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     configureNotificationChannel().catch(() => undefined);
@@ -1791,11 +1985,7 @@ function Root() {
             return false;
           }
 
-          const nextCouple = await coupleFromRemoteState(remote, coupleRef.current);
-          setCouple(purgeExpiredChat(nextCouple));
-          setRevealedMatchIds((remote.match_reveals ?? []).filter((reveal) => reveal.revealed_at).map((reveal) => reveal.card_id));
-          setSyncError("");
-          return true;
+          return applyRemoteCoupleState(remote);
         } catch (error) {
           const message = errorMessage(error);
           setSyncError(`La synchro serveur n'a pas abouti: ${message}`);
@@ -1821,7 +2011,7 @@ function Root() {
 
       return refreshTask;
     },
-    [session],
+    [applyRemoteCoupleState, session],
   );
 
   const refreshRemoteChatMessages = useCallback(
@@ -1847,6 +2037,10 @@ function Root() {
         try {
           const remoteMessages = await fetchRemoteChatMessages(coupleId);
           const messages = await chatMessagesFromRemote(remoteMessages);
+          chatSyncMarkerRef.current = {
+            coupleId,
+            key: chatSyncMarkerKeyFromMessages(remoteMessages),
+          };
 
           setCouple((current) => {
             if (!current || current.id !== coupleId) {
@@ -1895,6 +2089,30 @@ function Root() {
     [session],
   );
 
+  const refreshRemoteChatMessagesIfChanged = useCallback(
+    async (preferredCoupleId?: string | null) => {
+      if (!session || !hasSupabaseConfig || !preferredCoupleId || !isRemoteCoupleId(preferredCoupleId)) {
+        return false;
+      }
+
+      try {
+        const marker = await fetchRemoteChatSyncMarker(preferredCoupleId);
+        const nextKey = chatSyncMarkerKey(marker);
+        const currentMarker = chatSyncMarkerRef.current;
+
+        if (currentMarker?.coupleId === preferredCoupleId && currentMarker.key === nextKey) {
+          return false;
+        }
+
+        return refreshRemoteChatMessages(preferredCoupleId, { force: true });
+      } catch (error) {
+        console.warn("Silent chat marker refresh failed", error);
+        return false;
+      }
+    },
+    [refreshRemoteChatMessages, session],
+  );
+
   const flushQueuedRemoteWork = useCallback(
     async (preferredCoupleId?: string | null) => {
       if (!session || !hasSupabaseConfig) {
@@ -1908,18 +2126,26 @@ function Root() {
         return;
       }
 
+      if (!remoteAccountReady || (preferredCoupleId && !isRemoteCoupleId(preferredCoupleId))) {
+        return;
+      }
+
       const result = await flushRemoteQueue();
       setOfflineQueueCount(result.pending);
 
-      if (result.sent > 0) {
+      if (result.sent > result.sentChatMessages + result.sentAttachmentConsumptions) {
         await refreshRemoteCoupleState(preferredCoupleId);
       }
 
-      if (result.pending > 0) {
-        setSyncError(`${result.pending} action${result.pending > 1 ? "s" : ""} en attente de reconnexion.`);
+      if (result.sentChatMessages > 0 || result.sentAttachmentConsumptions > 0) {
+        await refreshRemoteChatMessages(preferredCoupleId, { force: true });
+      }
+
+      if (result.visiblePending > 0) {
+        setSyncError(`${result.visiblePending} action${result.visiblePending > 1 ? "s" : ""} en attente de reconnexion.`);
       }
     },
-    [refreshRemoteCoupleState, session],
+    [refreshRemoteChatMessages, refreshRemoteCoupleState, remoteAccountReady, session],
   );
 
   useEffect(() => {
@@ -1973,6 +2199,9 @@ function Root() {
     }
 
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user.id ?? null;
+      setRemoteAccountCheckedUserId((current) => (current === nextUserId ? current : null));
+      setRemoteAccountLookupError("");
       setSession(nextSession);
     });
 
@@ -2012,16 +2241,45 @@ function Root() {
 
   useEffect(() => {
     if (!session || !hasSupabaseConfig) {
+      setRemoteAccountCheckedUserId(null);
+      setRemoteAccountLookupError("");
       return;
     }
 
     let cancelled = false;
+    const userId = session.user.id;
 
     async function hydrateRemote() {
       setRemoteHydrating(true);
-      await refreshRemoteCoupleState(couple?.id);
-      if (!cancelled) {
-        setRemoteHydrating(false);
+      setRemoteAccountLookupError("");
+
+      try {
+        const currentCoupleId = coupleRef.current?.id;
+        const remote = await fetchMyCoupleState(currentCoupleId && isRemoteCoupleId(currentCoupleId) ? currentCoupleId : null);
+
+        if (cancelled) {
+          return;
+        }
+
+        if (remote) {
+          const applied = await applyRemoteCoupleState(remote, () => cancelled);
+
+          if (!applied) {
+            return;
+          }
+        }
+
+        setRemoteAccountCheckedUserId(userId);
+      } catch (error) {
+        if (!cancelled) {
+          const message = errorMessage(error);
+          setRemoteAccountCheckedUserId(null);
+          setRemoteAccountLookupError(`Impossible de retrouver ton espace Google: ${message}`);
+        }
+      } finally {
+        if (!cancelled) {
+          setRemoteHydrating(false);
+        }
       }
     }
 
@@ -2030,13 +2288,14 @@ function Root() {
     return () => {
       cancelled = true;
     };
-  }, [session?.user.id]);
+  }, [applyRemoteCoupleState, remoteAccountLookupRetry, session?.user.id]);
 
   useEffect(() => {
     if (
       !session
       || !hasSupabaseConfig
       || !couple
+      || !remoteAccountReady
       || isRemoteCoupleId(couple.id)
       || hasLinkedPartner(couple)
       || isDebugCouple(couple)
@@ -2058,14 +2317,7 @@ function Root() {
         }
 
         if (existingRemote) {
-          const nextCouple = await coupleFromRemoteState(existingRemote, coupleRef.current);
-
-          if (!cancelled) {
-            setCouple(purgeExpiredChat(nextCouple));
-            setRevealedMatchIds((existingRemote.match_reveals ?? []).filter((reveal) => reveal.revealed_at).map((reveal) => reveal.card_id));
-            setSyncError("");
-          }
-
+          await applyRemoteCoupleState(existingRemote, () => cancelled);
           return;
         }
 
@@ -2104,7 +2356,7 @@ function Root() {
     return () => {
       cancelled = true;
     };
-  }, [couple?.id, refreshRemoteCoupleState, session?.user.id]);
+  }, [applyRemoteCoupleState, couple?.id, refreshRemoteCoupleState, remoteAccountReady, session?.user.id]);
 
   useEffect(() => {
     if (!session || !couple || !hasSupabaseConfig || !isRemoteCoupleId(couple.id)) {
@@ -2113,6 +2365,7 @@ function Root() {
 
     let chatRefreshTimer: ReturnType<typeof setTimeout> | null = null;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const profileUserIds = coupleRemoteProfileIds(couple);
     const unsubscribe = subscribeToCoupleRealtime(couple.id, (table) => {
       if (table === "chat_messages" || table === "chat_attachments") {
         if (chatRefreshTimer) {
@@ -2132,7 +2385,7 @@ function Root() {
       refreshTimer = setTimeout(() => {
         void refreshRemoteCoupleState(couple.id);
       }, 250);
-    });
+    }, profileUserIds);
 
     return () => {
       if (chatRefreshTimer) {
@@ -2143,7 +2396,63 @@ function Root() {
       }
       unsubscribe();
     };
-  }, [couple?.id, refreshRemoteChatMessages, refreshRemoteCoupleState, session?.user.id]);
+  }, [
+    couple?.id,
+    couple?.profiles.me.remoteUserId,
+    couple?.profiles.partner.remoteUserId,
+    refreshRemoteChatMessages,
+    refreshRemoteCoupleState,
+    session?.user.id,
+  ]);
+
+  useEffect(() => {
+    if (
+      !appForeground
+      || tab !== "chat"
+      || !session
+      || !couple
+      || !hasSupabaseConfig
+      || !isRemoteCoupleId(couple.id)
+    ) {
+      return undefined;
+    }
+
+    const coupleId = couple.id;
+    let cancelled = false;
+    let polling = false;
+
+    async function pollChatMarker() {
+      if (cancelled || polling) {
+        return;
+      }
+
+      polling = true;
+      try {
+        await flushQueuedRemoteWork(coupleId);
+        await refreshRemoteChatMessagesIfChanged(coupleId);
+      } finally {
+        polling = false;
+      }
+    }
+
+    void pollChatMarker();
+
+    const interval = setInterval(() => {
+      void pollChatMarker();
+    }, CHAT_ACTIVE_SYNC_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [
+    appForeground,
+    couple?.id,
+    flushQueuedRemoteWork,
+    refreshRemoteChatMessagesIfChanged,
+    session?.user.id,
+    tab,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -2242,6 +2551,8 @@ function Root() {
       setProviderLoading(provider);
       const nextSession = await signInWithProvider(provider);
       if (nextSession) {
+        setRemoteAccountCheckedUserId((current) => (current === nextSession.user.id ? current : null));
+        setRemoteAccountLookupError("");
         setSession(nextSession);
         void saveGuestMode(false);
         setGuestMode(false);
@@ -2261,6 +2572,36 @@ function Root() {
         return;
       }
 
+      if (session && hasSupabaseConfig && !remoteAccountReady) {
+        throw new Error("On vérifie ton compte Google avant de créer un espace.");
+      }
+
+      if (session && hasSupabaseConfig) {
+        try {
+          const existingRemote = await fetchMyCoupleState(null);
+
+          if (existingRemote) {
+            await applyRemoteCoupleState(existingRemote);
+            setRemoteAccountCheckedUserId(session.user.id);
+            setRemoteAccountLookupError("");
+            setInvitePromptVisible(false);
+            setJoinPromptVisible(false);
+            setLeaveConfirmVisible(false);
+            setPurchaseSuccess(null);
+            setTab("home");
+            return;
+          }
+
+          setRemoteAccountCheckedUserId(session.user.id);
+          setRemoteAccountLookupError("");
+        } catch (error) {
+          const message = errorMessage(error);
+          setRemoteAccountCheckedUserId(null);
+          setRemoteAccountLookupError(`Impossible de retrouver ton espace Google: ${message}`);
+          return;
+        }
+      }
+
       const localCouple =
         mode === "create" ? createInitialCouple(profile) : createJoinedCouple(profile, inviteCode.trim());
 
@@ -2270,11 +2611,13 @@ function Root() {
             mode === "create" ? await createRemoteCouple(profile) : await joinRemoteCouple(profile, inviteCode.trim());
           setCouple(hydrateRemoteShell(localCouple, remote));
           void refreshRemoteCoupleState(remote.couple_id);
+          setRemoteAccountCheckedUserId(session.user.id);
+          setRemoteAccountLookupError("");
           setSyncError("");
         } catch (error) {
           const message = errorMessage(error);
-          setCouple(localCouple);
-          setSyncError(`Compte créé localement. Synchro serveur à corriger: ${message}`);
+          setSyncError(`Création serveur impossible: ${message}`);
+          throw new Error(message);
         }
         setInvitePromptVisible(mode === "create");
         setJoinPromptVisible(false);
@@ -2293,7 +2636,7 @@ function Root() {
       setRevealedMatchIds([]);
       setTab("home");
     },
-    [refreshRemoteCoupleState, session],
+    [applyRemoteCoupleState, refreshRemoteCoupleState, remoteAccountReady, session],
   );
 
   const handleVote = useCallback(
@@ -2371,10 +2714,11 @@ function Root() {
         scheduleGameBreakAd();
       }
 
-      if (session && hasSupabaseConfig) {
+      if (canWriteRemoteCouple(couple)) {
         saveRemoteVote(coupleId, cardId, level)
           .then(async () => {
-            await sendRemoteNotificationEvent({ cardId, coupleId, type: "new_match" }).catch(() => undefined);
+            await sendOrQueueRemoteNotificationEvent({ cardId, coupleId, type: "new_match" });
+            await loadOfflineQueueCount().then(setOfflineQueueCount).catch(() => undefined);
             await refreshRemoteCoupleState(coupleId);
           })
           .catch((error) => {
@@ -2401,7 +2745,7 @@ function Root() {
 
       return true;
     },
-    [couple, flushQueuedRemoteWork, refreshRemoteCoupleState, scheduleGameBreakAd, session],
+    [canWriteRemoteCouple, couple, flushQueuedRemoteWork, refreshRemoteCoupleState, scheduleGameBreakAd],
   );
 
   const handleActorChange = useCallback((nextId: PartnerId) => {
@@ -2428,10 +2772,11 @@ function Root() {
         ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
         : Haptics.selectionAsync());
 
-      if (session && hasSupabaseConfig && isRemoteCoupleId(couple.id)) {
+      if (canWriteRemoteCouple(couple)) {
         saveRemoteMood(couple.id, level)
           .then(async () => {
-            await sendRemoteNotificationEvent({ coupleId: couple.id, type: "mood_aligned" }).catch(() => undefined);
+            await sendOrQueueRemoteNotificationEvent({ coupleId: couple.id, type: "mood_aligned" });
+            await loadOfflineQueueCount().then(setOfflineQueueCount).catch(() => undefined);
             await refreshRemoteCoupleState(couple.id);
           })
           .catch(() => {
@@ -2439,7 +2784,7 @@ function Root() {
           });
       }
     },
-    [couple, refreshRemoteCoupleState, session],
+    [canWriteRemoteCouple, couple, refreshRemoteCoupleState],
   );
 
   const ensurePushReadyForPreference = useCallback(async () => {
@@ -2477,7 +2822,7 @@ function Root() {
       }
 
       const nextCouple = setMoodNotificationPreference(current, current.activePartnerId, enabled);
-      if (session && hasSupabaseConfig && isRemoteCoupleId(nextCouple.id)) {
+      if (canWriteRemoteCouple(nextCouple)) {
         saveRemoteNotificationPreferences(nextCouple.id, notificationSettings(nextCouple), nextCouple.activePartnerId).catch(() => {
           setSyncError("Les préférences de notification n'ont pas pu être synchronisées.");
         });
@@ -2487,7 +2832,7 @@ function Root() {
     });
 
     void Haptics.selectionAsync();
-  }, [ensurePushReadyForPreference, session]);
+  }, [canWriteRemoteCouple, ensurePushReadyForPreference, session]);
 
   const handleNotificationPreference = useCallback(async (key: NotificationToggleKey, enabled: boolean) => {
     if (enabled && !(await ensurePushReadyForPreference())) {
@@ -2500,7 +2845,7 @@ function Root() {
       }
 
       const nextCouple = setNotificationPreference(current, current.activePartnerId, key, enabled);
-      if (session && hasSupabaseConfig && isRemoteCoupleId(nextCouple.id)) {
+      if (canWriteRemoteCouple(nextCouple)) {
         saveRemoteNotificationPreferences(nextCouple.id, notificationSettings(nextCouple), nextCouple.activePartnerId).catch(() => {
           setSyncError("Les préférences de notification n'ont pas pu être synchronisées.");
         });
@@ -2510,7 +2855,7 @@ function Root() {
     });
 
     void Haptics.selectionAsync();
-  }, [ensurePushReadyForPreference, session]);
+  }, [canWriteRemoteCouple, ensurePushReadyForPreference, session]);
 
   const handleStatusEmojiChange = useCallback(
     (nextEmoji: string) => {
@@ -2523,13 +2868,13 @@ function Root() {
       setCouple((current) => (current ? withUpdatedProfileStatus(current, activeId, statusEmoji) : current));
       void Haptics.selectionAsync();
 
-      if (session && hasSupabaseConfig && isRemoteCoupleId(couple.id)) {
+      if (canWriteRemoteCouple(couple)) {
         saveRemoteProfileStatus(couple.id, statusEmoji).catch(() => {
           setSyncError("Le statut n'a pas pu être synchronisé. Il reste sauvegardé localement.");
         });
       }
     },
-    [couple, session],
+    [canWriteRemoteCouple, couple],
   );
 
   const handleAddCustomDesire = useCallback(
@@ -2565,7 +2910,7 @@ function Root() {
 
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      if (session && hasSupabaseConfig) {
+      if (canWriteRemoteCouple(couple)) {
         saveRemoteCustomDesire({
           blurb: customDesire.blurb,
           cardId: customDesire.id,
@@ -2578,7 +2923,7 @@ function Root() {
         });
       }
     },
-    [couple, session],
+    [canWriteRemoteCouple, couple],
   );
 
   const runPurchaseOrLocalUnlock = useCallback(
@@ -2596,7 +2941,7 @@ function Root() {
       }
 
       if (session) {
-        if (!hasSupabaseConfig || !isRemoteCoupleId(couple.id)) {
+        if (!canWriteRemoteCouple(couple)) {
           setSyncError("Achat impossible tant que l'espace n'est pas synchronisé avec Supabase.");
           return;
         }
@@ -2632,7 +2977,7 @@ function Root() {
       setPurchaseSuccess(success);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
-    [completeFakeAd, couple, refreshRemoteCoupleState, session],
+    [canWriteRemoteCouple, completeFakeAd, couple, refreshRemoteCoupleState, session],
   );
 
   const handleUnlockCustomCards = useCallback(() => {
@@ -2754,7 +3099,7 @@ function Root() {
   }, [purchaseSuccess]);
 
   const handleRestorePurchases = useCallback(async () => {
-    if (!session || !couple || !hasSupabaseConfig || !isRemoteCoupleId(couple.id)) {
+    if (!session || !couple || !canWriteRemoteCouple(couple)) {
       setSyncError("Connecte-toi avec un espace Supabase synchronisé pour restaurer les achats.");
       return;
     }
@@ -2769,7 +3114,7 @@ function Root() {
       setSyncError(`Restauration impossible: ${message}`);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
-  }, [couple, refreshRemoteCoupleState, session]);
+  }, [canWriteRemoteCouple, couple, refreshRemoteCoupleState, session]);
 
   const handleCopyInvite = useCallback(async () => {
     if (!couple) {
@@ -2815,13 +3160,14 @@ function Root() {
         return;
       }
 
-      if (session && hasSupabaseConfig && isRemoteCoupleId(couple.id)) {
+      if (canWriteRemoteCouple(couple)) {
         const messageId = Crypto.randomUUID();
         const cleanCouple = purgeExpiredChat(couple);
         const optimisticMessage = createChatMessage({
           attachments,
           authorId: cleanCouple.activePartnerId,
           body: trimmedBody || "Photo",
+          deliveryStatus: "sending",
           id: messageId,
           linkedCardId: chatContextCardId,
         });
@@ -2845,16 +3191,23 @@ function Root() {
             linkedCardId: chatContextCardId,
             messageId,
           });
-          void sendRemoteNotificationEvent({ coupleId: couple.id, messageId, type: "chat_message" }).catch(() => undefined);
+          void sendOrQueueRemoteNotificationEvent({ coupleId: couple.id, messageId, type: "chat_message" })
+            .then(() => loadOfflineQueueCount())
+            .then(setOfflineQueueCount)
+            .catch(() => undefined);
+          setCouple((current) => (current && current.id === couple.id
+            ? withChatMessageDeliveryStatus(current, messageId)
+            : current));
           await refreshRemoteChatMessages(couple.id, { force: true });
           await Haptics.selectionAsync();
         } catch (error) {
-          const message = errorMessage(error);
-          await enqueueRemoteChatMessage({
+          console.warn("Chat message queued for retry", error);
+          const queued = await enqueueRemoteChatMessage({
             attachments,
             body: trimmedBody,
             coupleId: couple.id,
             linkedCardId: chatContextCardId,
+            messageId,
           })
             .then(() => loadOfflineQueueCount())
             .then(setOfflineQueueCount)
@@ -2862,9 +3215,13 @@ function Root() {
               setTimeout(() => {
                 flushQueuedRemoteWork(couple.id).catch(() => undefined);
               }, 5000);
+              return true;
             })
-            .catch(() => undefined);
-          setSyncError(`Message gardé en attente. Retry automatique dès que possible. (${message})`);
+            .catch(() => false);
+          setCouple((current) => (current && current.id === couple.id
+            ? withChatMessageDeliveryStatus(current, messageId, queued ? "queued" : "failed")
+            : current));
+          await Haptics.selectionAsync();
         }
         return;
       }
@@ -2886,7 +3243,96 @@ function Root() {
       });
       await Haptics.selectionAsync();
     },
-    [chatContextCardId, couple, flushQueuedRemoteWork, refreshRemoteChatMessages, session],
+    [canWriteRemoteCouple, chatContextCardId, couple, flushQueuedRemoteWork, refreshRemoteChatMessages],
+  );
+
+  const queueChatAttachmentConsumption = useCallback(
+    async ({
+      attachmentId,
+      coupleId,
+      delayMs = 0,
+      messageId,
+    }: {
+      attachmentId: string;
+      coupleId: string;
+      delayMs?: number;
+      messageId: string;
+    }) => {
+      await enqueueRemoteChatAttachmentConsumption({ attachmentId, coupleId, delayMs, messageId });
+      await loadOfflineQueueCount().then(setOfflineQueueCount).catch(() => undefined);
+      const flushDelayMs = Math.max(500, delayMs + 500);
+      setTimeout(() => {
+        flushQueuedRemoteWork(coupleId).catch(() => undefined);
+      }, flushDelayMs);
+    },
+    [flushQueuedRemoteWork],
+  );
+
+  const handleQueueChatAttachmentConsumption = useCallback(
+    async ({ attachmentId, delayMs, messageId }: { attachmentId: string; delayMs?: number; messageId: string }) => {
+      const currentCouple = coupleRef.current;
+
+      if (!canWriteRemoteCouple(currentCouple)) {
+        return;
+      }
+
+      const targetAttachment = currentCouple.chat?.messages
+        .find((message) => message.id === messageId)
+        ?.attachments.find((attachment) => attachment.id === attachmentId);
+
+      if (!targetAttachment || targetAttachment.disappeared) {
+        return;
+      }
+
+      await queueChatAttachmentConsumption({
+        attachmentId,
+        coupleId: currentCouple.id,
+        delayMs,
+        messageId,
+      }).catch(() => undefined);
+    },
+    [canWriteRemoteCouple, queueChatAttachmentConsumption],
+  );
+
+  const handleConsumeChatAttachment = useCallback(
+    async ({ attachmentId, messageId }: { attachmentId: string; messageId: string }) => {
+      const currentCouple = coupleRef.current;
+
+      if (!currentCouple) {
+        return;
+      }
+
+      const targetAttachment = currentCouple.chat?.messages
+        .find((message) => message.id === messageId)
+        ?.attachments.find((attachment) => attachment.id === attachmentId);
+
+      if (targetAttachment?.disappeared) {
+        return;
+      }
+
+      if (targetAttachment?.storagePath) {
+        signedChatAttachmentUrlCache.delete(targetAttachment.storagePath);
+      }
+
+      const coupleId = currentCouple.id;
+      setCouple((current) => (current && current.id === coupleId
+        ? withChatAttachmentDisappeared(current, messageId, attachmentId)
+        : current));
+
+      if (!canWriteRemoteCouple(currentCouple)) {
+        return;
+      }
+
+      try {
+        await consumeRemoteChatAttachment({ attachmentId, coupleId, messageId });
+        await removeRemoteChatAttachmentConsumption({ attachmentId, coupleId, messageId }).catch(() => undefined);
+        await refreshRemoteChatMessages(coupleId, { force: true });
+      } catch (error) {
+        console.warn("Chat attachment consumption failed", error);
+        await queueChatAttachmentConsumption({ attachmentId, coupleId, messageId }).catch(() => undefined);
+      }
+    },
+    [canWriteRemoteCouple, queueChatAttachmentConsumption, refreshRemoteChatMessages],
   );
 
   const handleReplayTutorial = useCallback(() => {
@@ -2979,13 +3425,12 @@ function Root() {
       const localCouple = createJoinedCouple(profile, trimmedCode);
 
       if (session && hasSupabaseConfig) {
-        try {
-          const previousCoupleId = isRemoteCoupleId(couple.id) ? couple.id : null;
-          const remote = await joinRemoteCouple(profile, trimmedCode);
+        if (!remoteAccountReady) {
+          throw new Error("On vérifie ton compte Google avant de rejoindre un couple.");
+        }
 
-          if (previousCoupleId && previousCoupleId !== remote.couple_id) {
-            await leaveRemoteCouple(previousCoupleId).catch(() => undefined);
-          }
+        try {
+          const remote = await joinRemoteCouple(profile, trimmedCode);
 
           setCouple(hydrateRemoteShell(localCouple, remote));
           await refreshRemoteCoupleState(remote.couple_id);
@@ -3012,7 +3457,7 @@ function Root() {
       setTab("home");
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
-    [couple, refreshRemoteCoupleState, session],
+    [couple, refreshRemoteCoupleState, remoteAccountReady, session],
   );
 
   const handleRequestLeaveCouple = useCallback(() => {
@@ -3033,6 +3478,11 @@ function Root() {
     let nextCouple = soloCouple;
 
     if (session && hasSupabaseConfig) {
+      if (!remoteAccountReady) {
+        setSyncError("Attends la fin de la synchronisation avant de quitter ce couple.");
+        return;
+      }
+
       try {
         if (isRemoteCoupleId(couple.id)) {
           await leaveRemoteCouple(couple.id);
@@ -3057,12 +3507,15 @@ function Root() {
     setTab("home");
 
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [couple, session]);
+  }, [couple, remoteAccountReady, session]);
 
   const handleShowOnboarding = useCallback(async () => {
     await clearCoupleState();
     await clearDebugBackupState();
     setCouple(null);
+    setRemoteAccountCheckedUserId(null);
+    setRemoteAccountLookupError("");
+    setRemoteAccountLookupRetry((current) => current + 1);
     updateIntroSeen(true);
     setInvitePromptVisible(false);
     setJoinPromptVisible(false);
@@ -3074,12 +3527,57 @@ function Root() {
     setTab("home");
   }, [updateIntroSeen]);
 
+  const handleDeleteAccount = useCallback(async () => {
+    if (!session || !hasSupabaseConfig) {
+      setSyncError("Connecte-toi avec Google ou Apple pour supprimer ton compte serveur.");
+      return;
+    }
+
+    try {
+      setSyncError("");
+      await deleteRemoteAccount();
+      await signOut().catch(() => undefined);
+      await clearCoupleState();
+      await clearDebugBackupState();
+      await saveGuestMode(false);
+      setSession(null);
+      setGuestMode(false);
+      setCouple(null);
+      setAuthError("");
+      setProviderLoading(null);
+      setRemoteHydrating(false);
+      setRemoteAccountCheckedUserId(null);
+      setRemoteAccountLookupError("");
+      setRemoteAccountLookupRetry((current) => current + 1);
+      updateIntroSeen(false);
+      setInvitePromptVisible(false);
+      setJoinPromptVisible(false);
+      setTutorialReplayVisible(false);
+      setLeaveConfirmVisible(false);
+      setPurchaseSuccess(null);
+      setChatContextCardId(undefined);
+      setRevealedMatchIds([]);
+      setTab("home");
+    } catch (error) {
+      const message = errorMessage(error, "suppression impossible");
+      setSyncError(`Suppression du compte impossible: ${message}`);
+    }
+  }, [session, updateIntroSeen]);
+
   const handleReset = useCallback(async () => {
+    await signOut();
     await clearCoupleState();
     await clearDebugBackupState();
     await saveGuestMode(localModeEnabled);
+    setSession(null);
     setGuestMode(localModeEnabled);
     setCouple(null);
+    setAuthError("");
+    setProviderLoading(null);
+    setRemoteHydrating(false);
+    setRemoteAccountCheckedUserId(null);
+    setRemoteAccountLookupError("");
+    setRemoteAccountLookupRetry((current) => current + 1);
     updateIntroSeen(false);
     setInvitePromptVisible(false);
     setJoinPromptVisible(false);
@@ -3098,6 +3596,8 @@ function Root() {
     setSession(null);
     setGuestMode(false);
     setCouple(null);
+    setRemoteAccountCheckedUserId(null);
+    setRemoteAccountLookupError("");
     setInvitePromptVisible(false);
     setJoinPromptVisible(false);
     setTutorialReplayVisible(false);
@@ -3107,8 +3607,29 @@ function Root() {
     setTab("home");
   }, []);
 
-  if (booting || (remoteHydrating && !couple)) {
+  const handleRetryRemoteAccountLookup = useCallback(() => {
+    setRemoteAccountLookupError("");
+    setRemoteAccountCheckedUserId(null);
+    setRemoteAccountLookupRetry((current) => current + 1);
+  }, []);
+
+  const waitingForRemoteAccount =
+    Boolean(session && hasSupabaseConfig && !couple && remoteAccountCheckedUserId !== session.user.id && !remoteAccountLookupError);
+
+  if (booting || waitingForRemoteAccount || (remoteHydrating && !couple && !remoteAccountLookupError)) {
     return <SplashScreen />;
+  }
+
+  if (session && hasSupabaseConfig && !couple && remoteAccountLookupError) {
+    return (
+      <CandyFrame>
+        <RemoteAccountLookupScreen
+          error={remoteAccountLookupError}
+          onLogout={handleLogout}
+          onRetry={handleRetryRemoteAccountLookup}
+        />
+      </CandyFrame>
+    );
   }
 
   if (!session && !guestMode) {
@@ -3222,9 +3743,12 @@ function Root() {
         onAddCustomDesire={handleAddCustomDesire}
         onApplyDebugPreset={handleApplyDebugPreset}
         onBeforeRevealMatch={handleBeforeRevealMatch}
+        onConsumeChatAttachment={handleConsumeChatAttachment}
+        onQueueChatAttachmentConsumption={handleQueueChatAttachmentConsumption}
         onCopyInvite={handleCopyInvite}
         onDisableDebugProfiles={handleDisableDebugProfiles}
         onDebugFakeAd={handleDebugFakeAd}
+        onDeleteAccount={handleDeleteAccount}
         onLogout={handleLogout}
         onMoodChange={handleMoodChange}
         onMoodNotificationPreference={handleMoodNotificationPreference}
@@ -3233,9 +3757,16 @@ function Root() {
         onOpenChat={handleOpenChat}
         onProvider={handleProvider}
         onRevealMatch={(cardId) => {
-          setRevealedMatchIds((current) => (current.includes(cardId) ? current : [...current, cardId]));
-          if (session && hasSupabaseConfig && isRemoteCoupleId(couple.id)) {
-            markRemoteMatchRevealed(couple.id, cardId)
+          if (cardId) {
+            setRevealedMatchIds((current) => (current.includes(cardId) ? current : [...current, cardId]));
+          }
+
+          if (canWriteRemoteCouple(couple)) {
+            const revealTask = cardId
+              ? markRemoteMatchRevealed(couple.id, cardId)
+              : markRemoteNextMatchRevealed(couple.id);
+
+            revealTask
               .then(() => refreshRemoteCoupleState(couple.id))
               .catch(() => {
                 setSyncError("La révélation du match n'a pas pu être synchronisée.");
@@ -3492,6 +4023,39 @@ function SplashScreen() {
   );
 }
 
+function RemoteAccountLookupScreen({
+  error,
+  onLogout,
+  onRetry,
+}: {
+  error: string;
+  onLogout: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <View style={styles.remoteAccountScreen}>
+      <View style={styles.remoteAccountCard}>
+        <View style={styles.remoteAccountIcon}>
+          <RefreshCcw size={26} color={candy.red} />
+        </View>
+        <Text style={styles.remoteAccountTitle}>On cherche ton espace Google</Text>
+        <Text style={styles.remoteAccountText}>
+          WeSpice doit vérifier ton compte avant de créer un nouvel espace. Réessaie dans un instant.
+        </Text>
+        <Text style={styles.remoteAccountError}>{error}</Text>
+        <SpringPressable onPress={onRetry} style={styles.remoteAccountPrimary}>
+          <RefreshCcw size={18} color={candy.white} />
+          <Text style={styles.remoteAccountPrimaryText}>Réessayer</Text>
+        </SpringPressable>
+        <SpringPressable onPress={onLogout} style={styles.remoteAccountSecondary}>
+          <LogOut size={18} color={candy.red} />
+          <Text style={styles.remoteAccountSecondaryText}>Changer de compte</Text>
+        </SpringPressable>
+      </View>
+    </View>
+  );
+}
+
 function EmojiSticker({
   animated,
   emoji,
@@ -3559,8 +4123,11 @@ function MainShell({
   onAddCustomDesire,
   onApplyDebugPreset,
   onBeforeRevealMatch,
+  onConsumeChatAttachment,
+  onQueueChatAttachmentConsumption,
   onCopyInvite,
   onDebugFakeAd,
+  onDeleteAccount,
   onDisableDebugProfiles,
   onLogout,
   onMoodChange,
@@ -3599,9 +4166,12 @@ function MainShell({
   onActorChange: (id: PartnerId) => void;
   onAddCustomDesire: (desire: CustomDesireDraft) => void;
   onApplyDebugPreset: (preset: DebugPresetId) => void;
-  onBeforeRevealMatch: (cardId: string) => Promise<boolean>;
+  onBeforeRevealMatch: () => Promise<boolean>;
+  onConsumeChatAttachment: (payload: { attachmentId: string; messageId: string }) => void | Promise<void>;
+  onQueueChatAttachmentConsumption: (payload: { attachmentId: string; messageId: string }) => void | Promise<void>;
   onCopyInvite: () => void;
   onDebugFakeAd: () => void;
+  onDeleteAccount: () => void;
   onDisableDebugProfiles: () => void;
   onLogout: () => void;
   onMoodChange: (level: CoupleMoodLevel) => void;
@@ -3610,7 +4180,7 @@ function MainShell({
   onOpenChat: (cardId?: string) => void;
   onJoinPartner: () => void;
   onProvider: (provider: AuthProvider) => void;
-  onRevealMatch: (cardId: string) => void;
+  onRevealMatch: (cardId?: string) => void;
   onRequestLeaveCouple: () => void;
   onReplayTutorial: () => void;
   onRestorePurchases: () => void;
@@ -3628,15 +4198,24 @@ function MainShell({
 }) {
   const syncNotice = userFacingSyncNotice(syncError);
   const [dismissedSyncNotice, setDismissedSyncNotice] = useState("");
+  const [profileShortcutFaded, setProfileShortcutFaded] = useState(false);
   const chatNotificationsEnabled = isNotificationPreferenceEnabled(couple, couple.activePartnerId, "chatMessageEnabled");
   const visibleSyncNotice = syncNotice && syncNotice !== dismissedSyncNotice ? syncNotice : "";
   const dismissSyncNotice = useCallback(() => setDismissedSyncNotice(syncNotice), [syncNotice]);
+  const tabBarActive: VisibleTabKey | null =
+    tab === "profil" || tab === "rules" || (!debugEnabled && tab === "debug") ? null : tab;
 
   useEffect(() => {
     if (!syncNotice) {
       setDismissedSyncNotice("");
     }
   }, [syncNotice]);
+
+  useEffect(() => {
+    if (tab !== "envies") {
+      setProfileShortcutFaded(false);
+    }
+  }, [tab]);
 
   return (
     <View style={styles.app}>
@@ -3670,6 +4249,7 @@ function MainShell({
             onUnlockCategory={onUnlockCategory}
             onUnlockNoAds={onUnlockNoAds}
             onUnlockUnlimitedResponses={onUnlockUnlimitedResponses}
+            onProfileShortcutFadeChange={setProfileShortcutFaded}
             onVote={onVote}
           />
         ) : null}
@@ -3707,6 +4287,7 @@ function MainShell({
               onMoodNotificationPreference={onMoodNotificationPreference}
               onNotificationPreference={onNotificationPreference}
               onProvider={onProvider}
+              onDeleteAccount={onDeleteAccount}
               onRequestLeaveCouple={onRequestLeaveCouple}
               onReplayTutorial={onReplayTutorial}
               onRestorePurchases={onRestorePurchases}
@@ -3734,9 +4315,11 @@ function MainShell({
           <Entrance delay={0} style={styles.flex}>
             <ChatScreen
               contextCardId={chatContextCardId}
-              couple={couple}
-              onSendMessage={onSendChatMessage}
-            />
+            couple={couple}
+            onConsumePhoto={onConsumeChatAttachment}
+            onQueuePhotoConsumption={onQueueChatAttachmentConsumption}
+            onSendMessage={onSendChatMessage}
+          />
           </Entrance>
         ) : null}
         {tab === "rules" ? (
@@ -3745,6 +4328,12 @@ function MainShell({
           </Entrance>
         ) : null}
       </View>
+      <ProfileShortcutButton
+        active={tab === "profil"}
+        faded={tab === "envies" && profileShortcutFaded}
+        profile={couple.profiles[couple.activePartnerId]}
+        onPress={() => onTabChange("profil")}
+      />
       <View pointerEvents="box-none" style={styles.tabDock}>
         <LinearGradient
           colors={["rgba(255,151,207,0)", "rgba(255,151,207,0.74)", "rgba(255,151,207,0.96)"]}
@@ -3752,7 +4341,7 @@ function MainShell({
           style={styles.tabDockFade}
         />
         <CandyTabs
-          active={tab === "rules" || (!debugEnabled && tab === "debug") ? "envies" : tab}
+          active={tabBarActive}
           chatNotificationsEnabled={chatNotificationsEnabled}
           showDebug={debugEnabled}
           onChange={onTabChange}
@@ -3763,6 +4352,37 @@ function MainShell({
         onDismiss={dismissSyncNotice}
       />
     </View>
+  );
+}
+
+function ProfileShortcutButton({
+  active,
+  faded,
+  onPress,
+  profile,
+}: {
+  active: boolean;
+  faded: boolean;
+  onPress: () => void;
+  profile: PartnerProfile;
+}) {
+  const opacity = useRef(new Animated.Value(faded ? 0 : 1)).current;
+
+  useEffect(() => {
+    Animated.timing(opacity, {
+      duration: faded ? 150 : 190,
+      easing: Easing.out(Easing.cubic),
+      toValue: faded ? 0 : 1,
+      useNativeDriver: useNativeAnimations,
+    }).start();
+  }, [faded, opacity]);
+
+  return (
+    <Animated.View pointerEvents={faded ? "none" : "box-none"} style={[styles.profileShortcutDock, { opacity }]}>
+      <SpringPressable onPress={onPress} style={[styles.profileShortcut, active && styles.profileShortcutActive]}>
+        <Text style={styles.profileShortcutEmoji}>{profileEmoji(profile)}</Text>
+      </SpringPressable>
+    </Animated.View>
   );
 }
 
@@ -3793,7 +4413,7 @@ function CandyTabs({
   onChange,
   showDebug,
 }: {
-  active: VisibleTabKey;
+  active: VisibleTabKey | null;
   chatNotificationsEnabled: boolean;
   onChange: (tab: TabKey) => void;
   showDebug: boolean;
@@ -3804,7 +4424,6 @@ function CandyTabs({
     { key: "match", label: "Matchs", icon: <Sparkles size={18} /> },
     { key: "chat", label: "Chat", icon: <MessageCircle size={18} /> },
     { key: "couple", label: "Nous", icon: <Heart size={18} /> },
-    { key: "profil", label: "Profil", icon: <User size={18} /> },
     { key: "debug", label: "Debug", icon: <Code2 size={18} /> },
   ];
   const items = showDebug ? allItems : allItems.filter((item) => item.key !== "debug");
@@ -3851,6 +4470,7 @@ function EnviesScreen({
   onUnlockCategory,
   onUnlockNoAds,
   onUnlockUnlimitedResponses,
+  onProfileShortcutFadeChange,
   onVote,
 }: {
   couple: CoupleState;
@@ -3860,10 +4480,12 @@ function EnviesScreen({
   onUnlockCategory: (category: DesireCategory) => void;
   onUnlockNoAds: () => void;
   onUnlockUnlimitedResponses: () => void;
+  onProfileShortcutFadeChange: (faded: boolean) => void;
   onVote: (cardId: string, level: VoteLevel) => boolean;
 }) {
+  const { width } = useWindowDimensions();
   const [category, setCategory] = useState<DesireCategory>("Vanille");
-  const [filter, setFilter] = useState<DesireFilterKey>("todo");
+  const [filter, setFilter] = useState<DesireFilterKey>("all");
   const [editorOpen, setEditorOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [libraryCardIds, setLibraryCardIds] = useState<string[]>([]);
@@ -3872,11 +4494,13 @@ function EnviesScreen({
   const [gameBurstNonce, setGameBurstNonce] = useState(0);
   const [gameBurstVoteLevel, setGameBurstVoteLevel] = useState<VoteLevel>(2);
   const [purchaseCategory, setPurchaseCategory] = useState<DesireCategory | null>(null);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [customPurchaseOpen, setCustomPurchaseOpen] = useState(false);
   const [noAdsPurchaseOpen, setNoAdsPurchaseOpen] = useState(false);
   const [unlimitedPurchaseOpen, setUnlimitedPurchaseOpen] = useState(false);
   const [storeOpen, setStoreOpen] = useState(false);
-  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const enviesHeaderScrollY = useRef(new Animated.Value(0)).current;
+  const profileShortcutFadedRef = useRef(false);
   const gameTransitionTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const ownVotes = couple.votes[couple.activePartnerId] ?? {};
   const [answeredInSession, setAnsweredInSession] = useState<Record<string, boolean>>({});
@@ -3887,6 +4511,7 @@ function EnviesScreen({
     [categoryCards, ownVotes],
   );
   const filterCounts = useMemo<Record<DesireFilterKey, number>>(() => ({
+    all: categoryCards.length,
     todo: unansweredCards.length,
     flame: categoryCards.filter((card) => isFlameVote(ownVotes[card.id])).length,
     curious: categoryCards.filter((card) => ownVotes[card.id] === 1).length,
@@ -3899,6 +4524,9 @@ function EnviesScreen({
 
     const vote = ownVotes[card.id];
 
+    if (nextFilter === "all") {
+      return true;
+    }
     if (nextFilter === "todo") {
       return vote === undefined;
     }
@@ -3933,22 +4561,41 @@ function EnviesScreen({
   const unlimitedResponses = hasUnlimitedResponses(couple);
   const dailyLeft = dailyResponsesLeft(couple, couple.activePartnerId);
   const dailyQuotaLabel = unlimitedResponses ? "Réponses illimitées" : `${dailyLeft}/${DAILY_FREE_RESPONSE_LIMIT} choix restants`;
+  const libraryHint = filter === "all" ? `${filterCounts.all} cartes` : `${filterCounts[filter]} dans ce filtre`;
+  const compactEnviesLayout = width < 620;
+  const enviesHeaderPaddingTop = useMemo(
+    () => enviesHeaderScrollY.interpolate({
+      extrapolate: "clamp",
+      inputRange: [0, APP_HEADER_TOP_SPACE - 8],
+      outputRange: [APP_HEADER_TOP_SPACE, 8],
+    }),
+    [enviesHeaderScrollY],
+  );
   const openCustomDesire = () => (canCreateCustom ? setEditorOpen(true) : setStoreOpen(true));
   const refreshLibrarySnapshot = useCallback((nextCategory = category, nextFilter = filter) => {
     setLibraryCardIds(buildLibraryCardIds(nextCategory, nextFilter));
   }, [buildLibraryCardIds, category, filter]);
   const openLibrary = () => {
-    refreshLibrarySnapshot();
+    setFilter("all");
+    refreshLibrarySnapshot(category, "all");
     setLibraryOpen(true);
   };
   const closeLibrary = () => setLibraryOpen(false);
+  const selectCategoryFromPicker = (nextCategory: DesireCategory) => {
+    changeCategory(nextCategory);
+    setCategoryPickerOpen(false);
+    void Haptics.selectionAsync();
+  };
+  const requestCategoryPurchase = (nextCategory: DesireCategory) => {
+    setCategoryPickerOpen(false);
+    setPurchaseCategory(nextCategory);
+  };
   const clearGameTransitionTimers = () => {
     gameTransitionTimers.current.forEach((timer) => clearTimeout(timer));
     gameTransitionTimers.current = [];
   };
   const changeCategory = (nextCategory: DesireCategory) => {
     setCategory(nextCategory);
-    setCategoryPickerOpen(false);
     if (libraryOpen) {
       refreshLibrarySnapshot(nextCategory, filter);
     }
@@ -3959,6 +4606,22 @@ function EnviesScreen({
       refreshLibrarySnapshot(category, nextFilter);
     }
   };
+  const handleEnviesScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const scrollY = Math.max(0, event.nativeEvent.contentOffset.y);
+      const faded = scrollY > 12;
+
+      enviesHeaderScrollY.setValue(scrollY);
+
+      if (profileShortcutFadedRef.current === faded) {
+        return;
+      }
+
+      profileShortcutFadedRef.current = faded;
+      onProfileShortcutFadeChange(faded);
+    },
+    [enviesHeaderScrollY, onProfileShortcutFadeChange],
+  );
   const voteInGame = (cardId: string, level: VoteLevel) => {
     if (gameTransitionCardId) {
       return;
@@ -4024,71 +4687,81 @@ function EnviesScreen({
     }
   }, [category, couple.activePartnerId, filter, libraryOpen, refreshLibrarySnapshot]);
 
+  useEffect(() => {
+    enviesHeaderScrollY.setValue(0);
+    profileShortcutFadedRef.current = false;
+    onProfileShortcutFadeChange(false);
+  }, [enviesHeaderScrollY, libraryOpen, onProfileShortcutFadeChange]);
+
+  useEffect(() => () => {
+    onProfileShortcutFadeChange(false);
+  }, [onProfileShortcutFadeChange]);
+
   useEffect(() => () => clearGameTransitionTimers(), []);
+
+  const enviesHeader = (
+    <Animated.View style={[styles.enviesStickyHeader, { paddingTop: enviesHeaderPaddingTop }]}>
+      <LinearGradient
+        colors={["rgba(255,139,200,0.96)", "rgba(255,139,200,0.72)", "rgba(255,139,200,0)"]}
+        pointerEvents="none"
+        style={styles.enviesStickyFade}
+      />
+      <Entrance delay={0} style={styles.enviesStickyContent}>
+        <View style={styles.enviesGamePanel}>
+          <View style={styles.enviesTopGameBar}>
+            <View style={styles.enviesTopGameCopy}>
+              <View style={styles.enviesTopGameLabelRow}>
+                <Text style={styles.enviesGameEyebrow}>{libraryOpen ? "Bibliothèque" : "Mode jeu"}</Text>
+                <Text style={styles.enviesTopGameHint}>
+                  {libraryOpen ? libraryHint : activeGameCard ? dailyQuotaLabel : "Pack terminé"}
+                </Text>
+              </View>
+              <Text style={styles.enviesGameTitle}>{libraryOpen ? "Toutes les cartes" : "Pack du moment"}</Text>
+              <Text style={styles.enviesGameSubtitle}>
+                {libraryOpen ? "Filtre les envies du pack choisi." : "Change de pack sans fouiller dans une liste minuscule."}
+              </Text>
+            </View>
+            {libraryOpen ? (
+              <SpringPressable onPress={closeLibrary} style={styles.enviesLibraryButton}>
+                <ArrowLeft size={15} color={candy.red} />
+                <Text style={styles.enviesLibraryButtonText}>Jeu</Text>
+              </SpringPressable>
+            ) : (
+              <SpringPressable onPress={openLibrary} style={styles.enviesLibraryButton}>
+                <Search size={15} color={candy.red} />
+                <Text style={styles.enviesLibraryButtonText}>Toutes</Text>
+              </SpringPressable>
+            )}
+          </View>
+          <PackSelectorCard
+            active={category}
+            couple={couple}
+            onOpen={() => setCategoryPickerOpen(true)}
+          />
+        </View>
+        {libraryOpen ? (
+          <DesireFilterChips
+            active={filter}
+            counts={filterCounts}
+            onChange={changeFilter}
+          />
+        ) : null}
+      </Entrance>
+    </Animated.View>
+  );
 
   return (
     <>
       <View style={styles.enviesScreenFrame}>
-        <View pointerEvents="box-none" style={styles.enviesStickyHeader}>
-          <LinearGradient
-            colors={["rgba(255,139,200,0.96)", "rgba(255,139,200,0.72)", "rgba(255,139,200,0)"]}
-            pointerEvents="none"
-            style={styles.enviesStickyFade}
-          />
-          <Entrance delay={0} style={styles.enviesStickyContent}>
-            {!libraryOpen ? (
-              <View style={styles.enviesTopGameBar}>
-                <View style={styles.enviesTopGameCopy}>
-                  <View style={styles.enviesTopGameLabelRow}>
-                    <Text style={styles.enviesGameEyebrow}>Mode jeu</Text>
-                    <Text style={styles.enviesTopGameHint}>
-                      {activeGameCard ? dailyQuotaLabel : "Pack terminé"}
-                    </Text>
-                  </View>
-                  <Text style={styles.enviesGameTitle}>Une carte à la fois</Text>
-                </View>
-                <SpringPressable onPress={openLibrary} style={styles.enviesLibraryButton}>
-                  <Text style={styles.enviesLibraryButtonText}>Voir toutes</Text>
-                </SpringPressable>
-              </View>
-            ) : null}
-            <CategoryChips
-              active={category}
-              activeCount={categoryCards.length}
-              couple={couple}
-              open={categoryPickerOpen}
-              onChange={changeCategory}
-              onClose={() => setCategoryPickerOpen(false)}
-              onLockedCategory={(lockedCategory) => {
-                setCategoryPickerOpen(false);
-                setPurchaseCategory(lockedCategory);
-              }}
-              onOpen={() => setCategoryPickerOpen(true)}
-            />
-            {libraryOpen ? (
-              <DesireFilterChips
-                active={filter}
-                counts={filterCounts}
-                onChange={changeFilter}
-              />
-            ) : null}
-          </Entrance>
-        </View>
-
         {libraryOpen ? (
-          <ScrollView contentContainerStyle={[styles.screen, styles.enviesScreenContent]} showsVerticalScrollIndicator={false}>
-            <View style={styles.libraryHeader}>
-              <View style={styles.libraryHeaderCopy}>
-                <Text style={styles.libraryEyebrow}>{categoryLabel(category)}</Text>
-                <Text style={styles.libraryTitle}>Toutes les cartes</Text>
-                <Text style={styles.libraryText}>
-                  {libraryCards.length} envie{libraryCards.length > 1 ? "s" : ""} dans ce filtre.
-                </Text>
-              </View>
-              <SpringPressable onPress={closeLibrary} style={styles.libraryBackButton}>
-                <Text style={styles.libraryBackText}>Retour au jeu</Text>
-              </SpringPressable>
-            </View>
+          <ScrollView
+            contentContainerStyle={[styles.screen, styles.enviesScreenContent]}
+            onScroll={handleEnviesScroll}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+            stickyHeaderIndices={[0]}
+          >
+            {enviesHeader}
             <View style={styles.cardStack}>
               {libraryCards.map((card, index) => (
                 <Entrance delay={70 + index * 70} key={card.id}>
@@ -4096,9 +4769,21 @@ function EnviesScreen({
                 </Entrance>
               ))}
             </View>
+            {compactEnviesLayout ? (
+              <View style={styles.addDesireInlineDock}>
+                <Entrance delay={120}>{addDesireButton}</Entrance>
+              </View>
+            ) : null}
           </ScrollView>
         ) : (
-          <ScrollView contentContainerStyle={[styles.screen, styles.enviesGameContent]} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={[styles.screen, styles.enviesGameContent]}
+            onScroll={handleEnviesScroll}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+            stickyHeaderIndices={[0]}
+          >
+            {enviesHeader}
             <View style={styles.gameCardBurstHost}>
               {activeGameCard ? (
                 <GameCardTransition
@@ -4123,13 +4808,28 @@ function EnviesScreen({
               )}
               <PersistentBurstLayer triggerKey={gameBurstNonce} voteLevel={gameBurstVoteLevel} />
             </View>
+            {compactEnviesLayout ? (
+              <View style={styles.addDesireInlineDock}>
+                <Entrance delay={120}>{addDesireButton}</Entrance>
+              </View>
+            ) : null}
           </ScrollView>
         )}
-        <View pointerEvents="box-none" style={styles.addDesireFloatingDock}>
-          <Entrance delay={120}>{addDesireButton}</Entrance>
-        </View>
+        {!compactEnviesLayout ? (
+          <View pointerEvents="box-none" style={styles.addDesireFloatingDock}>
+            <Entrance delay={120}>{addDesireButton}</Entrance>
+          </View>
+        ) : null}
       </View>
 
+      <CategoryPickerModal
+        active={category}
+        couple={couple}
+        visible={categoryPickerOpen}
+        onClose={() => setCategoryPickerOpen(false)}
+        onLockedCategory={requestCategoryPurchase}
+        onSelect={selectCategoryFromPicker}
+      />
       <CustomDesireEditor
         customCount={customCount}
         customUnlimited={customUnlimited}
@@ -4384,17 +5084,10 @@ function MoodWidget({
   const activeId = couple.activePartnerId;
   const partnerId = otherPartnerId(activeId);
   const activeLevel = moodLevel(couple, activeId);
-  const partnerLevel = moodLevel(couple, partnerId);
   const partnerName = couple.profiles[partnerId].displayName;
   const aligned = isMoodAligned(couple);
-  const sharedHotMood = activeLevel >= 2 && partnerLevel >= 2;
   const notificationsEnabled = isMoodNotificationEnabled(couple, activeId);
   const promptSeen = hasSeenMoodNotificationPrompt(couple, activeId);
-  const statusMessage = aligned
-    ? sharedHotMood
-      ? `${partnerName} est dans le même élan.`
-      : `Même état que ${partnerName}.`
-    : "Ton choix reste privé tant qu'il ne croise pas le sien.";
   const heatProgress = useRef(new Animated.Value(activeLevel)).current;
   const glowPulse = useLoop(2600);
 
@@ -4447,8 +5140,7 @@ function MoodWidget({
         <View style={styles.moodWidgetContent}>
           <View style={styles.moodWidgetHeader}>
             <View style={styles.moodWidgetCopy}>
-              <Text style={styles.moodWidgetTitle}>Tu te sens comment ?</Text>
-              <Text style={styles.moodWidgetText}>{statusMessage}</Text>
+              <Text style={styles.moodWidgetTitle}>Quelle est ton humeur?</Text>
             </View>
             <SpringPressable
               onPress={() => setNotificationPromptVisible(true)}
@@ -4623,27 +5315,57 @@ function MoodAtmosphere({ heat, pulse }: { heat: Animated.Value; pulse: Animated
   );
 }
 
-function CategoryChips({
+function PackSelectorCard({
   active,
-  activeCount,
   couple,
-  open,
-  onChange,
-  onClose,
-  onLockedCategory,
   onOpen,
 }: {
   active: DesireCategory;
-  activeCount: number;
   couple: CoupleState;
-  open: boolean;
-  onChange: (category: DesireCategory) => void;
-  onClose: () => void;
-  onLockedCategory: (category: DesireCategory) => void;
   onOpen: () => void;
 }) {
-  const activeTone = categoryTone(active);
-  const activeUnlocked = isCategoryUnlocked(couple, active);
+  const tone = categoryTone(active);
+  const count = useMemo(
+    () => allDesireCards(couple).filter((card) => card.category === active).length,
+    [active, couple],
+  );
+
+  return (
+    <SpringPressable
+      onPress={onOpen}
+      style={[styles.packSelectorCard, { backgroundColor: tone.active }, categoryChipShadow(active, true, true)]}
+    >
+      <View style={styles.packSelectorIcon}>
+        <Text style={styles.packSelectorEmoji}>{tone.icon}</Text>
+      </View>
+      <View style={styles.packSelectorCopy}>
+        <Text style={styles.packSelectorKicker}>Pack actif</Text>
+        <Text numberOfLines={1} style={styles.packSelectorTitle}>{categoryLabel(active)}</Text>
+        <Text numberOfLines={1} style={styles.packSelectorText}>{count} cartes dans ce pack</Text>
+      </View>
+      <View style={styles.packSelectorAction}>
+        <Text style={styles.packSelectorActionText}>Changer</Text>
+        <ChevronRight size={17} color={candy.red} />
+      </View>
+    </SpringPressable>
+  );
+}
+
+function CategoryPickerModal({
+  active,
+  couple,
+  onClose,
+  onLockedCategory,
+  onSelect,
+  visible,
+}: {
+  active: DesireCategory;
+  couple: CoupleState;
+  onClose: () => void;
+  onLockedCategory: (category: DesireCategory) => void;
+  onSelect: (category: DesireCategory) => void;
+  visible: boolean;
+}) {
   const categoryCounts = useMemo(() => {
     const counts = new Map<DesireCategory, number>();
 
@@ -4655,96 +5377,146 @@ function CategoryChips({
   }, [couple]);
 
   return (
-    <View style={styles.categorySelectorWrap}>
-      <SpringPressable
-        onPress={onOpen}
-        style={[
-          styles.categorySelectorActive,
-          {
-            backgroundColor: activeUnlocked ? activeTone.active : activeTone.bg,
-          },
-          categoryChipShadow(active, true, activeUnlocked),
-        ]}
-      >
-        <View style={styles.categorySelectorIcon}>
-          <Text style={styles.categorySelectorEmoji}>{activeTone.icon}</Text>
-        </View>
-        <View style={styles.categorySelectorCopy}>
-          <Text style={[styles.categorySelectorEyebrow, { color: categoryChipTextColor(active, true, activeUnlocked) }]}>
-            Pack actif
-          </Text>
-          <Text
-            adjustsFontSizeToFit
-            numberOfLines={1}
-            style={[styles.categorySelectorTitle, { color: categoryChipTextColor(active, true, activeUnlocked) }]}
-          >
-            {categoryLabel(active)}
-          </Text>
-        </View>
-        <View style={styles.categorySelectorCount}>
-          <Text style={styles.categorySelectorCountText}>{activeCount}</Text>
-        </View>
-      </SpringPressable>
-      <SpringPressable onPress={onOpen} style={styles.categorySelectorButton}>
-        <Sparkles size={15} color={candy.red} />
-        <Text style={styles.categorySelectorButtonText}>Packs</Text>
-      </SpringPressable>
-
-      <Modal animationType="fade" transparent visible={open} onRequestClose={onClose}>
-        <View style={styles.categoryPickerOverlay}>
-          <Pressable style={styles.categoryPickerBackdrop} onPress={onClose} />
-          <Entrance delay={30} style={styles.categoryPickerSheetWrap}>
-            <View style={styles.categoryPickerSheet}>
-              <View style={styles.categoryPickerHeader}>
-                <View style={styles.categoryPickerHeaderCopy}>
-                  <Text style={styles.categoryPickerEyebrow}>Packs</Text>
-                  <Text style={styles.categoryPickerTitle}>Choisis une catégorie</Text>
-                </View>
-                <SpringPressable onPress={onClose} style={styles.categoryPickerClose}>
-                  <X size={18} color={candy.ink} />
-                </SpringPressable>
+    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <View style={styles.categoryPickerOverlay}>
+        <Pressable style={styles.categoryPickerBackdrop} onPress={onClose} />
+        <Entrance delay={30} style={styles.categoryPickerSheetWrap}>
+          <View style={styles.categoryPickerSheet}>
+            <View style={styles.categoryPickerHeader}>
+              <View style={styles.categoryPickerHeaderCopy}>
+                <Text style={styles.categoryPickerEyebrow}>Changer de pack</Text>
+                <Text style={styles.categoryPickerTitle}>Toutes les ambiances</Text>
+                <Text style={styles.categoryPickerText}>Choisis le pack qui donne le ton de la prochaine carte.</Text>
               </View>
-              <ScrollView contentContainerStyle={styles.categoryPickerGrid} showsVerticalScrollIndicator={false}>
-                {DESIRE_CATEGORIES.map((category) => {
-                  const tone = categoryTone(category);
-                  const unlocked = isCategoryUnlocked(couple, category);
-                  const selected = category === active;
-                  const count = categoryCounts.get(category) ?? 0;
-
-                  return (
-                    <SpringPressable
-                      key={category}
-                      onPress={() => (unlocked ? onChange(category) : onLockedCategory(category))}
-                      style={[
-                        styles.categoryPickerCard,
-                        { backgroundColor: unlocked ? tone.bg : "rgba(255,255,255,0.68)" },
-                        selected && styles.categoryPickerCardSelected,
-                        !unlocked && styles.categoryPickerCardLocked,
-                      ]}
-                    >
-                      <View style={[styles.categoryPickerIcon, selected && { backgroundColor: tone.active }]}>
-                        <Text style={styles.categoryPickerEmoji}>{tone.icon}</Text>
-                      </View>
-                      <Text adjustsFontSizeToFit numberOfLines={1} style={styles.categoryPickerCardTitle}>
-                        {categoryLabel(category)}
-                      </Text>
-                      <Text numberOfLines={1} style={styles.categoryPickerCardText}>
-                        {unlocked ? `${count} carte${count > 1 ? "s" : ""}` : "À débloquer"}
-                      </Text>
-                      {selected ? <Text style={styles.categoryPickerSelectedText}>Actif</Text> : null}
-                      {!unlocked ? (
-                        <View style={styles.categoryPickerLock}>
-                          <LockKeyhole size={13} color={candy.red} />
-                        </View>
-                      ) : null}
-                    </SpringPressable>
-                  );
-                })}
-              </ScrollView>
+              <SpringPressable onPress={onClose} style={styles.categoryPickerClose}>
+                <X size={20} color={candy.red} />
+              </SpringPressable>
             </View>
-          </Entrance>
-        </View>
-      </Modal>
+            <ScrollView contentContainerStyle={styles.categoryPickerGrid} showsVerticalScrollIndicator={false}>
+              {DESIRE_CATEGORIES.map((category) => {
+                const tone = categoryTone(category);
+                const unlocked = isCategoryUnlocked(couple, category);
+                const selected = category === active;
+                const count = categoryCounts.get(category) ?? 0;
+
+                return (
+                  <SpringPressable
+                    key={category}
+                    onPress={() => (unlocked ? onSelect(category) : onLockedCategory(category))}
+                    style={[
+                      styles.categoryPickerCard,
+                      { backgroundColor: selected ? tone.active : tone.bg },
+                      selected && styles.categoryPickerCardSelected,
+                      selected && categoryChipShadow(category, true, unlocked),
+                      !unlocked && styles.categoryPickerCardLocked,
+                    ]}
+                  >
+                    <View style={styles.categoryPickerIcon}>
+                      <Text style={styles.categoryPickerEmoji}>{tone.icon}</Text>
+                    </View>
+                    <Text numberOfLines={1} style={styles.categoryPickerCardTitle}>{categoryLabel(category)}</Text>
+                    <Text numberOfLines={2} style={styles.categoryPickerCardText}>
+                      {unlocked ? `${count} cartes disponibles` : "Pack à débloquer"}
+                    </Text>
+                    {selected ? <Text style={styles.categoryPickerSelectedText}>Actif</Text> : null}
+                    {!unlocked ? (
+                      <View style={styles.categoryPickerLock}>
+                        <LockKeyhole size={14} color={candy.red} />
+                      </View>
+                    ) : null}
+                  </SpringPressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Entrance>
+      </View>
+    </Modal>
+  );
+}
+
+function CategoryChips({
+  active,
+  couple,
+  embedded,
+  onChange,
+  onLockedCategory,
+}: {
+  active: DesireCategory;
+  couple: CoupleState;
+  embedded?: boolean;
+  onChange: (category: DesireCategory) => void;
+  onLockedCategory: (category: DesireCategory) => void;
+}) {
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<DesireCategory, number>();
+
+    allDesireCards(couple).forEach((card) => {
+      counts.set(card.category, (counts.get(card.category) ?? 0) + 1);
+    });
+
+    return counts;
+  }, [couple]);
+
+  return (
+    <View style={[styles.categoryRailWrap, embedded && styles.categoryRailWrapEmbedded]}>
+      <ScrollView
+        contentContainerStyle={[styles.categoryRail, embedded && styles.categoryRailEmbedded]}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+      >
+        {DESIRE_CATEGORIES.map((category) => {
+          const tone = categoryTone(category);
+          const unlocked = isCategoryUnlocked(couple, category);
+          const selected = category === active;
+          const count = categoryCounts.get(category) ?? 0;
+          const selectedTextColor = categoryChipTextColor(category, true, unlocked);
+
+          return (
+            <SpringPressable
+              key={category}
+              onPress={() => (unlocked ? onChange(category) : onLockedCategory(category))}
+              style={[
+                styles.categoryRailChip,
+                { backgroundColor: unlocked ? "rgba(255,255,255,0.74)" : "rgba(255,255,255,0.46)" },
+                selected && styles.categoryRailChipActive,
+                selected && { backgroundColor: unlocked ? tone.active : tone.bg },
+                selected && categoryChipShadow(category, true, unlocked),
+                !unlocked && styles.categoryRailChipLocked,
+              ]}
+            >
+              <View style={[styles.categoryRailIcon, selected && styles.categoryRailIconActive]}>
+                <Text style={styles.categoryRailEmoji}>{tone.icon}</Text>
+              </View>
+              {selected ? (
+                <View style={styles.categoryRailCopy}>
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.categoryRailKicker, { color: selectedTextColor }]}
+                  >
+                    {unlocked ? "Pack actif" : "Pack verrouillé"}
+                  </Text>
+                  <Text
+                    adjustsFontSizeToFit
+                    numberOfLines={1}
+                    style={[styles.categoryRailTitle, { color: selectedTextColor }]}
+                  >
+                    {categoryLabel(category)}
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.categoryRailMeta, { color: selectedTextColor }]}>
+                    {unlocked ? `${count} cartes` : "À débloquer"}
+                  </Text>
+                </View>
+              ) : null}
+              {!unlocked ? (
+                <View style={[styles.categoryRailLock, selected && styles.categoryRailLockActive]}>
+                  <LockKeyhole size={10} color={candy.red} />
+                </View>
+              ) : null}
+            </SpringPressable>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 }
@@ -5053,19 +5825,29 @@ function DesireGameCard({
   onVote: (cardId: string, level: VoteLevel) => void;
 }) {
   const tone = categoryCardTone(card.category);
+  const { width } = useWindowDimensions();
+  const roomy = width >= 620;
 
   return (
-    <LinearGradient colors={tone.colors} style={styles.desireGameCard} testID={`desire-game-card-${card.id}`}>
+    <LinearGradient
+      colors={tone.colors}
+      style={[styles.desireGameCard, roomy && styles.desireGameCardRoomy]}
+      testID={`desire-game-card-${card.id}`}
+    >
       <CardPattern emoji={tone.patternEmoji} />
-      <EmojiSticker emoji={cardStickerEmoji(card)} size={138} style={styles.desireGameSticker} />
+      <EmojiSticker
+        emoji={cardStickerEmoji(card)}
+        size={roomy ? 148 : 138}
+        style={[styles.desireGameSticker, roomy && styles.desireGameStickerRoomy]}
+      />
       <View style={styles.desireGameTopRow}>
         <CardMetaCluster category={card.category} large status={cardResponseStatusLabel(selectedVote)} />
       </View>
-      <View style={styles.desireGameCopy}>
+      <View style={[styles.desireGameCopy, roomy && styles.desireGameCopyRoomy]}>
         <Text style={[styles.desireGameTitle, { color: tone.titleText }]}>{card.title}</Text>
         <Text style={[styles.desireGameText, { color: tone.bodyText }]}>{card.blurb}</Text>
       </View>
-      <View style={styles.desireGameVoteRow}>
+      <View style={[styles.desireGameVoteRow, roomy && styles.desireGameVoteRowRoomy]}>
         <VoteButton disabled={disabled} icon="×" label="Non" onPress={() => onVote(card.id, 0)} prominent selected={selectedVote === 0} testID={`game-vote-${card.id}-0`} />
         <VoteButton disabled={disabled} icon="?" label="Pourquoi pas" onPress={() => onVote(card.id, 1)} prominent selected={selectedVote === 1} testID={`game-vote-${card.id}-1`} />
         <VoteButton accent={tone.accent} disabled={disabled} flame onPress={() => onVote(card.id, 2)} prominent selected={isFlameVote(selectedVote)} testID={`game-vote-${card.id}-2`} />
@@ -5168,14 +5950,24 @@ function MatchScreen({
   revealedMatchIds: string[];
   onGoEnvies: () => void;
   onOpenChat: (cardId?: string) => void;
-  onBeforeRevealMatch: (cardId: string) => Promise<boolean>;
-  onRevealMatch: (cardId: string) => void;
+  onBeforeRevealMatch: () => Promise<boolean>;
+  onRevealMatch: (cardId?: string) => void;
 }) {
   const revealedMatchSet = useMemo(() => new Set(revealedMatchIds), [revealedMatchIds]);
+  const remoteCouple = isRemoteCoupleId(couple.id);
   const matches = useMemo(() => matchedCards(couple), [couple]);
-  const hiddenMatches = useMemo(() => matches.filter((card) => !revealedMatchSet.has(card.id)), [matches, revealedMatchSet]);
-  const revealedMatches = useMemo(() => matches.filter((card) => revealedMatchSet.has(card.id)), [matches, revealedMatchSet]);
-  const newestMatch = hiddenMatches[0] ?? revealedMatches[0] ?? matches[0];
+  const hiddenMatches = useMemo(
+    () => remoteCouple ? [] : matches.filter((card) => !revealedMatchSet.has(card.id)),
+    [matches, remoteCouple, revealedMatchSet],
+  );
+  const revealedMatches = useMemo(
+    () => remoteCouple ? matches : matches.filter((card) => revealedMatchSet.has(card.id)),
+    [matches, remoteCouple, revealedMatchSet],
+  );
+  const hiddenMatchCount = hiddenMatchCountForCouple(couple, matches, revealedMatchSet);
+  const newestHiddenMatch = hiddenMatches[0];
+  const newestRevealedMatch = revealedMatches[0] ?? matches[0];
+  const newestMatch = hiddenMatchCount > 0 ? newestHiddenMatch : newestRevealedMatch;
   const [revealingMatchId, setRevealingMatchId] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<DesireCard | null>(null);
   const revealAnim = useRef(new Animated.Value(0)).current;
@@ -5185,27 +5977,29 @@ function MatchScreen({
   );
   const pulse = useLoop(1700);
   const heat = Math.min(1, Math.max(matches.length / 4, hotVotes / 8, 0.15));
-  const isNewestRevealed = !newestMatch || revealedMatchSet.has(newestMatch.id);
-  const isNewestOpening = Boolean(newestMatch && revealingMatchId === newestMatch.id);
-  const hasHiddenReveal = Boolean(newestMatch && !isNewestRevealed);
+  const hasHiddenReveal = hiddenMatchCount > 0;
+  const hasAnyMatch = matches.length > 0 || hasHiddenReveal;
+  const revealToken = newestHiddenMatch?.id ?? "__next-hidden-match__";
+  const isNewestOpening = hasHiddenReveal && revealingMatchId === revealToken;
+  const isNewestRevealed = !hasHiddenReveal;
   const listedMatches = hasHiddenReveal ? revealedMatches : matches;
 
   useEffect(() => {
     revealAnim.setValue(0);
     setRevealingMatchId(null);
-  }, [newestMatch?.id, revealAnim]);
+  }, [hiddenMatchCount, newestMatch?.id, revealAnim]);
 
   async function revealNewestMatch() {
-    if (!newestMatch || isNewestOpening || isNewestRevealed) {
+    if (!hasHiddenReveal || isNewestOpening || (!remoteCouple && !newestHiddenMatch)) {
       return;
     }
 
-    const canReveal = await onBeforeRevealMatch(newestMatch.id);
+    const canReveal = await onBeforeRevealMatch();
     if (!canReveal) {
       return;
     }
 
-    setRevealingMatchId(newestMatch.id);
+    setRevealingMatchId(revealToken);
     revealAnim.setValue(0);
     await Haptics.selectionAsync();
 
@@ -5219,17 +6013,19 @@ function MatchScreen({
         return;
       }
 
-      onRevealMatch(newestMatch.id);
+      onRevealMatch(newestHiddenMatch?.id);
       setRevealingMatchId(null);
-      setSelectedMatch(newestMatch);
+      if (newestHiddenMatch) {
+        setSelectedMatch(newestHiddenMatch);
+      }
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     });
   }
 
   return (
     <>
-      <ScrollView contentContainerStyle={[styles.matchScreen, !matches.length && styles.matchScreenEmptyMode]} showsVerticalScrollIndicator={false}>
-        {matches.length ? (
+      <ScrollView contentContainerStyle={[styles.matchScreen, !hasAnyMatch && styles.matchScreenEmptyMode]} showsVerticalScrollIndicator={false}>
+        {hasAnyMatch ? (
           <LinearGradient colors={[candy.rose, "#FF3F8F", candy.pink]} style={styles.matchStage}>
             <View pointerEvents="none" style={styles.matchStageFx}>
               <EmojiSticker
@@ -5253,17 +6049,24 @@ function MatchScreen({
             <View style={styles.matchStageTop}>
               <View style={styles.matchCounterPill}>
                 <Sparkles size={15} color={candy.red} />
-                <Text style={styles.matchCounterText}>{matches.length} match{matches.length > 1 ? "s" : ""} révélé{matches.length > 1 ? "s" : ""}</Text>
+                <Text style={styles.matchCounterText}>
+                  {hasHiddenReveal
+                    ? `${hiddenMatchCount} à ouvrir`
+                    : `${revealedMatches.length} révélé${revealedMatches.length > 1 ? "s" : ""}`}
+                </Text>
               </View>
-              <Text style={styles.matchStageKicker}>Envies communes</Text>
+              <View style={styles.matchStageStatusPill}>
+                <LockKeyhole size={13} color={candy.white} />
+                <Text style={styles.matchStageStatusText}>{hasHiddenReveal ? "Privé pour toi" : "Révélés"}</Text>
+              </View>
             </View>
 
-            <Text style={styles.matchStageTitle}>Vos matchs</Text>
-            <Text style={styles.matchStageCopy}>
-              {isNewestRevealed
-                ? "Cette envie vous tente tous les deux. Vous pouvez en parler ou continuer à découvrir."
-                : "Vous avez tous les deux répondu au moins Pourquoi pas sur une carte. Ouvre-la pour voir laquelle."}
-            </Text>
+            <Text style={styles.matchStageTitle}>{hasHiddenReveal ? "Un match est prêt" : "Vos matchs"}</Text>
+            {hasHiddenReveal ? (
+              <Text style={styles.matchStageCopy}>
+                Ouvre ton envie commune quand tu veux. Ton/ta partenaire la révèle de son côté.
+              </Text>
+            ) : null}
 
             <MatchRevealCard
               couple={couple}
@@ -5274,9 +6077,9 @@ function MatchScreen({
               revealAnim={revealAnim}
             />
 
-            {newestMatch && isNewestRevealed ? (
+            {newestRevealedMatch && isNewestRevealed ? (
               <View style={styles.matchActions}>
-                <SpringPressable onPress={() => onOpenChat(newestMatch.id)} style={styles.matchActionLight}>
+                <SpringPressable onPress={() => onOpenChat(newestRevealedMatch.id)} style={styles.matchActionLight}>
                   <MessageCircle size={16} color={candy.red} />
                   <Text style={styles.matchActionLightText}>En parler dans le chat</Text>
                 </SpringPressable>
@@ -5286,7 +6089,7 @@ function MatchScreen({
                 </SpringPressable>
               </View>
             ) : (
-              <Text style={styles.matchRevealSuspenseHint}>La carte reste cachée tant que tu ne l'ouvres pas.</Text>
+              null
             )}
           </LinearGradient>
         ) : (
@@ -5300,7 +6103,7 @@ function MatchScreen({
           </View>
         )}
 
-      {matches.length ? (
+      {hasAnyMatch ? (
         <>
           <View style={styles.matchListHeader}>
             <Text style={styles.matchListTitle}>{hasHiddenReveal ? "Déjà révélés" : "Matchs révélés"}</Text>
@@ -5355,10 +6158,6 @@ function MatchRevealCard({
   const meterX = revealAnim.interpolate({ inputRange: [0, 1], outputRange: [-260, 0] });
   const glowScale = breathing.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
 
-  if (!match) {
-    return null;
-  }
-
   if (!isOpen) {
     return (
       <View style={[styles.matchRevealCard, styles.matchRevealLockedCard]}>
@@ -5366,26 +6165,36 @@ function MatchRevealCard({
         {isOpening ? (
           <Animated.View pointerEvents="none" style={[styles.matchRevealShine, { transform: [{ translateX: shineX }, { rotate: "-16deg" }] }]} />
         ) : null}
-        <EmojiSticker emoji={stickers.lock} size={78} style={styles.matchRevealSticker} />
-        <Text style={styles.matchRevealLabel}>{isOpening ? "Révélation" : "Match à révéler"}</Text>
-        <Text style={styles.matchRevealTitle}>{isOpening ? "La carte se révèle..." : "Vous avez une envie en commun"}</Text>
-        <Text style={styles.matchRevealText}>
-          Le titre reste caché jusqu'à l'ouverture. Ensuite, vous verrez vos deux réponses et pourrez en parler.
-        </Text>
-        <View style={styles.matchRevealMeter}>
-          <Animated.View
-            style={[
-              styles.matchRevealMeterFill,
-              isOpening ? { transform: [{ translateX: meterX }] } : styles.matchRevealMeterFillIdle,
-            ]}
-          />
+        <View style={styles.matchRevealLockedBody}>
+          <View style={styles.matchRevealLockedIcon}>
+            <EmojiSticker emoji={stickers.lock} size={58} />
+          </View>
+          <View style={styles.matchRevealLockedCopy}>
+            <Text style={styles.matchRevealLockedLabel}>À ouvrir</Text>
+            <Text style={styles.matchRevealLockedTitle}>{isOpening ? "Révélation..." : "Envie commune cachée"}</Text>
+            <Text style={styles.matchRevealLockedText}>Le titre reste masqué jusqu'à ton ouverture.</Text>
+          </View>
         </View>
-        <SpringPressable disabled={isOpening} onPress={onReveal} style={[styles.matchRevealButton, isOpening && styles.matchRevealButtonDisabled]}>
-          <Sparkles size={17} color={candy.white} />
-          <Text style={styles.matchRevealButtonText}>{isOpening ? "Révélation..." : "Voir l'envie"}</Text>
-        </SpringPressable>
+        <View style={styles.matchRevealLockedFooter}>
+          <View style={styles.matchRevealMeter}>
+            <Animated.View
+              style={[
+                styles.matchRevealMeterFill,
+                isOpening ? { transform: [{ translateX: meterX }] } : styles.matchRevealMeterFillIdle,
+              ]}
+            />
+          </View>
+          <SpringPressable disabled={isOpening} onPress={onReveal} style={[styles.matchRevealButton, isOpening && styles.matchRevealButtonDisabled]}>
+            <Sparkles size={17} color={candy.white} />
+            <Text style={styles.matchRevealButtonText}>{isOpening ? "..." : "Ouvrir"}</Text>
+          </SpringPressable>
+        </View>
       </View>
     );
+  }
+
+  if (!match) {
+    return null;
   }
 
   return (
@@ -5590,15 +6399,21 @@ function MatchListItem({ card, index, onOpen }: { card: DesireCard; index: numbe
 function ChatScreen({
   contextCardId,
   couple,
+  onConsumePhoto,
+  onQueuePhotoConsumption,
   onSendMessage,
 }: {
   contextCardId?: string;
   couple: CoupleState;
+  onConsumePhoto: (payload: { attachmentId: string; messageId: string }) => void | Promise<void>;
+  onQueuePhotoConsumption: (payload: { attachmentId: string; delayMs?: number; messageId: string }) => void | Promise<void>;
   onSendMessage: (message: { attachments: ChatAttachment[]; body: string }) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
+  const [activePhoto, setActivePhoto] = useState<{ attachment: ChatAttachment; messageId: string } | null>(null);
   const [photoOptimizing, setPhotoOptimizing] = useState(false);
+  const activePhotoRef = useRef(activePhoto);
   const activeId = couple.activePartnerId;
   const partnerId = otherPartnerId(activeId);
   const partnerName = couple.profiles[partnerId].displayName;
@@ -5617,12 +6432,35 @@ function ChatScreen({
   const hasMessages = messages.length > 0;
   const hasMessageContent = draft.trim().length > 0 || pendingAttachments.length > 0;
   const canSendMessage = hasMessageContent && !photoOptimizing;
-  const messageCountLabel = messages.length ? `${messages.length} message${messages.length > 1 ? "s" : ""} ce soir` : "Aucun message";
   const quickPrompts = useMemo(() => chatSuggestionPrompts({
     contextCard,
     hasMessages,
     partnerName,
   }), [contextCard, hasMessages, partnerName]);
+
+  useEffect(() => {
+    activePhotoRef.current = activePhoto;
+  }, [activePhoto]);
+
+  const consumeActivePhoto = useCallback(() => {
+    const photo = activePhotoRef.current;
+
+    if (!photo) {
+      return;
+    }
+
+    activePhotoRef.current = null;
+    setActivePhoto(null);
+    void onConsumePhoto({ attachmentId: photo.attachment.id, messageId: photo.messageId });
+  }, [onConsumePhoto]);
+
+  const openPhoto = useCallback(
+    (attachment: ChatAttachment, messageId: string) => {
+      setActivePhoto({ attachment, messageId });
+      void onQueuePhotoConsumption({ attachmentId: attachment.id, delayMs: EPHEMERAL_PHOTO_VIEW_MS, messageId });
+    },
+    [onQueuePhotoConsumption],
+  );
 
   async function pickPhoto() {
     const remainingSlots = Math.max(0, 4 - pendingAttachments.length);
@@ -5694,47 +6532,31 @@ function ChatScreen({
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
       <View style={styles.chatFrame}>
         <ScrollView contentContainerStyle={styles.chatScreen} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <LinearGradient colors={["#241024", "#A4145A", candy.red]} style={[styles.chatHero, hasMessages && styles.chatHeroCompact]}>
-            {!hasMessages ? <EmojiSticker emoji={stickers.speech} size={92} style={styles.chatHeroBubble} /> : null}
-            <View style={styles.chatHeroTop}>
-              <Text style={styles.chatEyebrow}>Conversation privée</Text>
-              <View style={styles.chatExpiryPill}>
-                <LockKeyhole size={13} color={candy.white} />
-                <Text style={styles.chatExpiryText}>Effacé à {chatExpiryLabel()}</Text>
+          <LinearGradient colors={["#2B142A", "#8F104F", candy.red]} style={styles.chatHero}>
+            <View style={styles.chatHeaderIdentity}>
+              <View style={styles.chatHeaderAvatar}>
+                <Text style={styles.chatHeaderAvatarEmoji}>{couple.profiles[partnerId].statusEmoji}</Text>
+                <View style={styles.chatHeaderStatusDot} />
+              </View>
+              <View style={styles.chatHeaderCopy}>
+                <Text numberOfLines={1} style={styles.chatHeaderName}>{partnerName}</Text>
+                <View style={styles.chatHeaderMetaRow}>
+                  <Text style={styles.chatHeaderMetaPill}>Privé</Text>
+                </View>
+              </View>
+              <View style={styles.chatHeaderLock}>
+                <LockKeyhole size={17} color={candy.white} />
               </View>
             </View>
-            {hasMessages ? (
-              <View style={styles.chatHeroCompactRow}>
-                <View style={styles.chatHeroCompactCopy}>
-                  <Text style={styles.chatTitleCompact}>Entre vous deux</Text>
-                  <Text style={styles.chatTextCompact}>Les messages s'effacent à 6h.</Text>
-                </View>
-                <Text style={styles.chatCountTextCompact}>{messageCountLabel}</Text>
-              </View>
-            ) : (
-              <>
-                <Text style={styles.chatTitle}>Entre vous deux</Text>
-                <Text style={styles.chatText}>
-                  Messages et photos disparaissent à 6h. Parlez à votre rythme.
-                </Text>
-                <View style={styles.chatHeroStatusRow}>
-                  <View style={styles.chatPresencePill}>
-                    <View style={styles.chatPresenceDot} />
-                    <Text style={styles.chatPresenceText}>{partnerName} verra tes messages ici</Text>
-                  </View>
-                  <Text style={styles.chatCountText}>{messageCountLabel}</Text>
-                </View>
-              </>
-            )}
             {contextCard ? (
-              <View style={[styles.chatContext, hasMessages && styles.chatContextCompact]}>
+              <View style={styles.chatContext}>
                 <EmojiSticker
                   emoji={cardStickerEmoji(contextCard)}
-                  size={hasMessages ? 42 : 56}
-                  style={[styles.chatContextSticker, hasMessages && styles.chatContextStickerCompact]}
+                  size={44}
+                  style={styles.chatContextSticker}
                 />
                 <View style={styles.chatContextCopy}>
-                  <Text style={styles.chatContextLabel}>À propos de ce match</Text>
+                  <Text style={styles.chatContextLabel}>Match</Text>
                   <Text style={styles.chatContextTitle}>{contextCard.title}</Text>
                 </View>
               </View>
@@ -5743,11 +6565,9 @@ function ChatScreen({
 
           <View style={styles.chatDateDivider}>
             <View style={styles.chatDividerLine} />
-            <Text style={styles.chatDateText}>Ce soir · s'efface à {chatExpiryLabel()}</Text>
+            <Text style={styles.chatDateText}>Aujourd'hui</Text>
             <View style={styles.chatDividerLine} />
           </View>
-
-          {messages.length ? <ChatLiveSignal /> : null}
 
           <View style={styles.chatMessages}>
             {messages.length ? (
@@ -5757,6 +6577,7 @@ function ChatScreen({
                     message={message}
                     mine={message.authorId === activeId}
                     name={couple.profiles[message.authorId].displayName}
+                    onOpenPhoto={(attachment) => openPhoto(attachment, message.id)}
                   />
                 </Entrance>
               ))
@@ -5777,7 +6598,6 @@ function ChatScreen({
         <View pointerEvents="box-none" style={styles.chatComposerDock}>
           {!hasMessageContent ? (
             <View style={styles.chatSuggestionPanel}>
-              <Text style={styles.chatSuggestionKicker}>Idées rapides</Text>
               <View style={styles.chatQuickRow}>
                 {quickPrompts.map((prompt) => (
                   <SpringPressable
@@ -5795,54 +6615,58 @@ function ChatScreen({
             </View>
           ) : null}
 
-        {pendingAttachments.length ? (
-          <View style={styles.chatPendingPhotos}>
-            {pendingAttachments.map((attachment) => (
-              <View key={attachment.id} style={styles.chatPendingPhotoWrap}>
-                <Image source={{ uri: attachment.uri }} style={styles.chatPendingPhoto} />
-                <SpringPressable
-                  onPress={() => setPendingAttachments((current) => current.filter((item) => item.id !== attachment.id))}
-                  style={styles.chatRemovePhoto}
-                >
-                  <X size={14} color={candy.white} />
-                </SpringPressable>
-              </View>
-            ))}
-          </View>
-        ) : null}
+          {pendingAttachments.length ? (
+            <View style={styles.chatPendingPhotos}>
+              {pendingAttachments.map((attachment) => (
+                <View key={attachment.id} style={styles.chatPendingPhotoWrap}>
+                  <Image source={{ uri: attachment.uri }} style={styles.chatPendingPhoto} />
+                  <SpringPressable
+                    onPress={() => setPendingAttachments((current) => current.filter((item) => item.id !== attachment.id))}
+                    style={styles.chatRemovePhoto}
+                  >
+                    <X size={14} color={candy.white} />
+                  </SpringPressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
 
           <View style={[styles.chatComposer, hasMessageContent && styles.chatComposerActive]}>
-          <SpringPressable
-            disabled={photoOptimizing || pendingAttachments.length >= 4}
-            onPress={pickPhoto}
-            style={[styles.chatIconButton, (photoOptimizing || pendingAttachments.length >= 4) && styles.chatIconButtonDisabled]}
-            testID="chat-photo-button"
-          >
-            {photoOptimizing ? (
-              <ActivityIndicator color={candy.red} size="small" />
-            ) : (
-              <ImagePlus size={20} color={candy.red} />
-            )}
-          </SpringPressable>
-          <TextInput
-            multiline
-            onChangeText={setDraft}
-            placeholder={`Écrire à ${couple.profiles[partnerId].displayName}...`}
-            placeholderTextColor="rgba(35,18,36,0.45)"
-            style={styles.chatInput}
-            testID="chat-input"
-            value={draft}
-          />
-          <SpringPressable
-            disabled={!canSendMessage}
-            onPress={send}
-            style={[styles.chatSendButton, !canSendMessage && styles.chatSendButtonDisabled]}
-            testID="chat-send-button"
-          >
-            <Send size={19} color={candy.white} />
-          </SpringPressable>
+            <SpringPressable
+              disabled={photoOptimizing || pendingAttachments.length >= 4}
+              onPress={pickPhoto}
+              style={[styles.chatIconButton, (photoOptimizing || pendingAttachments.length >= 4) && styles.chatIconButtonDisabled]}
+              testID="chat-photo-button"
+            >
+              {photoOptimizing ? (
+                <ActivityIndicator color={candy.red} size="small" />
+              ) : (
+                <ImagePlus size={20} color={candy.red} />
+              )}
+            </SpringPressable>
+            <TextInput
+              multiline
+              onChangeText={setDraft}
+              placeholder={`Écrire à ${couple.profiles[partnerId].displayName}...`}
+              placeholderTextColor="rgba(35,18,36,0.45)"
+              style={[styles.chatInput, Platform.OS === "web" ? ({ outlineStyle: "none" } as never) : null]}
+              testID="chat-input"
+              value={draft}
+            />
+            <SpringPressable
+              disabled={!canSendMessage}
+              onPress={send}
+              style={[styles.chatSendButton, !canSendMessage && styles.chatSendButtonDisabled]}
+              testID="chat-send-button"
+            >
+              <Send size={19} color={candy.white} />
+            </SpringPressable>
           </View>
         </View>
+        <EphemeralPhotoViewer
+          photo={activePhoto}
+          onConsume={consumeActivePhoto}
+        />
       </View>
     </KeyboardAvoidingView>
   );
@@ -5907,21 +6731,28 @@ function chatSuggestionPrompts({
   ];
 }
 
-const ChatLiveSignal = React.memo(function ChatLiveSignal() {
-  return (
-    <View style={styles.chatLiveSignal}>
-      <Text style={styles.chatLiveText}>Chat ouvert</Text>
-      <View style={styles.chatLiveDots}>
-        {[0, 1, 2].map((dot) => (
-          <View key={dot} style={styles.chatLiveDot} />
-        ))}
-      </View>
-    </View>
-  );
-});
-
-const ChatBubble = React.memo(function ChatBubble({ message, mine, name }: { message: ChatMessage; mine: boolean; name: string }) {
+const ChatBubble = React.memo(function ChatBubble({
+  message,
+  mine,
+  name,
+  onOpenPhoto,
+}: {
+  message: ChatMessage;
+  mine: boolean;
+  name: string;
+  onOpenPhoto?: (attachment: ChatAttachment) => void;
+}) {
   const sentAt = new Date(message.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const deliveryLabel = message.deliveryStatus === "sending"
+    ? "Envoi en cours..."
+    : message.deliveryStatus === "queued"
+      ? "En attente d'envoi"
+      : message.deliveryStatus === "failed"
+        ? "Non envoyé, réessaiera automatiquement"
+        : "";
+  const metaLabel = deliveryLabel
+    ? `${sentAt} · ${deliveryLabel}`
+    : sentAt;
 
   return (
     <View style={[styles.chatBubbleRow, mine && styles.chatBubbleRowMine]}>
@@ -5929,17 +6760,127 @@ const ChatBubble = React.memo(function ChatBubble({ message, mine, name }: { mes
         <Text style={[styles.chatBubbleName, mine && styles.chatBubbleNameMine]}>{mine ? "Toi" : name}</Text>
         {message.attachments.length ? (
           <View style={styles.chatBubblePhotos}>
-            {message.attachments.filter((attachment) => attachment.uri).map((attachment) => (
-              <Image key={attachment.id} source={{ uri: attachment.uri }} style={styles.chatBubblePhoto} />
-            ))}
+            {message.attachments.map((attachment) => {
+              if (attachment.disappeared) {
+                return (
+                  <View key={attachment.id} style={[styles.chatBubblePhoto, styles.chatPhotoGone]}>
+                    <LockKeyhole size={20} color={mine ? candy.white : candy.red} />
+                    <Text style={[styles.chatPhotoGoneText, mine && styles.chatPhotoGoneTextMine]}>Photo disparue</Text>
+                  </View>
+                );
+              }
+
+              if (!attachment.uri) {
+                return (
+                  <View key={attachment.id} style={[styles.chatBubblePhoto, styles.chatPhotoUnavailable]}>
+                    <ImagePlus size={20} color={mine ? candy.white : candy.red} />
+                    <Text style={[styles.chatPhotoGoneText, mine && styles.chatPhotoGoneTextMine]}>Photo indisponible</Text>
+                  </View>
+                );
+              }
+
+              if (!mine) {
+                return (
+                  <SpringPressable
+                    key={attachment.id}
+                    onPress={() => onOpenPhoto?.(attachment)}
+                    style={styles.chatPhotoRevealButton}
+                  >
+                    <Image
+                      blurRadius={18}
+                      resizeMode="cover"
+                      source={{ uri: attachment.uri }}
+                      style={styles.chatPhotoRevealImage}
+                    />
+                    <View style={styles.chatPhotoBlurOverlay}>
+                      <LockKeyhole size={21} color={candy.white} />
+                      <Text style={styles.chatPhotoRevealLabel}>Voir 10s</Text>
+                    </View>
+                  </SpringPressable>
+                );
+              }
+
+              return <Image key={attachment.id} resizeMode="cover" source={{ uri: attachment.uri }} style={styles.chatBubblePhoto} />;
+            })}
           </View>
         ) : null}
         {message.body ? <Text style={[styles.chatBubbleText, mine && styles.chatBubbleTextMine]}>{message.body}</Text> : null}
-        <Text style={[styles.chatBubbleMeta, mine && styles.chatBubbleMetaMine]}>{sentAt} · effacé à 6h</Text>
+        <Text
+          style={[
+            styles.chatBubbleMeta,
+            mine && styles.chatBubbleMetaMine,
+            message.deliveryStatus && styles.chatBubbleMetaPending,
+            message.deliveryStatus === "failed" && styles.chatBubbleMetaFailed,
+          ]}
+        >
+          {metaLabel}
+        </Text>
       </View>
     </View>
   );
 });
+
+function EphemeralPhotoViewer({
+  photo,
+  onConsume,
+}: {
+  photo: { attachment: ChatAttachment; messageId: string } | null;
+  onConsume: () => void;
+}) {
+  const [secondsLeft, setSecondsLeft] = useState(10);
+  const consumedRef = useRef(false);
+
+  const finish = useCallback(() => {
+    if (consumedRef.current) {
+      return;
+    }
+
+    consumedRef.current = true;
+    onConsume();
+  }, [onConsume]);
+
+  useEffect(() => {
+    if (!photo) {
+      return undefined;
+    }
+
+    consumedRef.current = false;
+    setSecondsLeft(Math.ceil(EPHEMERAL_PHOTO_VIEW_MS / 1000));
+    const startedAt = Date.now();
+    const interval = setInterval(() => {
+      const remainingMs = Math.max(0, EPHEMERAL_PHOTO_VIEW_MS - (Date.now() - startedAt));
+      setSecondsLeft(Math.ceil(remainingMs / 1000));
+    }, 250);
+    const timeout = setTimeout(finish, EPHEMERAL_PHOTO_VIEW_MS);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [finish, photo?.attachment.id]);
+
+  if (!photo || !photo.attachment.uri) {
+    return null;
+  }
+
+  return (
+    <Modal animationType="fade" onRequestClose={finish} transparent visible>
+      <View style={styles.ephemeralPhotoBackdrop}>
+        <View style={styles.ephemeralPhotoTopBar}>
+          <View style={styles.ephemeralPhotoTimer}>
+            <LockKeyhole size={16} color={candy.white} />
+            <Text style={styles.ephemeralPhotoTimerText}>{Math.max(secondsLeft, 1)}s</Text>
+          </View>
+          <SpringPressable onPress={finish} style={styles.ephemeralPhotoClose}>
+            <X size={20} color={candy.white} />
+          </SpringPressable>
+        </View>
+        <Image resizeMode="contain" source={{ uri: photo.attachment.uri }} style={styles.ephemeralPhoto} />
+        <Text style={styles.ephemeralPhotoHint}>La photo disparaît après ouverture.</Text>
+      </View>
+    </Modal>
+  );
+}
 
 function RulesScreen({ onBack }: { onBack: () => void }) {
   const steps = [
@@ -6052,6 +6993,9 @@ function HomeScreen({
       <ScrollView contentContainerStyle={[styles.screen, styles.homeScreen]} showsVerticalScrollIndicator={false}>
         <WeSpiceLogo small style={styles.homeLogo} />
         <Entrance delay={40}>
+          <MoodWidget couple={couple} onChange={onMoodChange} onNotificationPreference={onMoodNotificationPreference} />
+        </Entrance>
+        <Entrance delay={100}>
           <HomeNextStepPanel
             couple={couple}
             onGoEnvies={onGoEnvies}
@@ -6063,17 +7007,14 @@ function HomeScreen({
             revealedMatchIds={revealedMatchIds}
           />
         </Entrance>
-        <Entrance delay={100}>
-          <HomeStatusTeaser couple={couple} onOpenProfile={onOpenProfile} onStatusEmojiChange={onStatusEmojiChange} />
-        </Entrance>
         <Entrance delay={140}>
           <HomeSurpriseDeck couple={couple} onGoEnvies={onGoEnvies} onVote={onVote} />
         </Entrance>
         <Entrance delay={200}>
-          <MoodWidget couple={couple} onChange={onMoodChange} onNotificationPreference={onMoodNotificationPreference} />
+          <HomeDailyAdvice couple={couple} />
         </Entrance>
         <Entrance delay={260}>
-          <HomeDailyAdvice couple={couple} />
+          <HomeStatusTeaser couple={couple} onOpenProfile={onOpenProfile} onStatusEmojiChange={onStatusEmojiChange} />
         </Entrance>
       </ScrollView>
       <StoreScreen
@@ -6140,7 +7081,6 @@ function HomeStatusTeaser({
 }) {
   const activeProfile = couple.profiles[couple.activePartnerId];
   const partnerProfile = couple.profiles[otherPartnerId(couple.activePartnerId)];
-  const linked = hasLinkedPartner(couple);
 
   return (
     <LinearGradient colors={["rgba(255,255,255,0.9)", candy.roseMist, candy.pinkSoft]} style={styles.homeStatusCard}>
@@ -6150,16 +7090,11 @@ function HomeStatusTeaser({
         </View>
         <View style={styles.homeStatusCopy}>
           <Text style={styles.homeStatusEyebrow}>Statut visible</Text>
-          <Text style={styles.homeStatusTitle}>Change ton emoji du moment</Text>
-          <Text style={styles.homeStatusText}>
-            {linked
-              ? `${partnerProfile.displayName} verra ton signal dans Notre couple.`
-              : "Choisis un signal maintenant, il sera déjà prêt quand ton/ta partenaire arrive."}
-          </Text>
+          <Text style={styles.homeStatusTitle}>Change ton statut du jour</Text>
         </View>
         <View style={styles.homeStatusPartner}>
           <Text style={styles.homeStatusPartnerEmoji}>{profileEmoji(partnerProfile)}</Text>
-          <Text numberOfLines={1} style={styles.homeStatusPartnerLabel}>{linked ? "Son statut" : "À venir"}</Text>
+          <Text numberOfLines={1} style={styles.homeStatusPartnerLabel}>{hasLinkedPartner(couple) ? "Son statut" : "À venir"}</Text>
         </View>
       </View>
       <View style={styles.homeStatusActions}>
@@ -6226,6 +7161,7 @@ function HomeNextStepPanel({
   revealedMatchIds: string[];
 }) {
   const revealedMatchSet = useMemo(() => new Set(revealedMatchIds), [revealedMatchIds]);
+  const remoteCouple = isRemoteCoupleId(couple.id);
   const matches = useMemo(() => matchedCards(couple), [couple]);
   const activeVotes = couple.votes[couple.activePartnerId] ?? {};
   const availableCards = useMemo(() => availableDesireCards(couple), [couple]);
@@ -6239,148 +7175,105 @@ function HomeNextStepPanel({
   const noAds = hasNoAds(couple);
   const hasStoreOffer = lockedPackCount > 0 || !customUnlimited || !unlimitedResponses || !noAds;
   const linked = hasLinkedPartner(couple);
-  const hiddenMatches = useMemo(() => matches.filter((card) => !revealedMatchSet.has(card.id)), [matches, revealedMatchSet]);
-  const revealedMatches = useMemo(() => matches.filter((card) => revealedMatchSet.has(card.id)), [matches, revealedMatchSet]);
-  const firstHiddenMatch = hiddenMatches[0];
+  const hiddenMatchCount = hiddenMatchCountForCouple(couple, matches, revealedMatchSet);
+  const revealedMatches = useMemo(
+    () => remoteCouple ? matches : matches.filter((card) => revealedMatchSet.has(card.id)),
+    [matches, remoteCouple, revealedMatchSet],
+  );
   const firstRevealedMatch = revealedMatches[0];
   const dailyLimitReached = !unlimitedResponses && dailyResponsesLeft(couple, couple.activePartnerId) <= 0;
   const responseCount = useMemo(() => activeResponseCount(couple), [couple]);
   const hasFewAnswers = responseCount < 5;
-  const stateSummary = !linked
-    ? "En solo pour l'instant"
-    : firstHiddenMatch
-      ? "Match prêt à ouvrir"
-      : firstRevealedMatch
-        ? "Conversation à lancer"
-        : dailyLimitReached
-          ? "5/5 aujourd'hui"
-        : hasFewAnswers
-          ? `${responseCount}/5 premières réponses`
-          : unansweredCount > 0
-            ? `${unansweredCount} cartes restantes`
-            : "Tout est à jour";
 
   const nextStep: HomeNextStepConfig = !linked
     ? {
-        badge: "Partenaire manquant",
         cta: "Inviter",
         emoji: "💌",
-        phase: "1",
         onPress: onInvitePartner,
         secondary: "Rejoindre",
         secondaryPress: onJoinPartner,
-        text: "Partage ton code ou entre celui de ton/ta partenaire. Ensuite chacun répond de son côté, à son rythme.",
-        title: "Invite ou rejoins ton/ta partenaire",
+        title: "Ton/ta partenaire manque encore",
       }
-    : firstHiddenMatch
+    : hiddenMatchCount > 0
       ? {
-          badge: `${hiddenMatches.length} à révéler`,
-          cta: "Révéler",
+          cta: "Découvrir",
           emoji: "🔥",
-          phase: "3",
           onPress: onGoMatch,
           secondary: "Continuer à jouer",
           secondaryPress: onGoEnvies,
-          text: "Vous avez tous les deux répondu au moins Pourquoi pas sur une carte. Ouvre-la maintenant.",
           title: "Un match est prêt",
         }
       : firstRevealedMatch
         ? {
-            badge: `${revealedMatches.length} révélé${revealedMatches.length > 1 ? "s" : ""}`,
             cta: "En parler",
             emoji: "💬",
-            phase: "4",
             onPress: () => onOpenChat(firstRevealedMatch.id),
-            secondary: "Voir les matches",
+            secondary: "Voir les matchs",
             secondaryPress: onGoMatch,
-            text: "L'envie est connue des deux côtés. Le chat peut aider à en parler tranquillement.",
-            title: "Passez dans le chat",
+            title: "Une envie vous attend",
           }
         : dailyLimitReached
           ? {
-              badge: "Rituel du jour",
               cta: "Débloquer l'illimité",
               emoji: "🎟️",
-              phase: "2",
               onPress: onOpenStore,
-              secondary: matches.length ? "Voir les matches" : undefined,
+              secondary: matches.length ? "Voir les matchs" : undefined,
               secondaryPress: matches.length ? onGoMatch : undefined,
-              text: "Tu as utilisé tes 5 choix du jour. Reviens demain pour garder le suspense, ou ouvre l'illimité.",
               title: "Pause jusqu'à demain",
             }
         : hasFewAnswers
           ? {
-              badge: "Premières réponses",
               cta: "Répondre",
               emoji: "🎲",
-              phase: "2",
               onPress: onGoEnvies,
               secondary: hasStoreOffer ? "Voir les packs" : undefined,
               secondaryPress: hasStoreOffer ? onOpenStore : undefined,
-              text: "Commence par quelques cartes. Ton/ta partenaire ne voit rien tant que vous ne choisissez pas la même envie.",
               title: "Réponds à quelques cartes",
             }
           : matches.length
     ? {
-        badge: `${matches.length} match${matches.length > 1 ? "s" : ""}`,
         cta: "Voir les matchs",
         emoji: "💘",
-        phase: "4",
         onPress: onGoMatch,
         secondary: "Continuer à jouer",
         secondaryPress: onGoEnvies,
-        text: "Vos envies communes restent disponibles. Tu peux les revoir ou relancer la discussion.",
         title: "Un match vous attend",
       }
       : unansweredCount > 0
         ? {
-            badge: `${unansweredCount} carte${unansweredCount > 1 ? "s" : ""} dispo`,
             cta: "Voir une carte",
             emoji: "🎲",
-            phase: "2",
             onPress: onGoEnvies,
             secondary: hasStoreOffer ? "Voir les packs" : undefined,
             secondaryPress: hasStoreOffer ? onOpenStore : undefined,
-            text: "Une carte à la fois. Réponds, WeSpice ne révélera que les points communs.",
             title: "Continue le jeu",
           }
         : hasStoreOffer
           ? {
-              badge: "Cartes à débloquer",
               cta: "Voir les packs",
               emoji: "✨",
-              phase: "2",
               onPress: onOpenStore,
               secondary: "Revoir les cartes",
               secondaryPress: onGoEnvies,
-              text: "Vous avez répondu aux cartes ouvertes. Un autre pack peut relancer le jeu.",
               title: "Plus rien de neuf pour l'instant",
             }
           : {
-              badge: "Tout exploré",
               cta: "Ajouter une envie",
               emoji: "💭",
-              phase: "2",
               onPress: onGoEnvies,
               secondary: "Voir les matchs",
               secondaryPress: onGoMatch,
-              text: "Vous avez répondu à tout. Une carte perso peut ajouter votre propre idée au jeu.",
               title: "À vous d'inventer la suite",
             };
 
   return (
     <LinearGradient colors={["rgba(255,255,255,0.96)", candy.roseMist, candy.roseSoft]} style={styles.homeNextPanel}>
       <View style={styles.homeNextTop}>
-        <View style={styles.homeNextState}>
-          <Text style={styles.homeNextPhase}>{nextStep.phase}</Text>
-          <Text style={styles.homeNextStateText}>{stateSummary}</Text>
+        <View style={styles.homeNextCopy}>
+          <Text style={styles.homeNextQuestLabel}>Prochaine action</Text>
+          <Text style={styles.homeNextTitle}>{nextStep.title}</Text>
         </View>
         <Text style={styles.homeNextEmoji}>{nextStep.emoji}</Text>
-      </View>
-      <View style={styles.homeNextCopy}>
-        <Text style={styles.homeNextBadge}>Prochaine action</Text>
-        <Text style={styles.homeNextTitle}>{nextStep.title}</Text>
-        <Text style={styles.homeNextText}>{nextStep.text}</Text>
       </View>
       <View style={styles.homeNextActions}>
         <SpringPressable onPress={nextStep.onPress} style={styles.homeNextPrimary}>
@@ -6898,7 +7791,10 @@ function CoupleScreen({
 }) {
   const { height: viewportHeight } = useWindowDimensions();
   const revealedMatchSet = useMemo(() => new Set(revealedMatchIds), [revealedMatchIds]);
+  const remoteCouple = isRemoteCoupleId(couple.id);
   const matches = useMemo(() => matchedCards(couple), [couple]);
+  const hiddenMatchCount = hiddenMatchCountForCouple(couple, matches, revealedMatchSet);
+  const totalMatchCount = matches.length + hiddenMatchCount;
   const linked = hasLinkedPartner(couple);
   const activeProfile = couple.profiles[couple.activePartnerId];
   const profileNames = [couple.profiles.me.displayName, couple.profiles.partner.displayName];
@@ -6912,8 +7808,8 @@ function CoupleScreen({
     [couple],
   );
   const revealedMatches = useMemo(
-    () => matches.filter((card) => revealedMatchSet.has(card.id)),
-    [matches, revealedMatchSet],
+    () => remoteCouple ? matches : matches.filter((card) => revealedMatchSet.has(card.id)),
+    [matches, remoteCouple, revealedMatchSet],
   );
   const recentMatches = useMemo(() => revealedMatches.slice(0, 3), [revealedMatches]);
   const activeProfiles = PARTNER_IDS;
@@ -6991,9 +7887,19 @@ function CoupleScreen({
           ))}
         </View>
         <View style={styles.coupleStats}>
-          <CoupleStat value={`${matches.length}`} label="Matchs" />
+          <CoupleStat value={`${totalMatchCount}`} label="Matchs" />
           <CoupleStat value={`${crossedResponseCount}`} label="Cartes croisées" />
           <CoupleStat value={`${customCount}`} label="Perso" />
+        </View>
+        <View style={styles.coupleReconnectCard}>
+          <View style={styles.coupleReconnectCopy}>
+            <Text style={styles.coupleReconnectLabel}>Code partenaire</Text>
+            <Text selectable style={styles.coupleReconnectCode}>{couple.inviteCode}</Text>
+            <Text style={styles.coupleReconnectText}>À garder sous la main pour relier ou resynchroniser facilement.</Text>
+          </View>
+          <SpringPressable onPress={onCopyInvite} style={styles.coupleReconnectButton}>
+            <Copy size={18} color={candy.white} />
+          </SpringPressable>
         </View>
       </LinearGradient>
 
@@ -7004,7 +7910,7 @@ function CoupleScreen({
             <Text style={styles.coupleSectionText}>
               {recentMatches.length
                 ? "Les envies que tu as déjà révélées."
-                : matches.length
+                : hiddenMatchCount > 0
                   ? "Révèle d'abord un match dans l'onglet Matchs pour le voir ici."
                   : "Rien à révéler pour l'instant. Quelques réponses peuvent suffire."}
             </Text>
@@ -7021,9 +7927,9 @@ function CoupleScreen({
           </View>
         ) : (
           <SpringPressable onPress={onGoMatch} style={styles.coupleEmptyMatches}>
-            <Text style={styles.coupleEmptyMatchesTitle}>{matches.length ? "Match à révéler" : "Aucun match pour l'instant"}</Text>
+            <Text style={styles.coupleEmptyMatchesTitle}>{hiddenMatchCount > 0 ? "Match à révéler" : "Aucun match pour l'instant"}</Text>
             <Text style={styles.coupleEmptyMatchesText}>
-              {matches.length ? "Ouvre l'onglet Matchs pour le révéler de ton côté." : "Répondez à quelques cartes chacun de votre côté."}
+              {hiddenMatchCount > 0 ? "Ouvre l'onglet Matchs pour le révéler de ton côté." : "Répondez à quelques cartes chacun de votre côté."}
             </Text>
           </SpringPressable>
         )}
@@ -7510,6 +8416,7 @@ function ProfileScreen({
   onMoodNotificationPreference,
   onNotificationPreference,
   onProvider,
+  onDeleteAccount,
   onRequestLeaveCouple,
   onReplayTutorial,
   onRestorePurchases,
@@ -7524,6 +8431,7 @@ function ProfileScreen({
   onMoodNotificationPreference: (enabled: boolean) => void;
   onNotificationPreference: (key: NotificationToggleKey, enabled: boolean) => void;
   onProvider: (provider: AuthProvider) => void;
+  onDeleteAccount: () => void;
   onRequestLeaveCouple: () => void;
   onReplayTutorial: () => void;
   onRestorePurchases: () => void;
@@ -7537,51 +8445,33 @@ function ProfileScreen({
   const account = authAccountInfo(session);
   const notificationRows: Array<{
     emoji: string;
-    eyebrow: string;
     key: NotificationToggleKey;
-    offText: string;
-    onText: string;
     title: string;
   }> = [
     {
       emoji: "✨",
-      eyebrow: "État partagé",
       key: "moodSignalEnabled",
-      offText: "Aucune alerte ne sera envoyée pour l'instant.",
-      onText: "Tu reçois une alerte quand vos états se rejoignent.",
-      title: "Envies croisées",
+      title: "Humeur partagée",
     },
     {
       emoji: "🎲",
-      eyebrow: "Quotidien",
       key: "dailyReminderEnabled",
-      offText: "Pas de rappel quotidien.",
-      onText: "Une relance par jour pour répondre à une carte.",
       title: "Carte du jour",
     },
     {
       emoji: "🔥",
-      eyebrow: "Révélations",
       key: "matchRevealEnabled",
-      offText: "Les matchs resteront visibles dans l'app.",
-      onText: "Tu es prévenu.e quand une envie commune est prête.",
       title: "Nouveaux matchs",
     },
     {
       emoji: "💬",
-      eyebrow: "Chat",
       key: "chatMessageEnabled",
-      offText: "Pas d'alerte pour les messages privés.",
-      onText: "Tu reçois les messages avant qu'ils disparaissent à 6h.",
       title: "Messages privés",
     },
     {
       emoji: "🎁",
-      eyebrow: "Packs",
       key: "promotionEnabled",
-      offText: "Aucune alerte sur les packs.",
-      onText: "Tu peux recevoir les nouveautés et nouveaux packs.",
-      title: "Packs et nouveautés",
+      title: "Promotions",
     },
   ];
 
@@ -7599,6 +8489,24 @@ function ProfileScreen({
     ]);
   }
 
+  function confirmDeleteAccount() {
+    const title = "Supprimer ton compte ?";
+    const message =
+      "Ton compte, ton profil, tes votes, tes messages et tes photos privées seront supprimés côté serveur. Cette action est définitive.";
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      if (window.confirm(`${title}\n\n${message}`)) {
+        void onDeleteAccount();
+      }
+      return;
+    }
+
+    Alert.alert(title, message, [
+      { text: "Annuler", style: "cancel" },
+      { text: "Supprimer", style: "destructive", onPress: onDeleteAccount },
+    ]);
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.profileScreen} showsVerticalScrollIndicator={false}>
       <View style={styles.profileMainArea}>
@@ -7612,10 +8520,6 @@ function ProfileScreen({
         </Text>
       </LinearGradient>
         <View style={styles.profileSettingsSection}>
-          <Text style={styles.profileSectionTitle}>Statut</Text>
-          <StatusEmojiEditor profile={activeProfile} onChange={onStatusEmojiChange} />
-        </View>
-        <View style={styles.profileSettingsSection}>
           <Text style={styles.profileSectionTitle}>Compte</Text>
           <ProfileAccountPanel
             account={account}
@@ -7623,6 +8527,10 @@ function ProfileScreen({
             providerLoading={providerLoading}
             onProvider={onProvider}
           />
+        </View>
+        <View style={styles.profileSettingsSection}>
+          <Text style={styles.profileSectionTitle}>Statut</Text>
+          <StatusEmojiEditor profile={activeProfile} onChange={onStatusEmojiChange} />
         </View>
         <View style={styles.profileSettingsSection}>
           <Text style={styles.profileSectionTitle}>Notifications</Text>
@@ -7635,10 +8543,7 @@ function ProfileScreen({
                 <NotificationPreferenceRow
                   enabled={enabled}
                   emoji={row.emoji}
-                  eyebrow={row.eyebrow}
                   key={row.key}
-                  offText={row.offText}
-                  onText={row.onText}
                   onToggle={() => toggle(!enabled)}
                   title={row.title}
                 />
@@ -7648,33 +8553,31 @@ function ProfileScreen({
         </View>
 
         <View style={styles.profileSettingsSection}>
-          <Text style={styles.profileSectionTitle}>App</Text>
+          <Text style={styles.profileSectionTitle}>Application</Text>
           <View style={styles.profileUtilityGrid}>
             <SpringPressable onPress={confirmReset} style={styles.profileAction}>
               <RefreshCcw size={18} color={candy.red} />
-              <Text style={styles.profileActionText}>Réinitialiser le test</Text>
+              <Text numberOfLines={2} style={styles.profileActionText}>Réinitialiser le test</Text>
             </SpringPressable>
             <SpringPressable onPress={onReplayTutorial} style={styles.profileAction}>
               <Sparkles size={18} color={candy.red} />
-              <Text style={styles.profileActionText}>Revoir l'intro</Text>
+              <Text numberOfLines={2} style={styles.profileActionText}>Revoir l'intro</Text>
             </SpringPressable>
             <SpringPressable onPress={onRestorePurchases} style={styles.profileAction}>
               <RefreshCcw size={18} color={candy.red} />
-              <Text style={styles.profileActionText}>Restaurer les achats</Text>
+              <Text numberOfLines={2} style={styles.profileActionText}>Restaurer les achats</Text>
             </SpringPressable>
-          </View>
-        </View>
-
-        <View style={styles.profileSettingsSection}>
-          <Text style={styles.profileSectionTitle}>Actions</Text>
-          <View style={styles.profileBottomActions}>
-            <SpringPressable onPress={onRequestLeaveCouple} style={styles.profileLeaveAction}>
+            <SpringPressable onPress={onRequestLeaveCouple} style={[styles.profileAction, styles.profileActionDanger]}>
               <Users size={18} color={candy.red} />
-              <Text style={styles.profileLeaveActionText}>Quitter le couple</Text>
+              <Text numberOfLines={2} style={[styles.profileActionText, styles.profileActionDangerText]}>Quitter le couple</Text>
             </SpringPressable>
-            <SpringPressable onPress={onLogout} style={styles.logoutAction}>
+            <SpringPressable onPress={confirmDeleteAccount} style={[styles.profileAction, styles.profileActionDangerSolid]}>
+              <Trash2 size={18} color={candy.white} />
+              <Text numberOfLines={2} style={[styles.profileActionText, styles.profileActionDangerSolidText]}>Supprimer mon compte</Text>
+            </SpringPressable>
+            <SpringPressable onPress={onLogout} style={[styles.profileAction, styles.profileActionDark]}>
               <LogOut size={18} color={candy.white} />
-              <Text style={styles.logoutActionText}>Se déconnecter</Text>
+              <Text numberOfLines={2} style={[styles.profileActionText, styles.profileActionDarkText]}>Se déconnecter</Text>
             </SpringPressable>
           </View>
         </View>
@@ -7683,9 +8586,9 @@ function ProfileScreen({
         <Text style={styles.aboutEyebrow}>À propos</Text>
         <Text style={styles.aboutTitle}>WeSpice</Text>
         <Text style={styles.aboutText}>
-          WeSpice aide à découvrir les envies partagées, avec des réponses privées et un cadre clair.
+          WeSpice est un espace à deux pour partager une humeur, répondre à des envies et découvrir ce qui vous rejoint sans pression. Les réponses restent discrètes jusqu'au match, puis deviennent une invitation simple à en parler ensemble.
         </Text>
-        <Text style={styles.aboutMeta}>{PROJECT_VERSION.label} · Données privées par couple</Text>
+        <Text style={styles.aboutMeta}>{PROJECT_VERSION.label}</Text>
       </View>
       </View>
     </ScrollView>
@@ -7723,6 +8626,10 @@ function StatusEmojiEditor({
           <Text style={styles.statusEditorText}>Visible dans Notre couple. Parfait pour teaser sans écrire un message.</Text>
         </View>
       </View>
+      <View style={styles.statusEditorSectionHeader}>
+        <Text style={styles.statusEditorSectionTitle}>Suggestions rapides</Text>
+        <Text style={styles.statusEditorSectionHint}>Appuie pour changer</Text>
+      </View>
       <View style={styles.statusPresetGrid}>
         {statusEmojiPresets.map((emoji) => (
           <SpringPressable
@@ -7734,19 +8641,30 @@ function StatusEmojiEditor({
           </SpringPressable>
         ))}
       </View>
-      <View style={styles.statusCustomRow}>
-        <TextInput
-          maxLength={6}
-          onChangeText={setCustomEmoji}
-          onSubmitEditing={submitCustomEmoji}
-          placeholder="🍆"
-          placeholderTextColor="rgba(35,18,36,0.34)"
-          style={styles.statusCustomInput}
-          value={customEmoji}
-        />
-        <SpringPressable onPress={submitCustomEmoji} style={styles.statusCustomButton}>
-          <Text style={styles.statusCustomButtonText}>Mettre à jour</Text>
-        </SpringPressable>
+      <View style={styles.statusCustomPanel}>
+        <View style={styles.statusCustomCopy}>
+          <Text style={styles.statusCustomTitle}>Emoji perso</Text>
+          <Text style={styles.statusCustomHint}>Écris ou colle ton propre emoji.</Text>
+        </View>
+        <View style={styles.statusCustomRow}>
+          <View style={styles.statusCustomInputBox}>
+            <Text style={styles.statusCustomInputLabel}>Ton emoji</Text>
+            <TextInput
+              maxLength={6}
+              onChangeText={setCustomEmoji}
+              onSubmitEditing={submitCustomEmoji}
+              placeholder="ex: 🌶️"
+              placeholderTextColor="rgba(35,18,36,0.34)"
+              returnKeyType="done"
+              selectTextOnFocus
+              style={[styles.statusCustomInput, Platform.OS === "web" ? ({ outlineStyle: "none" } as never) : null]}
+              value={customEmoji}
+            />
+          </View>
+          <SpringPressable onPress={submitCustomEmoji} style={styles.statusCustomButton}>
+            <Text style={styles.statusCustomButtonText}>Utiliser</Text>
+          </SpringPressable>
+        </View>
       </View>
     </View>
   );
@@ -7755,17 +8673,11 @@ function StatusEmojiEditor({
 function NotificationPreferenceRow({
   enabled,
   emoji,
-  eyebrow,
-  offText,
-  onText,
   onToggle,
   title,
 }: {
   enabled: boolean;
   emoji: string;
-  eyebrow: string;
-  offText: string;
-  onText: string;
   onToggle: () => void;
   title: string;
 }) {
@@ -7775,16 +8687,18 @@ function NotificationPreferenceRow({
         <Text style={styles.profileNotificationEmoji}>{emoji}</Text>
       </View>
       <View style={styles.profileNotificationCopy}>
-        <Text style={styles.profileNotificationEyebrow}>{eyebrow}</Text>
         <Text style={styles.profileNotificationTitle}>{title}</Text>
-        <Text style={styles.profileNotificationText}>{enabled ? onText : offText}</Text>
       </View>
       <SpringPressable
         onPress={onToggle}
         style={[styles.profileNotificationToggle, enabled && styles.profileNotificationToggleOn]}
       >
-        <Text style={[styles.profileNotificationToggleText, enabled && styles.profileNotificationToggleTextOn]}>
-          {enabled ? "On" : "Off"}
+        <Text
+          adjustsFontSizeToFit
+          numberOfLines={1}
+          style={[styles.profileNotificationToggleText, enabled && styles.profileNotificationToggleTextOn]}
+        >
+          {enabled ? "Activé" : "Désactivé"}
         </Text>
       </SpringPressable>
     </View>
@@ -8096,21 +9010,21 @@ function WelcomeTutorialScreen({
     {
       eyebrow: "",
       title: "Bienvenue dans WeSpice",
-      text: "Un jeu privé pour découvrir ce qui vous tente tous les deux.",
+      text: "Un espace privé pour découvrir ce qui vous tente tous les deux, sans pression.",
       emoji: stickers.cherries,
       tone: "pink",
       kind: "intro",
     },
     {
-      eyebrow: "Le concept",
-      title: "Vous jouez chacun de votre côté.",
-      text: "Tu réponds aux cartes de ton côté. Ton/ta partenaire fait pareil. L'app ne révèle que les envies partagées.",
+      eyebrow: "Réponses privées",
+      title: "Tes choix restent à toi.",
+      text: "Un Non ne se montre jamais. Une envie se révèle seulement quand vous êtes tous les deux partants.",
       emoji: stickers.lock,
-      tone: "yellow",
-      kind: "concept",
+      tone: "soft",
+      kind: "rule",
     },
     {
-      eyebrow: "Mini tuto",
+      eyebrow: "Mini démo",
       title: "Teste une carte",
       text: "Choisis une réponse. C'est le cœur du jeu.",
       emoji: stickers.flame,
@@ -8118,33 +9032,9 @@ function WelcomeTutorialScreen({
       kind: "demo",
     },
     {
-      eyebrow: "Règle 1",
-      title: "Tes réponses restent à toi.",
-      text: "Un Non reste invisible. Pourquoi pas et la flamme se montrent seulement dans un match.",
-      emoji: stickers.lock,
-      tone: "soft",
-      kind: "rule",
-    },
-    {
-      eyebrow: "Règle 2",
-      title: "Deux réponses positives créent un match.",
-      text: "Dès que vous répondez tous les deux au moins Pourquoi pas sur la même envie, elle se révèle.",
-      emoji: stickers.flame,
-      tone: "hot",
-      kind: "rule",
-    },
-    {
-      eyebrow: "Règle 3",
-      title: "Un match ouvre une discussion.",
-      text: "Ce n'est pas une obligation. C'est une invitation à en parler, clarifier, rire ou garder ça pour plus tard.",
-      emoji: stickers.speech,
-      tone: "blue",
-      kind: "rule",
-    },
-    {
-      eyebrow: "Fin",
-      title: "Prêt.e à créer votre espace ?",
-      text: "Ensuite: crée ton profil, invite ton/ta partenaire, puis découvrez vos envies communes.",
+      eyebrow: "Dernière étape",
+      title: "Créez votre espace",
+      text: "Crée ton profil, invite ton/ta partenaire, puis laissez les matchs apparaître.",
       emoji: stickers.heart,
       tone: "pink",
       kind: "finish",
@@ -8288,7 +9178,7 @@ function WelcomeTutorialScreen({
                     key={`demo-voted-${demoVote}`}
                     style={[styles.welcomeDemoVotedPlaceholder, { height: demoCardHeight, width: demoCardWidth }]}
                   >
-                    <Text style={styles.welcomeDemoVotedMessage}>Carte votée, cliquez sur suivant</Text>
+                    <Text style={styles.welcomeDemoVotedMessage}>Carte notée. Appuie sur Suivant.</Text>
                   </Entrance>
                 ) : (
                   <GameCardTransition exiting={demoCardExiting} key={demoCardNonce}>
@@ -8894,6 +9784,99 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1.5 },
     textShadowRadius: 0,
   },
+  remoteAccountScreen: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    padding: 22,
+  },
+  remoteAccountCard: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderColor: candy.white,
+    borderRadius: 30,
+    borderWidth: 2,
+    gap: 12,
+    maxWidth: 460,
+    padding: 18,
+    width: "100%",
+  },
+  remoteAccountIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,36,95,0.1)",
+    borderColor: "rgba(255,36,95,0.18)",
+    borderRadius: 999,
+    borderWidth: 1.5,
+    height: 58,
+    justifyContent: "center",
+    width: 58,
+  },
+  remoteAccountTitle: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 28,
+    fontWeight: "900",
+    lineHeight: 31,
+    textAlign: "center",
+  },
+  remoteAccountText: {
+    color: candy.text,
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  remoteAccountError: {
+    backgroundColor: "rgba(255,36,95,0.08)",
+    borderColor: "rgba(255,36,95,0.18)",
+    borderRadius: 16,
+    borderWidth: 1,
+    color: candy.red,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 17,
+    overflow: "hidden",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    textAlign: "center",
+    width: "100%",
+  },
+  remoteAccountPrimary: {
+    alignItems: "center",
+    backgroundColor: candy.red,
+    borderColor: candy.white,
+    borderRadius: 18,
+    borderWidth: 2,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 52,
+    paddingHorizontal: 18,
+    width: "100%",
+  },
+  remoteAccountPrimaryText: {
+    color: candy.white,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  remoteAccountSecondary: {
+    alignItems: "center",
+    backgroundColor: candy.white,
+    borderColor: "rgba(255,36,95,0.2)",
+    borderRadius: 18,
+    borderWidth: 2,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 50,
+    paddingHorizontal: 18,
+    width: "100%",
+  },
+  remoteAccountSecondaryText: {
+    color: candy.red,
+    fontSize: 14,
+    fontWeight: "900",
+  },
   serverNoticeHost: {
     left: 0,
     paddingHorizontal: 14,
@@ -9236,6 +10219,37 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
   },
+  profileShortcutDock: {
+    alignItems: "flex-end",
+    position: "absolute",
+    right: 14,
+    top: PROFILE_SHORTCUT_TOP,
+    zIndex: 35,
+  },
+  profileShortcut: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderColor: "rgba(255,255,255,0.94)",
+    borderRadius: 999,
+    borderWidth: 2,
+    height: PROFILE_SHORTCUT_SIZE,
+    justifyContent: "center",
+    shadowColor: "rgba(87, 8, 58, 0.24)",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    width: PROFILE_SHORTCUT_SIZE,
+  },
+  profileShortcutActive: {
+    backgroundColor: candy.red,
+    borderColor: candy.white,
+  },
+  profileShortcutEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 28,
+    lineHeight: 34,
+    textAlign: "center",
+  },
   logoWrap: {
     alignItems: "center",
     alignSelf: "center",
@@ -9342,24 +10356,21 @@ const styles = StyleSheet.create({
   },
   enviesScreenContent: {
     paddingBottom: 184,
-    paddingTop: 220,
+    paddingTop: 0,
   },
   enviesGameContent: {
     flexGrow: 1,
-    justifyContent: "center",
     minHeight: "100%",
     paddingBottom: 184,
-    paddingTop: 238,
+    paddingTop: 0,
   },
   enviesStickyHeader: {
-    left: 0,
+    marginHorizontal: -14,
     overflow: "visible",
     paddingBottom: 24,
     paddingHorizontal: 16,
-    paddingTop: 50,
-    position: "absolute",
-    right: 0,
-    top: 0,
+    paddingTop: APP_HEADER_TOP_SPACE,
+    position: "relative",
     zIndex: 20,
   },
   enviesStickyFade: {
@@ -9372,7 +10383,6 @@ const styles = StyleSheet.create({
   },
   enviesStickyContent: {
     alignSelf: "center",
-    maxWidth: 520,
     overflow: "visible",
     width: "100%",
   },
@@ -9481,82 +10491,171 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "900",
   },
-  categorySelectorWrap: {
+  packSelectorCard: {
     alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
-    width: "100%",
-  },
-  categorySelectorActive: {
-    alignItems: "center",
-    borderColor: "rgba(255,255,255,0.98)",
-    borderRadius: 28,
-    borderWidth: 2,
-    flex: 1,
-    flexDirection: "row",
-    gap: 10,
-    minHeight: 66,
-    minWidth: 0,
-    overflow: "hidden",
-    paddingHorizontal: 12,
-  },
-  categorySelectorIcon: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.78)",
-    borderRadius: 20,
-    height: 42,
-    justifyContent: "center",
-    width: 42,
-  },
-  categorySelectorEmoji: {
-    fontFamily: emojiFont,
-    fontSize: 22,
-  },
-  categorySelectorCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  categorySelectorEyebrow: {
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0,
-    opacity: 0.72,
-    textTransform: "uppercase",
-  },
-  categorySelectorTitle: {
-    fontSize: 18,
-    fontWeight: "900",
-    lineHeight: 22,
-  },
-  categorySelectorCount: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.82)",
-    borderRadius: 16,
-    minWidth: 36,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-  categorySelectorCountText: {
-    color: candy.red,
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  categorySelectorButton: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.86)",
-    borderColor: "rgba(255,255,255,0.98)",
+    borderColor: candy.white,
     borderRadius: 24,
     borderWidth: 2,
     flexDirection: "row",
-    gap: 5,
-    justifyContent: "center",
-    minHeight: 66,
-    paddingHorizontal: 13,
+    gap: 12,
+    minHeight: 82,
+    overflow: "hidden",
+    padding: 10,
   },
-  categorySelectorButtonText: {
+  packSelectorIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.78)",
+    borderRadius: 20,
+    height: 58,
+    justifyContent: "center",
+    width: 58,
+  },
+  packSelectorEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 31,
+    lineHeight: 38,
+  },
+  packSelectorCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  packSelectorKicker: {
+    color: candy.ink,
+    fontSize: 9,
+    fontWeight: "900",
+    opacity: 0.74,
+    textTransform: "uppercase",
+  },
+  packSelectorTitle: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 25,
+    fontWeight: "900",
+    lineHeight: 27,
+  },
+  packSelectorText: {
+    color: candy.text,
+    fontSize: 11,
+    fontWeight: "900",
+    lineHeight: 14,
+    marginTop: 2,
+  },
+  packSelectorAction: {
+    alignItems: "center",
+    backgroundColor: candy.white,
+    borderColor: "rgba(255,36,95,0.18)",
+    borderRadius: 18,
+    borderWidth: 1.5,
+    flexDirection: "row",
+    gap: 3,
+    justifyContent: "center",
+    minHeight: 42,
+    paddingHorizontal: 10,
+  },
+  packSelectorActionText: {
     color: candy.red,
     fontSize: 12,
     fontWeight: "900",
+  },
+  categoryRailWrap: {
+    backgroundColor: "rgba(255,255,255,0.5)",
+    borderColor: "rgba(255,255,255,0.88)",
+    borderRadius: 25,
+    borderWidth: 1.5,
+    overflow: "hidden",
+    padding: 5,
+    width: "100%",
+  },
+  categoryRailWrapEmbedded: {
+    backgroundColor: "transparent",
+    borderColor: "transparent",
+    borderWidth: 0,
+    padding: 0,
+  },
+  categoryRail: {
+    alignItems: "center",
+    gap: 6,
+    paddingRight: 2,
+  },
+  categoryRailEmbedded: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  categoryRailChip: {
+    alignItems: "center",
+    borderColor: "rgba(255,255,255,0.82)",
+    borderRadius: 20,
+    borderWidth: 1.5,
+    flexDirection: "row",
+    height: 50,
+    justifyContent: "center",
+    minWidth: 50,
+    overflow: "hidden",
+    paddingHorizontal: 5,
+    position: "relative",
+  },
+  categoryRailChipActive: {
+    borderColor: candy.white,
+    gap: 8,
+    justifyContent: "flex-start",
+    minWidth: 156,
+    paddingHorizontal: 8,
+  },
+  categoryRailChipLocked: {
+    opacity: 0.86,
+  },
+  categoryRailIcon: {
+    alignItems: "center",
+    borderRadius: 16,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
+  },
+  categoryRailIconActive: {
+    backgroundColor: "rgba(255,255,255,0.78)",
+  },
+  categoryRailEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 22,
+    lineHeight: 28,
+  },
+  categoryRailCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  categoryRailKicker: {
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0,
+    lineHeight: 10,
+    opacity: 0.74,
+    textTransform: "uppercase",
+  },
+  categoryRailTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 15,
+  },
+  categoryRailMeta: {
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 12,
+    opacity: 0.76,
+  },
+  categoryRailLock: {
+    alignItems: "center",
+    backgroundColor: candy.white,
+    borderRadius: 999,
+    height: 17,
+    justifyContent: "center",
+    position: "absolute",
+    right: 1,
+    top: 1,
+    width: 17,
+  },
+  categoryRailLockActive: {
+    right: 4,
+    top: 4,
   },
   categoryPickerOverlay: {
     alignItems: "center",
@@ -9603,9 +10702,17 @@ const styles = StyleSheet.create({
   },
   categoryPickerTitle: {
     color: candy.ink,
-    fontSize: 23,
+    fontFamily: displayFont,
+    fontSize: 26,
     fontWeight: "900",
-    lineHeight: 26,
+    lineHeight: 28,
+  },
+  categoryPickerText: {
+    color: candy.text,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 16,
+    marginTop: 4,
   },
   categoryPickerClose: {
     alignItems: "center",
@@ -9618,17 +10725,17 @@ const styles = StyleSheet.create({
   categoryPickerGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 9,
+    gap: 10,
     paddingBottom: 4,
   },
   categoryPickerCard: {
     borderColor: "rgba(255,255,255,0.96)",
     borderRadius: 20,
     borderWidth: 2,
-    minHeight: 118,
+    minHeight: 126,
     padding: 10,
     position: "relative",
-    width: "48%",
+    width: "48.5%",
   },
   categoryPickerCardSelected: {
     borderColor: candy.red,
@@ -9651,9 +10758,10 @@ const styles = StyleSheet.create({
   },
   categoryPickerCardTitle: {
     color: candy.ink,
-    fontSize: 14,
+    fontFamily: displayFont,
+    fontSize: 17,
     fontWeight: "900",
-    lineHeight: 18,
+    lineHeight: 19,
   },
   categoryPickerCardText: {
     color: candy.text,
@@ -9727,83 +10835,29 @@ const styles = StyleSheet.create({
     color: candy.pinkSoft,
   },
   cardStack: {
-    gap: 10,
-    paddingRight: 6,
-    paddingTop: 10,
-  },
-  libraryHeader: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderColor: candy.white,
-    borderRadius: 26,
-    borderWidth: 2,
-    flexDirection: "row",
     gap: 12,
-    marginBottom: 4,
-    padding: 14,
+    paddingRight: 6,
+    paddingTop: 14,
   },
-  libraryHeaderCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  libraryEyebrow: {
-    alignSelf: "flex-start",
-    backgroundColor: candy.red,
-    borderRadius: 999,
-    color: candy.white,
-    fontSize: 10,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    textTransform: "uppercase",
-  },
-  libraryTitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 25,
-    fontWeight: "900",
-    lineHeight: 27,
-    marginTop: 7,
-  },
-  libraryText: {
-    color: candy.text,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 16,
-    marginTop: 3,
-  },
-  libraryBackButton: {
-    alignItems: "center",
-    backgroundColor: candy.black,
-    borderColor: candy.white,
-    borderRadius: 18,
-    borderWidth: 2,
-    justifyContent: "center",
-    minHeight: 44,
-    paddingHorizontal: 12,
-  },
-  libraryBackText: {
-    color: candy.white,
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  enviesTopGameBar: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.34)",
-    borderColor: "rgba(255,255,255,0.68)",
+  enviesGamePanel: {
+    backgroundColor: "rgba(255,255,255,0.62)",
+    borderColor: "rgba(255,255,255,0.92)",
     borderRadius: 28,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 10,
-    minHeight: 74,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    shadowColor: "rgba(87,8,58,0.14)",
+    borderWidth: 1.5,
+    gap: 12,
+    padding: 10,
+    shadowColor: "rgba(87,8,58,0.16)",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 1,
     shadowRadius: 20,
+  },
+  enviesTopGameBar: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 70,
+    paddingHorizontal: 4,
+    paddingTop: 2,
   },
   enviesTopGameCopy: {
     flex: 1,
@@ -9813,7 +10867,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     gap: 7,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   enviesTopGameHint: {
     color: candy.text,
@@ -9824,7 +10878,7 @@ const styles = StyleSheet.create({
   },
   enviesGameEyebrow: {
     alignSelf: "flex-start",
-    backgroundColor: candy.roseMist,
+    backgroundColor: candy.white,
     borderColor: candy.white,
     borderRadius: 999,
     borderWidth: 2,
@@ -9843,15 +10897,24 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     lineHeight: 27,
   },
+  enviesGameSubtitle: {
+    color: candy.text,
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 15,
+    marginTop: 2,
+  },
   enviesLibraryButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.78)",
+    backgroundColor: candy.white,
     borderColor: candy.white,
     borderRadius: 18,
     borderWidth: 2,
+    flexDirection: "row",
+    gap: 5,
     justifyContent: "center",
-    minHeight: 44,
-    paddingHorizontal: 13,
+    minHeight: 42,
+    paddingHorizontal: 12,
   },
   enviesLibraryButtonText: {
     color: candy.red,
@@ -9920,6 +10983,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 24,
   },
+  desireGameCardRoomy: {
+    minHeight: 500,
+    padding: 24,
+  },
   desireGameSticker: {
     height: 138,
     position: "absolute",
@@ -9928,6 +10995,12 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "11deg" }],
     width: 138,
     zIndex: 1,
+  },
+  desireGameStickerRoomy: {
+    height: 148,
+    right: 14,
+    top: 18,
+    width: 148,
   },
   desireGameTopRow: {
     alignItems: "center",
@@ -9939,6 +11012,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 38,
     paddingHorizontal: 78,
+  },
+  desireGameCopyRoomy: {
+    marginTop: 52,
   },
   desireGameTitle: {
     color: candy.ink,
@@ -9973,6 +11049,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 1,
     shadowRadius: 18,
+  },
+  desireGameVoteRowRoomy: {
+    marginTop: 42,
   },
   enviesGameEmpty: {
     alignItems: "center",
@@ -10052,6 +11131,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 0,
     zIndex: 25,
+  },
+  addDesireInlineDock: {
+    alignItems: "center",
+    overflow: "visible",
+    paddingBottom: 26,
+    paddingHorizontal: 26,
+    paddingTop: 18,
   },
   addDesireButton: {
     alignItems: "center",
@@ -10417,9 +11503,9 @@ const styles = StyleSheet.create({
     borderColor: candy.white,
     borderRadius: 26,
     borderWidth: 2,
-    minHeight: 150,
+    minHeight: 180,
     overflow: "visible",
-    padding: 16,
+    padding: 18,
     shadowColor: candy.shadow,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 1,
@@ -10451,9 +11537,9 @@ const styles = StyleSheet.create({
   },
   desireCopy: {
     alignItems: "center",
-    minHeight: 92,
+    minHeight: 112,
     paddingHorizontal: 72,
-    paddingTop: 2,
+    paddingTop: 8,
   },
   cardMetaRow: {
     alignItems: "center",
@@ -10685,21 +11771,21 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingBottom: 118,
     paddingHorizontal: 14,
-    paddingTop: 10,
+    paddingTop: APP_HEADER_TOP_SPACE,
   },
   matchScreenEmptyMode: {
     flexGrow: 1,
     justifyContent: "center",
     paddingBottom: 132,
-    paddingTop: 0,
+    paddingTop: APP_HEADER_TOP_SPACE,
   },
   matchStage: {
     borderColor: candy.white,
     borderRadius: 30,
     borderWidth: 2,
-    minHeight: 430,
+    minHeight: 286,
     overflow: "hidden",
-    padding: 18,
+    padding: 16,
     shadowColor: "rgba(255,36,95,0.34)",
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 1,
@@ -10722,8 +11808,8 @@ const styles = StyleSheet.create({
   matchStageFlameRight: {
     height: 166,
     position: "absolute",
-    right: -26,
-    top: 96,
+    right: -42,
+    top: 74,
     width: 132,
   },
   matchStageHeart: {
@@ -10736,6 +11822,7 @@ const styles = StyleSheet.create({
   matchStageTop: {
     alignItems: "center",
     flexDirection: "row",
+    gap: 10,
     justifyContent: "space-between",
   },
   matchCounterPill: {
@@ -10752,6 +11839,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900",
   },
+  matchStageStatusPill: {
+    alignItems: "center",
+    backgroundColor: "rgba(32,16,31,0.18)",
+    borderColor: "rgba(255,255,255,0.32)",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  matchStageStatusText: {
+    color: candy.white,
+    fontSize: 11,
+    fontWeight: "900",
+  },
   matchStageKicker: {
     color: candy.white,
     fontSize: 11,
@@ -10761,59 +11864,60 @@ const styles = StyleSheet.create({
   matchStageTitle: {
     color: candy.white,
     fontFamily: displayFont,
-    fontSize: 42,
+    fontSize: 34,
     fontWeight: "900",
-    lineHeight: 45,
-    marginTop: 24,
+    lineHeight: 37,
+    marginTop: 18,
     textShadowColor: "rgba(32,16,31,0.34)",
     textShadowOffset: { width: 2, height: 2.5 },
     textShadowRadius: 0,
   },
   matchStageCopy: {
-    color: candy.white,
-    fontSize: 15,
+    color: "rgba(255,255,255,0.92)",
+    fontSize: 13,
     fontWeight: "900",
-    lineHeight: 20,
+    lineHeight: 18,
     marginTop: 8,
-    maxWidth: "88%",
+    maxWidth: 520,
   },
   matchRevealCard: {
-    backgroundColor: "rgba(255,255,255,0.86)",
-    borderColor: candy.white,
-    borderRadius: 24,
-    borderWidth: 2,
-    marginTop: 20,
-    minHeight: 130,
+    backgroundColor: "transparent",
+    borderRadius: 0,
+    marginTop: 18,
+    minHeight: 118,
     overflow: "hidden",
-    padding: 16,
-    paddingRight: 90,
+    paddingRight: 92,
   },
   matchRevealSticker: {
     height: 78,
     position: "absolute",
-    right: 10,
-    top: 16,
+    right: 0,
+    top: 0,
     transform: [{ rotate: "9deg" }],
     width: 78,
   },
   matchRevealLabel: {
-    color: candy.red,
+    color: candy.white,
     fontSize: 11,
     fontWeight: "900",
+    opacity: 0.86,
     textTransform: "uppercase",
   },
   matchRevealTitle: {
-    color: candy.ink,
+    color: candy.white,
     fontFamily: displayFont,
-    fontSize: 24,
+    fontSize: 30,
     fontWeight: "900",
-    lineHeight: 27,
+    lineHeight: 33,
     marginTop: 4,
+    textShadowColor: "rgba(32,16,31,0.26)",
+    textShadowOffset: { width: 1.5, height: 1.5 },
+    textShadowRadius: 0,
   },
   matchRevealText: {
-    color: candy.text,
+    color: "rgba(255,255,255,0.9)",
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "800",
     lineHeight: 18,
     marginTop: 5,
   },
@@ -10896,17 +12000,68 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
   matchRevealLockedCard: {
-    backgroundColor: "rgba(255, 245, 251, 0.92)",
-    minHeight: 210,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderColor: "rgba(255,255,255,0.95)",
+    borderRadius: 24,
+    borderWidth: 2,
+    gap: 12,
+    minHeight: 146,
+    padding: 12,
+    paddingRight: 12,
+  },
+  matchRevealLockedBody: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+  },
+  matchRevealLockedIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,36,95,0.1)",
+    borderColor: "rgba(255,36,95,0.18)",
+    borderRadius: 22,
+    borderWidth: 1.5,
+    height: 72,
+    justifyContent: "center",
+    width: 72,
+  },
+  matchRevealLockedCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  matchRevealLockedLabel: {
+    color: candy.red,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  matchRevealLockedTitle: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 24,
+    fontWeight: "900",
+    lineHeight: 27,
+    marginTop: 2,
+  },
+  matchRevealLockedText: {
+    color: candy.text,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  matchRevealLockedFooter: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
   },
   matchRevealOpenCard: {
-    backgroundColor: "rgba(255,255,255,0.9)",
+    minHeight: 160,
   },
   matchRevealLockedGlow: {
-    backgroundColor: "#FF8BC8",
+    backgroundColor: "rgba(255,36,95,0.16)",
     borderRadius: 999,
     height: 134,
-    opacity: 0.48,
+    opacity: 1,
     position: "absolute",
     right: -36,
     top: -48,
@@ -10920,10 +12075,10 @@ const styles = StyleSheet.create({
     width: 58,
   },
   matchRevealMeter: {
-    backgroundColor: "rgba(255,36,95,0.16)",
+    backgroundColor: "rgba(255,36,95,0.14)",
     borderRadius: 999,
-    height: 8,
-    marginTop: 14,
+    flex: 1,
+    height: 7,
     overflow: "hidden",
   },
   matchRevealMeterFill: {
@@ -10937,15 +12092,14 @@ const styles = StyleSheet.create({
   },
   matchRevealButton: {
     alignItems: "center",
-    alignSelf: "flex-start",
     backgroundColor: candy.red,
-    borderColor: candy.white,
+    borderColor: candy.red,
     borderRadius: 18,
     borderWidth: 2,
     flexDirection: "row",
     gap: 7,
-    marginTop: 14,
-    minHeight: 44,
+    justifyContent: "center",
+    minHeight: 42,
     paddingHorizontal: 14,
   },
   matchRevealButtonDisabled: {
@@ -11642,222 +12796,115 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   chatScreen: {
-    gap: 13,
-    paddingBottom: 250,
-    paddingHorizontal: 14,
-    paddingTop: 10,
+    gap: 10,
+    paddingBottom: 238,
+    paddingHorizontal: 12,
+    paddingTop: APP_HEADER_TOP_SPACE,
   },
   chatFrame: {
     flex: 1,
   },
   chatHero: {
-    borderColor: candy.white,
-    borderRadius: 30,
-    borderWidth: 2,
-    minHeight: 236,
+    borderColor: "rgba(255,255,255,0.72)",
+    borderRadius: 24,
+    borderWidth: 1.5,
+    minHeight: 82,
     overflow: "hidden",
-    padding: 18,
+    padding: 10,
     shadowColor: "rgba(87, 8, 58, 0.24)",
-    shadowOffset: { width: 0, height: 16 },
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 1,
-    shadowRadius: 22,
+    shadowRadius: 16,
   },
-  chatHeroCompact: {
-    borderRadius: 26,
-    minHeight: 128,
-    padding: 14,
+  chatHeaderIdentity: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 11,
+    minHeight: 58,
   },
-  chatHeroGlow: {
-    backgroundColor: "rgba(255,255,255,0.2)",
+  chatHeaderAvatar: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderColor: "rgba(255,255,255,0.86)",
     borderRadius: 999,
-    bottom: -74,
-    height: 190,
+    borderWidth: 1.5,
+    height: 48,
+    justifyContent: "center",
+    width: 48,
+  },
+  chatHeaderAvatarEmoji: {
+    fontSize: 25,
+    lineHeight: 31,
+    textAlign: "center",
+  },
+  chatHeaderStatusDot: {
+    backgroundColor: "#41E071",
+    borderColor: candy.white,
+    borderRadius: 999,
+    borderWidth: 2,
+    bottom: 1,
+    height: 13,
     position: "absolute",
-    right: -42,
-    width: 190,
+    right: 1,
+    width: 13,
   },
-  chatHeroBubble: {
-    height: 86,
-    opacity: 0.48,
-    position: "absolute",
-    right: 18,
-    top: 52,
-    width: 86,
-  },
-  chatHeroFlame: {
-    bottom: 10,
-    height: 74,
-    opacity: 0.82,
-    position: "absolute",
-    right: 8,
-    width: 74,
-  },
-  chatHeroTop: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "space-between",
-  },
-  chatHeroCompactRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 12,
-    justifyContent: "space-between",
-    marginTop: 12,
-  },
-  chatHeroCompactCopy: {
+  chatHeaderCopy: {
     flex: 1,
     minWidth: 0,
   },
-  chatEyebrow: {
+  chatHeaderName: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 22,
+    fontWeight: "900",
+    lineHeight: 25,
+  },
+  chatHeaderMetaRow: {
+    flexDirection: "row",
+    marginTop: 4,
+  },
+  chatHeaderMetaPill: {
+    alignItems: "center",
     alignSelf: "flex-start",
-    backgroundColor: candy.roseMist,
-    borderColor: candy.white,
+    backgroundColor: "rgba(255,255,255,0.18)",
     borderRadius: 999,
-    borderWidth: 2,
-    color: candy.red,
+    color: candy.white,
     fontSize: 10,
     fontWeight: "900",
+    letterSpacing: 0,
+    lineHeight: 13,
+    minHeight: 18,
     overflow: "hidden",
     paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingVertical: 2,
     textTransform: "uppercase",
   },
-  chatExpiryPill: {
+  chatHeaderLock: {
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.18)",
-    borderColor: "rgba(255,255,255,0.52)",
+    borderColor: "rgba(255,255,255,0.42)",
     borderRadius: 999,
     borderWidth: 1,
-    flexDirection: "row",
-    gap: 5,
-    minHeight: 30,
-    paddingHorizontal: 10,
-  },
-  chatExpiryText: {
-    color: candy.white,
-    fontSize: 10,
-    fontWeight: "900",
-  },
-  chatTitle: {
-    color: candy.white,
-    fontFamily: displayFont,
-    fontSize: 38,
-    fontWeight: "900",
-    lineHeight: 39,
-    marginTop: 16,
-    maxWidth: "78%",
-    textShadowColor: "rgba(32,16,31,0.34)",
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 0,
-  },
-  chatText: {
-    color: candy.white,
-    fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 18,
-    marginTop: 8,
-    maxWidth: "84%",
-  },
-  chatTitleCompact: {
-    color: candy.white,
-    fontFamily: displayFont,
-    fontSize: 25,
-    fontWeight: "900",
-    lineHeight: 28,
-    textShadowColor: "rgba(32,16,31,0.34)",
-    textShadowOffset: { width: 1.5, height: 1.5 },
-    textShadowRadius: 0,
-  },
-  chatTextCompact: {
-    color: "rgba(255,255,255,0.88)",
-    fontSize: 11,
-    fontWeight: "800",
-    lineHeight: 15,
-    marginTop: 2,
-  },
-  chatHeroStatusRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 14,
-  },
-  chatPresencePill: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.88)",
-    borderColor: candy.white,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    flexDirection: "row",
-    gap: 7,
-    maxWidth: "100%",
-    minHeight: 34,
-    paddingHorizontal: 11,
-  },
-  chatPresenceDot: {
-    backgroundColor: candy.red,
-    borderRadius: 999,
-    height: 8,
-    width: 8,
-  },
-  chatPresenceText: {
-    color: candy.ink,
-    flexShrink: 1,
-    fontSize: 11,
-    fontWeight: "900",
-  },
-  chatCountText: {
-    backgroundColor: "rgba(32,16,31,0.34)",
-    borderColor: "rgba(255,255,255,0.38)",
-    borderRadius: 999,
-    borderWidth: 1,
-    color: candy.white,
-    fontSize: 11,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  chatCountTextCompact: {
-    backgroundColor: candy.white,
-    borderColor: "rgba(255,255,255,0.8)",
-    borderRadius: 999,
-    borderWidth: 1,
-    color: candy.red,
-    fontSize: 10,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
   },
   chatContext: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.9)",
-    borderColor: candy.white,
-    borderRadius: 22,
-    borderWidth: 2,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderColor: "rgba(255,255,255,0.86)",
+    borderRadius: 16,
+    borderWidth: 1,
     flexDirection: "row",
-    gap: 10,
-    marginTop: 14,
-    padding: 11,
-  },
-  chatContextCompact: {
-    borderRadius: 18,
-    marginTop: 10,
+    gap: 9,
+    marginTop: 9,
     padding: 8,
   },
   chatContextSticker: {
-    height: 56,
-    marginBottom: -8,
-    marginTop: -8,
-    width: 56,
-  },
-  chatContextStickerCompact: {
-    height: 42,
+    height: 44,
     marginBottom: -4,
     marginTop: -4,
-    width: 42,
+    width: 44,
   },
   chatContextCopy: {
     flex: 1,
@@ -11871,56 +12918,38 @@ const styles = StyleSheet.create({
   chatContextTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: "900",
-    marginTop: 2,
+    marginTop: 1,
   },
   chatDateDivider: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 9,
-    paddingHorizontal: 2,
+    gap: 8,
+    justifyContent: "center",
+    paddingHorizontal: 22,
+    paddingVertical: 2,
   },
   chatDividerLine: {
-    backgroundColor: "rgba(255,255,255,0.7)",
+    backgroundColor: "rgba(255,255,255,0.44)",
     borderRadius: 999,
     flex: 1,
-    height: 2,
+    height: 1,
   },
   chatDateText: {
-    color: candy.ink,
-    fontSize: 11,
-    fontWeight: "900",
-  },
-  chatLiveSignal: {
-    alignItems: "center",
-    alignSelf: "center",
-    backgroundColor: "rgba(255,255,255,0.58)",
-    borderColor: candy.white,
+    backgroundColor: "rgba(255,255,255,0.56)",
+    borderColor: "rgba(255,255,255,0.78)",
     borderRadius: 999,
-    borderWidth: 1.5,
-    flexDirection: "row",
-    gap: 8,
-    minHeight: 34,
-    paddingHorizontal: 12,
-  },
-  chatLiveText: {
-    color: candy.text,
-    fontSize: 11,
+    borderWidth: 1,
+    color: "rgba(35,18,36,0.72)",
+    fontSize: 10,
     fontWeight: "900",
-  },
-  chatLiveDots: {
-    flexDirection: "row",
-    gap: 3,
-  },
-  chatLiveDot: {
-    backgroundColor: candy.red,
-    borderRadius: 999,
-    height: 5,
-    width: 5,
+    overflow: "hidden",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   chatMessages: {
-    gap: 8,
+    gap: 7,
     minHeight: 220,
   },
   chatEmpty: {
@@ -11961,20 +12990,20 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   chatBubble: {
-    backgroundColor: "rgba(255,255,255,0.86)",
-    borderColor: "rgba(255,255,255,0.76)",
-    borderRadius: 22,
-    borderBottomLeftRadius: 8,
-    borderWidth: 1.2,
-    maxWidth: "82%",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderColor: "rgba(255,255,255,0.7)",
+    borderRadius: 18,
+    borderBottomLeftRadius: 5,
+    borderWidth: 1,
+    maxWidth: "84%",
     overflow: "visible",
-    paddingHorizontal: 13,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   chatBubbleMine: {
-    backgroundColor: candy.red,
-    borderBottomLeftRadius: 22,
-    borderBottomRightRadius: 8,
+    backgroundColor: "#FF245F",
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 5,
     borderColor: "rgba(255,255,255,0.72)",
   },
   chatBubbleName: {
@@ -11988,10 +13017,10 @@ const styles = StyleSheet.create({
   },
   chatBubbleText: {
     color: candy.ink,
-    fontSize: 14,
+    fontSize: 14.5,
     fontWeight: "800",
     lineHeight: 20,
-    marginTop: 3,
+    marginTop: 2,
   },
   chatBubbleTextMine: {
     color: candy.white,
@@ -12000,65 +13029,183 @@ const styles = StyleSheet.create({
     color: "rgba(124,75,105,0.76)",
     fontSize: 9,
     fontWeight: "800",
-    marginTop: 6,
+    marginTop: 4,
+    textAlign: "right",
   },
   chatBubbleMetaMine: {
     color: "rgba(255,255,255,0.82)",
   },
+  chatBubbleMetaPending: {
+    fontWeight: "900",
+  },
+  chatBubbleMetaFailed: {
+    color: "#FFE2EA",
+  },
   chatBubblePhotos: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
-    marginTop: 7,
+    gap: 5,
+    marginTop: 6,
   },
   chatBubblePhoto: {
     borderColor: "rgba(255,255,255,0.76)",
-    borderRadius: 18,
+    borderRadius: 15,
     borderWidth: 1,
-    height: 116,
-    width: 116,
+    height: 128,
+    width: 128,
+  },
+  chatPhotoRevealButton: {
+    borderColor: "rgba(255,255,255,0.76)",
+    borderRadius: 15,
+    borderWidth: 1,
+    height: 128,
+    overflow: "hidden",
+    position: "relative",
+    width: 128,
+  },
+  chatPhotoRevealImage: {
+    height: "100%",
+    width: "100%",
+  },
+  chatPhotoBlurOverlay: {
+    alignItems: "center",
+    backgroundColor: "rgba(30,10,28,0.18)",
+    bottom: 0,
+    gap: 6,
+    justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  chatPhotoRevealLabel: {
+    color: candy.white,
+    fontSize: 12,
+    fontWeight: "900",
+    textAlign: "center",
+    textShadowColor: "rgba(32,16,31,0.52)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 0,
+  },
+  chatPhotoGone: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.34)",
+    borderStyle: "dashed",
+    gap: 7,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  chatPhotoUnavailable: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.24)",
+    borderStyle: "dashed",
+    gap: 7,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  chatPhotoGoneText: {
+    color: candy.ink,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 15,
+    textAlign: "center",
+  },
+  chatPhotoGoneTextMine: {
+    color: candy.white,
+  },
+  ephemeralPhotoBackdrop: {
+    alignItems: "center",
+    backgroundColor: "rgba(22,8,24,0.94)",
+    flex: 1,
+    justifyContent: "center",
+    padding: 18,
+  },
+  ephemeralPhotoTopBar: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    left: 18,
+    position: "absolute",
+    right: 18,
+    top: Platform.OS === "ios" ? 54 : 24,
+    zIndex: 2,
+  },
+  ephemeralPhotoTimer: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderColor: "rgba(255,255,255,0.28)",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 7,
+    minHeight: 40,
+    paddingHorizontal: 13,
+  },
+  ephemeralPhotoTimerText: {
+    color: candy.white,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  ephemeralPhotoClose: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderColor: "rgba(255,255,255,0.28)",
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  ephemeralPhoto: {
+    borderColor: "rgba(255,255,255,0.22)",
+    borderRadius: 26,
+    borderWidth: 1,
+    height: "74%",
+    maxHeight: 760,
+    maxWidth: 720,
+    width: "100%",
+  },
+  ephemeralPhotoHint: {
+    bottom: Platform.OS === "ios" ? 48 : 26,
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 12,
+    fontWeight: "800",
+    position: "absolute",
+    textAlign: "center",
   },
   chatComposerDock: {
     bottom: 94,
-    backgroundColor: "rgba(255,255,255,0.38)",
+    backgroundColor: "#FFEAF5",
     borderColor: "rgba(255,255,255,0.76)",
-    borderRadius: 30,
+    borderRadius: 24,
     borderWidth: 1,
-    gap: 7,
-    left: 10,
-    padding: 7,
+    gap: 6,
+    left: 9,
+    padding: 6,
     position: "absolute",
-    right: 10,
+    right: 9,
   },
   chatSuggestionPanel: {
-    gap: 6,
     paddingHorizontal: 2,
     width: "100%",
-  },
-  chatSuggestionKicker: {
-    color: candy.ink,
-    fontSize: 10,
-    fontWeight: "900",
-    paddingHorizontal: 8,
-    textTransform: "uppercase",
   },
   chatQuickRow: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 7,
+    gap: 6,
     paddingHorizontal: 2,
-    paddingVertical: 1,
+    paddingVertical: 0,
     width: "100%",
   },
   chatQuickPill: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.74)",
+    backgroundColor: "#FFF7FB",
     borderColor: "rgba(255,255,255,0.9)",
-    borderRadius: 17,
+    borderRadius: 15,
     borderWidth: 1,
     flex: 1,
     justifyContent: "center",
-    minHeight: 46,
+    minHeight: 42,
     minWidth: 0,
     paddingHorizontal: 8,
   },
@@ -12103,14 +13250,16 @@ const styles = StyleSheet.create({
     width: 24,
   },
   chatComposer: {
-    alignItems: "flex-end",
-    backgroundColor: "rgba(255,255,255,0.94)",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.96)",
     borderColor: "rgba(255,255,255,0.84)",
     borderRadius: 24,
     borderWidth: 1,
     flexDirection: "row",
     gap: 8,
-    padding: 7,
+    minHeight: 56,
+    paddingHorizontal: 7,
+    paddingVertical: 6,
   },
   chatComposerActive: {
     borderColor: "rgba(255,36,95,0.42)",
@@ -12118,10 +13267,10 @@ const styles = StyleSheet.create({
   chatIconButton: {
     alignItems: "center",
     backgroundColor: "rgba(255,225,241,0.88)",
-    borderRadius: 18,
-    height: 40,
+    borderRadius: 20,
+    height: 42,
     justifyContent: "center",
-    width: 40,
+    width: 42,
   },
   chatIconButtonDisabled: {
     opacity: 0.55,
@@ -12131,18 +13280,21 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: "800",
-    maxHeight: 96,
-    minHeight: 40,
-    paddingHorizontal: 4,
-    paddingVertical: 9,
+    includeFontPadding: false,
+    lineHeight: 20,
+    maxHeight: 90,
+    minHeight: 42,
+    paddingHorizontal: 2,
+    paddingVertical: 10,
+    textAlignVertical: "top",
   },
   chatSendButton: {
     alignItems: "center",
     backgroundColor: candy.red,
-    borderRadius: 18,
-    height: 40,
+    borderRadius: 20,
+    height: 42,
     justifyContent: "center",
-    width: 40,
+    width: 42,
   },
   chatSendButtonDisabled: {
     opacity: 0.42,
@@ -12151,7 +13303,7 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingBottom: 118,
     paddingHorizontal: 14,
-    paddingTop: 10,
+    paddingTop: APP_HEADER_TOP_SPACE,
   },
   rulesBackButton: {
     alignItems: "center",
@@ -12882,8 +14034,8 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "8deg" }],
   },
   homeScreen: {
-    gap: 14,
-    paddingTop: 12,
+    gap: 16,
+    paddingTop: 20,
   },
   dailyAdviceCard: {
     borderColor: candy.white,
@@ -12979,7 +14131,7 @@ const styles = StyleSheet.create({
     borderColor: candy.white,
     borderRadius: 28,
     borderWidth: 2,
-    minHeight: 176,
+    minHeight: 142,
     overflow: "hidden",
     padding: 16,
     shadowColor: "rgba(255,36,95,0.2)",
@@ -12990,37 +14142,9 @@ const styles = StyleSheet.create({
   homeNextTop: {
     alignItems: "center",
     flexDirection: "row",
+    gap: 12,
     justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  homeNextState: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderColor: "rgba(255,255,255,0.9)",
-    borderRadius: 999,
-    borderWidth: 1.5,
-    flexDirection: "row",
-    gap: 7,
-    minHeight: 34,
-    paddingLeft: 4,
-    paddingRight: 12,
-  },
-  homeNextPhase: {
-    backgroundColor: candy.red,
-    borderRadius: 999,
-    color: candy.white,
-    fontSize: 12,
-    fontWeight: "900",
-    height: 26,
-    lineHeight: 26,
-    overflow: "hidden",
-    textAlign: "center",
-    width: 26,
-  },
-  homeNextStateText: {
-    color: candy.ink,
-    fontSize: 11,
-    fontWeight: "900",
+    marginBottom: 2,
   },
   homeNextEmoji: {
     fontFamily: emojiFont,
@@ -13030,18 +14154,18 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "9deg" }],
   },
   homeNextCopy: {
+    flex: 1,
     minWidth: 0,
   },
-  homeNextBadge: {
+  homeNextQuestLabel: {
     alignSelf: "flex-start",
-    backgroundColor: candy.red,
-    borderColor: candy.white,
+    backgroundColor: candy.white,
     borderRadius: 999,
-    borderWidth: 2,
-    color: candy.white,
+    color: candy.red,
     fontSize: 10,
     fontWeight: "900",
-    marginBottom: 9,
+    letterSpacing: 0,
+    marginBottom: 8,
     overflow: "hidden",
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -13050,23 +14174,15 @@ const styles = StyleSheet.create({
   homeNextTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: "900",
-    lineHeight: 30,
-  },
-  homeNextText: {
-    color: candy.text,
-    fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 18,
-    marginTop: 6,
-    maxWidth: 520,
+    lineHeight: 33,
   },
   homeNextActions: {
     alignItems: "center",
     flexDirection: "row",
     gap: 9,
-    marginTop: 15,
+    marginTop: 14,
   },
   homeNextPrimary: {
     alignItems: "center",
@@ -13303,11 +14419,14 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   homeLogo: {
-    marginBottom: -4,
-    marginLeft: 2,
+    alignSelf: "center",
+    height: 46,
+    marginBottom: 2,
+    width: 154,
   },
   coupleScreen: {
     gap: 24,
+    paddingTop: APP_HEADER_TOP_SPACE,
   },
   couplePanel: {
     alignItems: "center",
@@ -13477,6 +14596,54 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginTop: 2,
     textAlign: "center",
+  },
+  coupleReconnectCard: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.62)",
+    borderColor: "rgba(255,255,255,0.82)",
+    borderRadius: 24,
+    borderWidth: 1.5,
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12,
+    maxWidth: 430,
+    padding: 12,
+    width: "100%",
+  },
+  coupleReconnectCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  coupleReconnectLabel: {
+    color: candy.ink,
+    fontSize: 10,
+    fontWeight: "900",
+    opacity: 0.74,
+    textTransform: "uppercase",
+  },
+  coupleReconnectCode: {
+    color: candy.red,
+    fontFamily: displayFont,
+    fontSize: 27,
+    fontWeight: "900",
+    lineHeight: 30,
+  },
+  coupleReconnectText: {
+    color: candy.text,
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 15,
+    marginTop: 3,
+  },
+  coupleReconnectButton: {
+    alignItems: "center",
+    backgroundColor: candy.red,
+    borderColor: candy.white,
+    borderRadius: 18,
+    borderWidth: 2,
+    height: 46,
+    justifyContent: "center",
+    width: 46,
   },
   statPill: {
     backgroundColor: "rgba(255,255,255,0.78)",
@@ -14528,7 +15695,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingBottom: 116,
     paddingHorizontal: 14,
-    paddingTop: 12,
+    paddingTop: APP_HEADER_TOP_SPACE,
   },
   profileMainArea: {
     gap: 12,
@@ -14659,6 +15826,23 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: 4,
   },
+  statusEditorSectionHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+  },
+  statusEditorSectionTitle: {
+    color: candy.ink,
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  statusEditorSectionHint: {
+    color: candy.muted,
+    fontSize: 11,
+    fontWeight: "800",
+  },
   statusPresetGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -14668,11 +15852,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.76)",
     borderColor: "rgba(255,255,255,0.92)",
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1.5,
-    height: 48,
+    flexBasis: 58,
+    flexGrow: 1,
+    height: 54,
     justifyContent: "center",
-    width: 48,
   },
   statusPresetButtonActive: {
     backgroundColor: candy.red,
@@ -14684,27 +15869,64 @@ const styles = StyleSheet.create({
   },
   statusPresetEmoji: {
     fontFamily: emojiFont,
-    fontSize: 25,
-    lineHeight: 32,
+    fontSize: 28,
+    lineHeight: 34,
+  },
+  statusCustomPanel: {
+    backgroundColor: "rgba(255,255,255,0.68)",
+    borderColor: "rgba(255,255,255,0.86)",
+    borderRadius: 22,
+    borderWidth: 1.5,
+    gap: 10,
+    padding: 10,
+  },
+  statusCustomCopy: {
+    gap: 2,
+    paddingHorizontal: 2,
+  },
+  statusCustomTitle: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  statusCustomHint: {
+    color: candy.text,
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 15,
   },
   statusCustomRow: {
     alignItems: "center",
     flexDirection: "row",
     gap: 8,
   },
-  statusCustomInput: {
+  statusCustomInputBox: {
     backgroundColor: candy.white,
     borderColor: "rgba(35,18,36,0.14)",
     borderRadius: 18,
     borderWidth: 1.5,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 58,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  statusCustomInputLabel: {
+    color: candy.red,
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  statusCustomInput: {
     color: candy.ink,
-    flex: 0.35,
     fontFamily: emojiFont,
     fontSize: 24,
     fontWeight: "900",
-    minHeight: 48,
-    paddingHorizontal: 12,
-    textAlign: "center",
+    lineHeight: 30,
+    minHeight: 31,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   statusCustomButton: {
     alignItems: "center",
@@ -14712,9 +15934,9 @@ const styles = StyleSheet.create({
     borderColor: candy.white,
     borderRadius: 18,
     borderWidth: 2,
-    flex: 1,
     justifyContent: "center",
-    minHeight: 48,
+    minHeight: 58,
+    paddingHorizontal: 18,
   },
   statusCustomButtonText: {
     color: candy.white,
@@ -14738,11 +15960,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.78)",
     borderColor: candy.white,
-    borderRadius: 24,
+    borderRadius: 22,
     borderWidth: 2,
     flexDirection: "row",
     gap: 10,
-    padding: 12,
+    minHeight: 62,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
   profileNotificationIcon: {
     alignItems: "center",
@@ -14767,26 +15991,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  profileNotificationEyebrow: {
-    color: candy.red,
-    fontSize: 10,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
   profileNotificationTitle: {
     color: candy.ink,
     fontFamily: displayFont,
     fontSize: 18,
     fontWeight: "900",
     lineHeight: 21,
-    marginTop: 2,
-  },
-  profileNotificationText: {
-    color: candy.text,
-    fontSize: 11,
-    fontWeight: "800",
-    lineHeight: 15,
-    marginTop: 2,
   },
   profileNotificationToggle: {
     alignItems: "center",
@@ -14796,7 +16006,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     justifyContent: "center",
     minHeight: 38,
-    minWidth: 78,
+    minWidth: 104,
     paddingHorizontal: 12,
   },
   profileNotificationToggleOn: {
@@ -14813,6 +16023,7 @@ const styles = StyleSheet.create({
   },
   profileUtilityGrid: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
   },
   actorRow: {
@@ -14839,56 +16050,49 @@ const styles = StyleSheet.create({
   actorChipTextActive: {
     color: candy.white,
   },
-  profileLeaveAction: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.76)",
-    borderColor: candy.red,
-    borderRadius: 18,
-    borderStyle: "dashed",
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    minHeight: 52,
-  },
-  profileLeaveActionText: {
-    color: candy.red,
-    fontSize: 14,
-    fontWeight: "900",
-  },
   profileAction: {
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.82)",
     borderColor: candy.white,
     borderRadius: 22,
     borderWidth: 2,
-    flex: 1,
+    flexBasis: 148,
+    flexGrow: 1,
     flexDirection: "row",
     gap: 8,
     justifyContent: "center",
+    minWidth: 140,
     minHeight: 52,
     paddingHorizontal: 10,
   },
   profileActionText: {
     color: candy.red,
+    flexShrink: 1,
     fontSize: 14,
     fontWeight: "900",
+    textAlign: "center",
   },
-  logoutAction: {
-    alignItems: "center",
+  profileActionDanger: {
+    backgroundColor: "rgba(255,255,255,0.76)",
+    borderColor: candy.red,
+    borderStyle: "dashed",
+  },
+  profileActionDangerText: {
+    color: candy.red,
+  },
+  profileActionDangerSolid: {
+    backgroundColor: candy.red,
+    borderColor: candy.white,
+  },
+  profileActionDangerSolidText: {
+    color: candy.white,
+  },
+  profileActionDark: {
     backgroundColor: candy.black,
     borderColor: "rgba(255,255,255,0.88)",
-    borderRadius: 22,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    minHeight: 52,
   },
-  logoutActionText: {
+  profileActionDarkText: {
     color: candy.white,
-    fontSize: 14,
-    fontWeight: "900",
   },
   aboutPanel: {
     backgroundColor: "rgba(255,255,255,0.72)",
@@ -14896,9 +16100,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 2,
     padding: 14,
-  },
-  profileBottomActions: {
-    gap: 8,
   },
   aboutEyebrow: {
     alignSelf: "flex-start",
@@ -14941,6 +16142,7 @@ const styles = StyleSheet.create({
   },
   debugScreen: {
     paddingBottom: 152,
+    paddingTop: APP_HEADER_TOP_SPACE,
   },
   debugEyebrow: {
     alignSelf: "flex-start",

@@ -73,6 +73,7 @@ function withProfileDefaults(profile: PartnerProfile, fallbackEmoji = "\u{1F496}
 function withCoupleDefaults(state: CoupleState): CoupleState {
   return {
     ...state,
+    hiddenMatchCount: state.hiddenMatchCount ?? 0,
     profiles: {
       me: withProfileDefaults(state.profiles.me),
       partner: withProfileDefaults(state.profiles.partner, "\u{1F48C}"),
@@ -105,6 +106,7 @@ export function createInitialCouple(profile: Omit<PartnerProfile, "id">): Couple
     id: `local-${Date.now()}`,
     inviteCode: randomCode(),
     createdAt: new Date().toISOString(),
+    hiddenMatchCount: 0,
     activePartnerId: "me",
     profiles: {
       me: { id: "me", ...profile },
@@ -140,6 +142,7 @@ export function createJoinedCouple(profile: Omit<PartnerProfile, "id">, inviteCo
     id: `joined-${inviteCode.toUpperCase()}`,
     inviteCode: inviteCode.toUpperCase(),
     createdAt: new Date().toISOString(),
+    hiddenMatchCount: 0,
     activePartnerId: "partner",
     profiles: {
       me: {

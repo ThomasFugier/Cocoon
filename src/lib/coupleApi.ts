@@ -46,12 +46,14 @@ export type RemoteMatch = {
 
 export type RemoteChatAttachment = {
   id: string;
-  storage_path: string;
+  storage_path: string | null;
   mime_type: string;
   name: string | null;
   width: number | null;
   height: number | null;
   size_bytes: number | null;
+  disappeared?: boolean;
+  consumed_at?: string | null;
 };
 
 export type RemoteChatMessage = {
@@ -63,6 +65,12 @@ export type RemoteChatMessage = {
   created_at: string;
   expires_at: string;
   attachments: RemoteChatAttachment[];
+};
+
+export type RemoteChatSyncMarker = {
+  latest_message_at: string | null;
+  latest_message_id: string | null;
+  message_count: number;
 };
 
 export type RemoteCustomDesire = {
@@ -115,6 +123,7 @@ export type RemoteCoupleState = {
     date_key: string;
     updated_at: string;
   } | null;
+  hidden_match_count?: number;
   matches: RemoteMatch[];
   match_reveals: Array<{
     card_id: string;
@@ -122,7 +131,7 @@ export type RemoteCoupleState = {
     revealed_at: string | null;
     revealed_by_current_user: boolean;
   }>;
-  chat_messages: RemoteChatMessage[];
+  chat_messages?: RemoteChatMessage[];
 };
 
 type PendingRemoteAttachment = ChatAttachment & {
@@ -242,6 +251,25 @@ export async function leaveRemoteCouple(coupleId: string) {
   }
 }
 
+export async function deleteRemoteAccount() {
+  const client = requireSupabase();
+  const { data, error } = await client.functions.invoke("delete-account", {
+    body: {
+      confirm: "delete-my-account",
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as {
+    cleaned_couples?: number;
+    deleted: boolean;
+    removed_storage_objects?: number;
+  };
+}
+
 export async function saveRemoteVote(coupleId: string, cardId: string, level: VoteLevel) {
   const client = requireSupabase();
   const { error } = await client.rpc("save_desire_vote", {
@@ -286,6 +314,17 @@ export async function markRemoteMatchRevealed(coupleId: string, cardId: string) 
   const client = requireSupabase();
   const { error } = await client.rpc("mark_match_revealed", {
     p_card_id: cardId,
+    p_couple_id: coupleId,
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function markRemoteNextMatchRevealed(coupleId: string) {
+  const client = requireSupabase();
+  const { error } = await client.rpc("reveal_next_match", {
     p_couple_id: coupleId,
   });
 
@@ -442,6 +481,67 @@ export async function fetchRemoteChatMessages(coupleId: string) {
   return (data ?? []) as RemoteChatMessage[];
 }
 
+export async function fetchRemoteChatSyncMarker(coupleId: string) {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("get_chat_sync_marker", {
+    p_couple_id: coupleId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const marker = data as Partial<RemoteChatSyncMarker> | null;
+
+  return {
+    latest_message_at: marker?.latest_message_at ?? null,
+    latest_message_id: marker?.latest_message_id ?? null,
+    message_count: typeof marker?.message_count === "number" ? marker.message_count : 0,
+  } satisfies RemoteChatSyncMarker;
+}
+
+async function prepareRemoteChatAttachmentUpload({
+  attachmentId,
+  coupleId,
+  messageId,
+}: {
+  attachmentId: string;
+  coupleId: string;
+  messageId: string;
+}) {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("prepare_chat_attachment_upload", {
+    p_attachment_id: attachmentId,
+    p_couple_id: coupleId,
+    p_message_id: messageId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  if (typeof data !== "string" || !data) {
+    throw new Error("Le serveur n'a pas préparé l'upload de la photo.");
+  }
+
+  return data;
+}
+
+async function discardRemoteChatAttachmentUploads(storagePaths: string[]) {
+  if (!storagePaths.length) {
+    return;
+  }
+
+  const client = requireSupabase();
+  const { error } = await client.rpc("discard_chat_attachment_uploads", {
+    p_storage_paths: storagePaths,
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
 async function uploadRemoteChatAttachment({
   attachment,
   coupleId,
@@ -458,7 +558,7 @@ async function uploadRemoteChatAttachment({
   const response = await fetch(compressed.uri);
   const arrayBuffer = await response.arrayBuffer();
   const attachmentId = Crypto.randomUUID();
-  const storagePath = `${coupleId}/${messageId}/${attachmentId}.jpg`;
+  const storagePath = await prepareRemoteChatAttachmentUpload({ attachmentId, coupleId, messageId });
   const { error } = await client.storage
     .from("chat-attachments")
     .upload(storagePath, arrayBuffer, {
@@ -518,9 +618,7 @@ export async function sendRemoteChatMessage({
     return messageId;
   } catch (error) {
     if (uploadedAttachments.length) {
-      await client.storage
-        .from("chat-attachments")
-        .remove(uploadedAttachments.map((attachment) => attachment.storage_path));
+      await discardRemoteChatAttachmentUploads(uploadedAttachments.map((attachment) => attachment.storage_path)).catch(() => undefined);
     }
 
     throw error;
@@ -540,12 +638,39 @@ export async function createSignedChatAttachmentUrl(storagePath: string) {
   return data.signedUrl;
 }
 
-export function subscribeToCoupleRealtime(coupleId: string, onChange: (table: string) => void) {
+export async function consumeRemoteChatAttachment({
+  attachmentId,
+  coupleId,
+  messageId,
+}: {
+  attachmentId: string;
+  coupleId: string;
+  messageId: string;
+}) {
+  const client = requireSupabase();
+  const { error } = await client.rpc("consume_chat_attachment", {
+    p_attachment_id: attachmentId,
+    p_couple_id: coupleId,
+    p_message_id: messageId,
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
+export function subscribeToCoupleRealtime(
+  coupleId: string,
+  onChange: (table: string) => void,
+  profileUserIds: string[] = [],
+) {
   const client = requireSupabase();
   const channel = client.channel(`couple-state:${coupleId}`);
+  const distinctProfileUserIds = Array.from(new Set(profileUserIds.filter(Boolean)));
   const coupleTables = [
     "chat_messages",
     "chat_attachments",
+    "chat_attachment_tombstones",
     "match_reveals",
     "notification_preferences",
     "couple_moods",
@@ -564,7 +689,13 @@ export function subscribeToCoupleRealtime(coupleId: string, onChange: (table: st
     );
   });
 
-  channel.on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => onChange("profiles"));
+  distinctProfileUserIds.forEach((profileUserId) => {
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "profiles", filter: `id=eq.${profileUserId}` },
+      () => onChange("profiles"),
+    );
+  });
 
   channel.subscribe();
 

@@ -1,20 +1,28 @@
 import {
   corsHeaders,
+  checkPendingExpoPushReceipts,
   disableUnregisteredTokens,
   ExpoPushMessage,
   jsonResponse,
   pushTokensForUsers,
+  recordExpoPushTickets,
   sendExpoPushMessages,
   serviceClient,
   todayKey,
   type SupabaseServiceClient,
 } from "../_shared/push.ts";
 
+type ScheduledPushType = "daily_reminder" | "promotion";
+
 type ScheduledNotificationBody = {
   body?: string;
   campaign_id?: string;
   title?: string;
-  type?: "daily_reminder" | "promotion";
+  type?: ScheduledPushType | "receipt_check";
+};
+
+type ScheduledPushBody = Omit<ScheduledNotificationBody, "type"> & {
+  type?: ScheduledPushType;
 };
 
 type PreferenceRow = {
@@ -35,7 +43,7 @@ function hasValidSecret(request: Request) {
   return bearer === secret || headerSecret === secret;
 }
 
-async function optedInRows(client: SupabaseServiceClient, type: "daily_reminder" | "promotion") {
+async function optedInRows(client: SupabaseServiceClient, type: ScheduledPushType) {
   const preferenceColumn = type === "daily_reminder" ? "daily_reminder_enabled" : "promotion_enabled";
   const { data, error } = await client
     .from("notification_preferences")
@@ -60,7 +68,7 @@ async function queueEvent({
   client: SupabaseServiceClient;
   coupleId: string;
   dedupeKey: string;
-  eventType: "daily_reminder" | "promotion";
+  eventType: ScheduledPushType;
   payload: Record<string, unknown>;
   recipientId: string;
 }) {
@@ -87,7 +95,7 @@ async function queueEvent({
   return data.id as string;
 }
 
-async function sendScheduledNotification(client: SupabaseServiceClient, body: ScheduledNotificationBody) {
+async function sendScheduledNotification(client: SupabaseServiceClient, body: ScheduledPushBody) {
   const type = body.type ?? "daily_reminder";
   const title = type === "daily_reminder"
     ? body.title ?? "Ta carte du jour t'attend"
@@ -99,8 +107,7 @@ async function sendScheduledNotification(client: SupabaseServiceClient, body: Sc
     ? `daily:${todayKey()}`
     : `promo:${body.campaign_id ?? todayKey()}`;
   const rows = await optedInRows(client, type);
-  const eventIds: string[] = [];
-  const recipients: string[] = [];
+  const queuedEvents: Array<{ id: string; recipientId: string }> = [];
 
   for (const row of rows) {
     const eventId = await queueEvent({
@@ -113,15 +120,16 @@ async function sendScheduledNotification(client: SupabaseServiceClient, body: Sc
     });
 
     if (eventId) {
-      eventIds.push(eventId);
-      recipients.push(row.user_id);
+      queuedEvents.push({ id: eventId, recipientId: row.user_id });
     }
   }
 
-  if (!eventIds.length) {
+  if (!queuedEvents.length) {
     return { queued: 0, sent: 0 };
   }
 
+  const eventIds = queuedEvents.map((event) => event.id);
+  const recipients = queuedEvents.map((event) => event.recipientId);
   const tokens = await pushTokensForUsers(client, Array.from(new Set(recipients)));
   if (!tokens.length) {
     await client
@@ -140,10 +148,16 @@ async function sendScheduledNotification(client: SupabaseServiceClient, body: Sc
     title,
     to: token.expo_push_token,
   }));
+  const eventIdByRecipient = new Map(queuedEvents.map((event) => [event.recipientId, event.id]));
+  const deliveries = tokens.map((token) => ({
+    expoPushToken: token.expo_push_token,
+    notificationEventId: eventIdByRecipient.get(token.user_id) ?? null,
+  }));
 
   try {
     const expoResponse = await sendExpoPushMessages(messages);
     await disableUnregisteredTokens(client, tokens.map((token) => token.expo_push_token), expoResponse);
+    await recordExpoPushTickets(client, deliveries, expoResponse);
     await client
       .from("notification_events")
       .update({ sent_at: new Date().toISOString(), status: "sent" })
@@ -180,10 +194,29 @@ Deno.serve(async (request) => {
   }
 
   const body = await request.json().catch(() => ({})) as ScheduledNotificationBody;
-  if (body.type && body.type !== "daily_reminder" && body.type !== "promotion") {
+  if (body.type && body.type !== "daily_reminder" && body.type !== "promotion" && body.type !== "receipt_check") {
     return jsonResponse({ error: "invalid_type" }, 400);
   }
 
-  const result = await sendScheduledNotification(client, body);
-  return jsonResponse(result);
+  let receiptCheck: Awaited<ReturnType<typeof checkPendingExpoPushReceipts>> | { error: string } = {
+    checked: 0,
+    disabled: 0,
+    errors: 0,
+    pending: 0,
+  };
+
+  try {
+    receiptCheck = await checkPendingExpoPushReceipts(client);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "receipt_check_failed";
+    console.warn("Expo push receipt check failed", message);
+    receiptCheck = { error: message };
+  }
+
+  if (body.type === "receipt_check") {
+    return jsonResponse({ receiptCheck });
+  }
+
+  const result = await sendScheduledNotification(client, body as ScheduledPushBody);
+  return jsonResponse({ ...result, receiptCheck });
 });
