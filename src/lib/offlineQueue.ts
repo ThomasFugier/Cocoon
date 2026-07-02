@@ -106,7 +106,7 @@ function notificationQueueItem(payload: RemoteNotificationQueuePayload): Offline
 }
 
 function isVisibleQueueItem(item: OfflineQueueItem) {
-  return item.kind === "vote";
+  return item.kind === "vote" || item.kind === "chat_message";
 }
 
 function queuedAttachmentUri(uri?: string) {
@@ -334,6 +334,17 @@ export async function removeRemoteChatAttachmentConsumption({
 
 export async function loadOfflineQueueCount() {
   return (await readQueue()).length;
+}
+
+export async function clearVisibleOfflineQueue() {
+  const queue = await readQueue();
+  const nextQueue = queue.filter((item) => !isVisibleQueueItem(item));
+  const droppedChatMessages = queue.filter((item): item is Extract<OfflineQueueItem, { kind: "chat_message" }> =>
+    item.kind === "chat_message",
+  );
+
+  await Promise.all(droppedChatMessages.map((item) => cleanupQueuedAttachments(item.attachments)));
+  await writeQueue(nextQueue);
 }
 
 export async function enqueueRemoteNotificationEvent(payload: RemoteNotificationQueuePayload) {

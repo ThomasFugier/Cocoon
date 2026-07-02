@@ -117,6 +117,7 @@ import {
 } from "./src/lib/localStore";
 import {
   enqueueRemoteChatAttachmentConsumption,
+  enqueueRemoteChatMessage,
   clearVisibleOfflineQueue,
   flushRemoteQueue,
   loadOfflineQueueCount,
@@ -787,6 +788,20 @@ function purgeExpiredChat(couple: CoupleState, now = new Date()): CoupleState {
   };
 }
 
+function pendingChatExpiresAt(now = new Date()) {
+  return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+}
+
+function withPendingChatMessage(couple: CoupleState, message: ChatMessage): CoupleState {
+  return {
+    ...couple,
+    chat: {
+      lastPurgedAt: couple.chat?.lastPurgedAt,
+      messages: [...(couple.chat?.messages ?? []).filter((item) => item.id !== message.id), message],
+    },
+  };
+}
+
 function createCustomDesire({
   blurb,
   category,
@@ -1191,6 +1206,36 @@ function areChatMessagesEqual(left: ChatMessage[], right: ChatMessage[]) {
   });
 }
 
+function mergePendingChatMessages(remoteMessages: ChatMessage[], fallback?: CoupleState | null) {
+  const remoteMessageIds = new Set(remoteMessages.map((message) => message.id));
+  const pendingMessages = (fallback?.chat?.messages ?? [])
+    .filter((message) => message.deliveryStatus && !remoteMessageIds.has(message.id));
+
+  return [...remoteMessages, ...pendingMessages].sort(
+    (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+  );
+}
+
+function withChatMessageDeliveryStatus(
+  current: CoupleState | null,
+  messageId: string,
+  deliveryStatus: ChatMessage["deliveryStatus"],
+) {
+  if (!current?.chat?.messages.some((message) => message.id === messageId)) {
+    return current;
+  }
+
+  return {
+    ...current,
+    chat: {
+      ...current.chat,
+      messages: current.chat.messages.map((message) =>
+        message.id === messageId ? { ...message, deliveryStatus } : message,
+      ),
+    },
+  };
+}
+
 async function coupleFromRemoteState(remote: RemoteCoupleState, fallback?: CoupleState | null): Promise<CoupleState> {
   const currentMember = remote.members.find((member) => member.is_current_user);
   const partnerMember = remote.members.find((member) => !member.is_current_user);
@@ -1208,7 +1253,7 @@ async function coupleFromRemoteState(remote: RemoteCoupleState, fallback?: Coupl
   });
 
   const chatMessages = Array.isArray(remote.chat_messages)
-    ? await chatMessagesFromRemote(remote.chat_messages)
+    ? mergePendingChatMessages(await chatMessagesFromRemote(remote.chat_messages), fallback)
     : fallback?.chat?.messages ?? [];
 
   return {
@@ -2691,11 +2736,9 @@ function Root() {
 
   const runPurchaseOrLocalUnlock = useCallback(
     async ({
-      applyLocalUnlock,
       config,
       success,
     }: {
-      applyLocalUnlock: () => void;
       config: ReturnType<typeof categoryPurchaseConfig> | ReturnType<typeof featurePurchaseConfig>;
       success: PurchaseSuccess;
     }) => {
@@ -2742,18 +2785,6 @@ function Root() {
     }
 
     void runPurchaseOrLocalUnlock({
-      applyLocalUnlock: () => {
-        setCouple((current) => {
-          if (!current || hasCustomCardsUnlimited(current)) {
-            return current;
-          }
-
-          return {
-            ...current,
-            unlockedFeatures: [...unlockedFeatures(current), CUSTOM_CARDS_UNLIMITED_FEATURE],
-          };
-        });
-      },
       config: featurePurchaseConfig(CUSTOM_CARDS_UNLIMITED_FEATURE),
       success: { kind: "custom", category: "Perso" },
     });
@@ -2765,24 +2796,10 @@ function Root() {
     }
 
     void runPurchaseOrLocalUnlock({
-      applyLocalUnlock: () => {
-        setCouple((current) => {
-          if (!current || hasNoAds(current)) {
-            return current;
-          }
-
-          return {
-            ...current,
-            unlockedFeatures: [...unlockedFeatures(current), NO_ADS_FEATURE],
-          };
-        });
-        fakeAdStats.current = { matchesSinceAd: 0, votesSinceAd: 0 };
-        completeFakeAd();
-      },
       config: featurePurchaseConfig(NO_ADS_FEATURE),
       success: { kind: "no_ads" },
     });
-  }, [completeFakeAd, couple, runPurchaseOrLocalUnlock]);
+  }, [couple, runPurchaseOrLocalUnlock]);
 
   const handleUnlockUnlimitedResponses = useCallback(() => {
     if (!couple || hasUnlimitedResponses(couple)) {
@@ -2790,19 +2807,6 @@ function Root() {
     }
 
     void runPurchaseOrLocalUnlock({
-      applyLocalUnlock: () => {
-        setCouple((current) => {
-          if (!current || hasUnlimitedResponses(current)) {
-            return current;
-          }
-
-          return {
-            ...current,
-            unlockedFeatures: [...unlockedFeatures(current), UNLIMITED_RESPONSES_FEATURE],
-          };
-        });
-        setResponseLimitPromptVisible(false);
-      },
       config: featurePurchaseConfig(UNLIMITED_RESPONSES_FEATURE),
       success: { kind: "unlimited_responses" },
     });
@@ -2819,18 +2823,6 @@ function Root() {
       }
 
       void runPurchaseOrLocalUnlock({
-        applyLocalUnlock: () => {
-          setCouple((current) => {
-            if (!current || isCategoryUnlocked(current, category)) {
-              return current;
-            }
-
-            return {
-              ...current,
-              unlockedCategories: [...unlockedCategories(current), category],
-            };
-          });
-        },
         config: categoryPurchaseConfig(category as Exclude<DesireCategory, "Vanille" | "Perso">),
         success: { kind: "category", category },
       });
@@ -2916,8 +2908,20 @@ function Root() {
         return;
       }
 
+      const messageId = Crypto.randomUUID();
+      const optimisticMessage: ChatMessage = {
+        id: messageId,
+        authorId: couple.activePartnerId,
+        attachments,
+        body: trimmedBody,
+        createdAt: new Date().toISOString(),
+        deliveryStatus: "sending",
+        expiresAt: pendingChatExpiresAt(),
+        linkedCardId: chatContextCardId,
+      };
+
       if (canWriteRemoteCouple(couple)) {
-        const messageId = Crypto.randomUUID();
+        setCouple((current) => (current?.id === couple.id ? withPendingChatMessage(current, optimisticMessage) : current));
 
         try {
           await sendRemoteChatMessage({
@@ -2936,8 +2940,23 @@ function Root() {
           await Haptics.selectionAsync();
         } catch (error) {
           console.warn("Chat message failed", error);
-          setSyncError("Message non envoyé. Vérifie ta connexion et réessaie.");
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          const queued = await enqueueRemoteChatMessage({
+            attachments,
+            body: trimmedBody,
+            coupleId: couple.id,
+            linkedCardId: chatContextCardId,
+            messageId,
+          })
+            .then(() => true)
+            .catch(() => false);
+
+          setCouple((current) => withChatMessageDeliveryStatus(current, messageId, queued ? "queued" : "failed"));
+          await loadOfflineQueueCount().then(setOfflineQueueCount).catch(() => undefined);
+
+          if (!queued) {
+            setSyncError("Message non envoyé. Vérifie ta connexion et réessaie.");
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          }
         }
         return;
       }
@@ -3978,7 +3997,7 @@ function MainShell({
   onOpenChat: (cardId?: string) => void;
   onJoinPartner: () => void;
   onProvider: (provider: AuthProvider) => void;
-  onRevealMatch: (cardId?: string) => void;
+  onRevealMatch: (cardId?: string) => Promise<void>;
   onRequestLeaveCouple: () => void;
   onReplayTutorial: () => void;
   onRestorePurchases: () => void;
@@ -5747,7 +5766,7 @@ function MatchScreen({
   onGoEnvies: () => void;
   onOpenChat: (cardId?: string) => void;
   onBeforeRevealMatch: () => Promise<boolean>;
-  onRevealMatch: (cardId?: string) => void;
+  onRevealMatch: (cardId?: string) => Promise<void>;
 }) {
   const revealedMatchSet = useMemo(() => new Set(revealedMatchIds), [revealedMatchIds]);
   const remoteCouple = isRemoteCoupleId(couple.id);

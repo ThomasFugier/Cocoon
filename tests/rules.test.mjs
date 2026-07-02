@@ -158,7 +158,8 @@ test("notification events retry through the offline queue without surfacing user
   assert.match(offlineQueue, /kind: "notification_event"/);
   assert.match(offlineQueue, /sendOrQueueRemoteNotificationEvent/);
   assert.match(offlineQueue, /notificationEventId\(payload\)/);
-  assert.match(offlineQueue, /return item\.kind === "vote"/);
+  assert.match(offlineQueue, /return item\.kind === "vote" \|\| item\.kind === "chat_message"/);
+  assert.match(offlineQueue, /clearVisibleOfflineQueue/);
   assert.match(offlineQueue, /visiblePending: nextQueue\.filter\(isVisibleQueueItem\)\.length/);
   assert.match(app, /sendOrQueueRemoteNotificationEvent\(\{ cardId, coupleId, type: "new_match" \}\)/);
   assert.match(app, /sendOrQueueRemoteNotificationEvent\(\{ coupleId: couple\.id, messageId, type: "chat_message" \}\)/);
@@ -186,19 +187,19 @@ test("remote writes wait for Supabase hydration and a remote couple id", () => {
   assert.match(app, /remoteAccountReady && targetCouple && isRemoteCoupleId\(targetCouple\.id\)/);
   assert.match(app, /if \(!remoteAccountReady \|\| \(preferredCoupleId && !isRemoteCoupleId\(preferredCoupleId\)\)\) \{/);
   assert.match(app, /\|\| !remoteAccountReady[\s\S]*\|\| isRemoteCoupleId\(couple\.id\)/);
-  assert.match(app, /if \(session && hasSupabaseConfig && !remoteAccountReady\)/);
-  assert.match(app, /if \(canWriteRemoteCouple\(couple\)\) \{[\s\S]{0,500}saveRemoteVote/);
-  assert.match(app, /if \(canWriteRemoteCouple\(couple\)\) \{[\s\S]{0,700}saveRemoteCustomDesire/);
+  assert.match(app, /if \(session && hasSupabaseConfig\) \{\s+if \(!remoteAccountReady\) \{/);
+  assert.match(app, /if \(!canWriteRemoteCouple\(couple\)\) \{[\s\S]{0,180}return false;[\s\S]{0,900}saveRemoteVote/);
+  assert.match(app, /if \(!canWriteRemoteCouple\(couple\)\) \{[\s\S]{0,180}return;[\s\S]{0,900}saveRemoteCustomDesire/);
   assert.match(app, /if \(canWriteRemoteCouple\(couple\)\) \{[\s\S]{0,900}sendRemoteChatMessage/);
   assert.match(app, /if \(!canWriteRemoteCouple\(couple\)\) \{[\s\S]{0,260}Achat impossible/);
   assert.match(app, /if \(!session \|\| !couple \|\| !canWriteRemoteCouple\(couple\)\) \{/);
   assert.match(app, /if \(!canWriteRemoteCouple\(currentCouple\)\) \{[\s\S]{0,80}return;/);
-  assert.match(app, /if \(canWriteRemoteCouple\(couple\)\) \{[\s\S]{0,260}markRemoteMatchRevealed/);
+  assert.match(app, /if \(!canWriteRemoteCouple\(couple\)\) \{[\s\S]{0,180}return;[\s\S]{0,300}markRemoteMatchRevealed/);
 });
 
 test("full reset signs out so Supabase cannot auto-hydrate the previous couple", () => {
   assert.match(app, /const handleReset = useCallback\(async \(\) => \{\s+await signOut\(\);\s+await clearCoupleState\(\);/);
-  assert.match(app, /const handleReset = useCallback\(async \(\) => \{[\s\S]*setSession\(null\);[\s\S]*setGuestMode\(localModeEnabled\);[\s\S]*updateIntroSeen\(false\);/);
+  assert.match(app, /const handleReset = useCallback\(async \(\) => \{[\s\S]*setSession\(null\);[\s\S]*setGuestMode\(false\);[\s\S]*updateIntroSeen\(false\);/);
   assert.match(app, /const handleReset = useCallback\(async \(\) => \{[\s\S]*setRemoteHydrating\(false\);/);
 });
 
@@ -406,7 +407,7 @@ test("received chat photos are view-once and deleted through server RPC", () => 
   assert.match(app, /delayMs: EPHEMERAL_PHOTO_VIEW_MS/);
   assert.match(app, /removeRemoteChatAttachmentConsumption/);
   assert.match(app, /result\.sentAttachmentConsumptions > 0/);
-  assert.match(app, /queueChatAttachmentConsumption\(\{ attachmentId, coupleId, messageId \}\)/);
+  assert.match(app, /queueChatAttachmentConsumption\(\{[\s\S]{0,140}attachmentId,[\s\S]{0,140}delayMs,[\s\S]{0,140}messageId,/);
   assert.match(app, /setTimeout\(finish, EPHEMERAL_PHOTO_VIEW_MS\)/);
   assert.match(app, /Photo disparue/);
 });
