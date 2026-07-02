@@ -1,18 +1,20 @@
+import { wsColors } from "./ui/tokens";
+
 export const palette = {
-  ink: "#332D3A",
-  inkMuted: "#74697B",
-  paper: "#FFF8F1",
-  veil: "rgba(255,255,255,0.76)",
-  line: "rgba(75,61,88,0.12)",
-  rose: "#F2749A",
-  coral: "#EF8E82",
-  apricot: "#F3A06F",
-  lavender: "#9B83E6",
-  mint: "#74C9B8",
-  sky: "#8ACDE3",
-  plum: "#874A83",
-  good: "#3D9A78",
-  danger: "#C75D77",
+  ink: wsColors.ink,
+  inkMuted: wsColors.muted,
+  paper: wsColors.cream,
+  veil: wsColors.veil,
+  line: wsColors.line,
+  rose: wsColors.rose,
+  coral: wsColors.pink,
+  apricot: wsColors.yellow,
+  lavender: wsColors.violet,
+  mint: wsColors.mint,
+  sky: wsColors.blue,
+  plum: wsColors.black,
+  good: wsColors.green,
+  danger: wsColors.danger,
 };
 
 export const partnerColors = [

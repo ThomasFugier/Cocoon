@@ -1,28 +1,16 @@
 import { Apple, LockKeyhole, Search, User } from "lucide-react-native";
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import type { AuthProvider } from "../lib/auth";
+import { WsButton } from "../ui/primitives";
+import { displayFont, labelFont, wsColors as candy } from "../ui/tokens";
 
 export type AuthAccountInfo = {
   connected: boolean;
   displayName: string;
   email: string;
   providerLabel: string;
-};
-
-const displayFont = Platform.select({
-  ios: "Avenir Next",
-  android: "sans-serif",
-  default: "Arial Rounded MT Bold, Arial, sans-serif",
-});
-
-const candy = {
-  ink: "#231224",
-  text: "#3B1737",
-  red: "#FF245F",
-  white: "#FFFFFF",
-  black: "#20101F",
 };
 
 export function authAccountInfo(session: unknown): AuthAccountInfo {
@@ -183,16 +171,13 @@ function ProviderButton({
   onPress: () => void;
 }) {
   return (
-    <Pressable disabled={disabled} onPress={onPress} style={[styles.providerButton, disabled && styles.providerButtonDisabled]}>
-      {icon}
-      <Text adjustsFontSizeToFit numberOfLines={1} style={styles.providerButtonText}>{label}</Text>
-    </Pressable>
+    <WsButton disabled={disabled} label={label} left={icon} onPress={onPress} size="md" variant="hot" />
   );
 }
 
 const styles = StyleSheet.create({
   accountPanel: {
-    backgroundColor: "rgba(255,255,255,0.78)",
+    backgroundColor: "rgba(255,249,240,0.82)",
     borderColor: candy.white,
     borderRadius: 24,
     borderWidth: 2,
@@ -207,7 +192,7 @@ const styles = StyleSheet.create({
   accountIcon: {
     alignItems: "center",
     backgroundColor: candy.white,
-    borderColor: "rgba(255,36,95,0.24)",
+    borderColor: "rgba(245,40,110,0.24)",
     borderRadius: 18,
     borderWidth: 2,
     height: 42,
@@ -231,6 +216,7 @@ const styles = StyleSheet.create({
   },
   accountText: {
     color: candy.text,
+    fontFamily: labelFont,
     fontSize: 12,
     fontWeight: "800",
     lineHeight: 16,
@@ -240,8 +226,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   accountDetailCell: {
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderColor: "rgba(255,36,95,0.14)",
+    backgroundColor: "rgba(255,249,240,0.78)",
+    borderColor: "rgba(245,40,110,0.14)",
     borderRadius: 16,
     borderWidth: 1.5,
     paddingHorizontal: 12,
@@ -249,12 +235,14 @@ const styles = StyleSheet.create({
   },
   accountLabel: {
     color: candy.red,
+    fontFamily: labelFont,
     fontSize: 10,
     fontWeight: "900",
     textTransform: "uppercase",
   },
   accountValue: {
     color: candy.ink,
+    fontFamily: labelFont,
     fontSize: 13,
     fontWeight: "900",
     marginTop: 3,
@@ -262,28 +250,9 @@ const styles = StyleSheet.create({
   accountProviderActions: {
     gap: 10,
   },
-  providerButton: {
-    alignItems: "center",
-    backgroundColor: candy.red,
-    borderColor: candy.white,
-    borderRadius: 18,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    minHeight: 52,
-    paddingHorizontal: 12,
-  },
-  providerButtonDisabled: {
-    opacity: 0.72,
-  },
-  providerButtonText: {
-    color: candy.white,
-    fontSize: 15,
-    fontWeight: "900",
-  },
   errorText: {
     color: candy.red,
+    fontFamily: labelFont,
     fontSize: 13,
     fontWeight: "900",
     textAlign: "center",
@@ -291,7 +260,7 @@ const styles = StyleSheet.create({
   sessionStatusPill: {
     alignItems: "center",
     alignSelf: "center",
-    backgroundColor: "rgba(255,255,255,0.82)",
+    backgroundColor: "rgba(255,249,240,0.82)",
     borderColor: candy.white,
     borderRadius: 999,
     borderWidth: 2,
@@ -304,12 +273,12 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   sessionStatusPillConnected: {
-    backgroundColor: "rgba(255,255,255,0.9)",
+    backgroundColor: "rgba(255,249,240,0.9)",
   },
   sessionStatusIcon: {
     alignItems: "center",
     backgroundColor: candy.white,
-    borderColor: "rgba(255,36,95,0.2)",
+    borderColor: "rgba(245,40,110,0.2)",
     borderRadius: 999,
     borderWidth: 1.5,
     height: 30,
@@ -326,11 +295,13 @@ const styles = StyleSheet.create({
   },
   sessionStatusTitle: {
     color: candy.ink,
+    fontFamily: labelFont,
     fontSize: 12,
     fontWeight: "900",
   },
   sessionStatusSubtitle: {
     color: candy.text,
+    fontFamily: labelFont,
     fontSize: 11,
     fontWeight: "800",
     marginTop: 1,

@@ -3,6 +3,7 @@
   "version": "1.0.39",
   "main": "index.ts",
   "dependencies": {
+    "@expo-google-fonts/bricolage-grotesque": "^0.4.1",
     "@expo/metro-runtime": "~56.0.15",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.108.2",
@@ -14,6 +15,7 @@
     "expo-dev-client": "~56.0.20",
     "expo-device": "~56.0.4",
     "expo-file-system": "~56.0.8",
+    "expo-font": "~56.0.7",
     "expo-haptics": "~56.0.3",
     "expo-image-manipulator": "~56.0.19",
     "expo-image-picker": "~56.0.18",
