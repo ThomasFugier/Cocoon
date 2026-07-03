@@ -375,7 +375,7 @@ const responseBurstParticles: Partial<Record<VoteLevel, BurstParticle[]>> = {
     { emoji: "💝", floatX: 20, x: 82, y: -442, rotate: "-16deg", size: 46 },
   ],
 };
-const weSpiceLogoAsset = require("./ASO/WeSpice_Logo.png");
+const weSpiceLogoAsset = require("./assets/wespice-logo.png");
 
 function Text({ style, ...props }: TextProps) {
   return <RNText {...props} style={[wsType.app, style]} />;

@@ -31,7 +31,9 @@ expo-web.*.log
 .codex-runtime/
 
 # generated local artifacts
-ASO/
+ASO/exports/
+ASO/generate_store_screenshots*.py
+ASO/mockups-*.png
 artifacts/
 
 # macOS
