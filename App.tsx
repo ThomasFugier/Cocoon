@@ -16,19 +16,23 @@ import {
   ArrowLeft,
   Bell,
   BellOff,
+  Camera,
+  Check,
   ChevronRight,
   Code2,
   Copy,
+  Eye,
   Flame,
   Heart,
   Home,
   ImagePlus,
+  Lightbulb,
   LockKeyhole,
   LogOut,
   MessageCircle,
   RefreshCcw,
-  Search,
   Send,
+  Settings,
   Sparkles,
   Trash2,
   User,
@@ -45,6 +49,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Modal,
+  PixelRatio,
   Platform,
   Pressable,
   ScrollView,
@@ -61,7 +66,7 @@ import {
   type NativeSyntheticEvent,
   type TextProps,
 } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   ProfileAccountPanel,
@@ -154,7 +159,7 @@ type TabKey = "home" | "envies" | "match" | "couple" | "profil" | "debug" | "cha
 type VisibleTabKey = Exclude<TabKey, "profil" | "rules">;
 type DebugPresetId = "empty" | "mood" | "reveal" | "full";
 type DebugPreviewScreen = "auth" | "loading";
-type DesireFilterKey = "all" | "todo" | "flame" | "curious" | "matches";
+type DesireFilterKey = "all" | "todo" | "hot" | "curious" | "no";
 type RemoteRefreshOptions = {
   force?: boolean;
 };
@@ -220,6 +225,11 @@ const NO_ADS_PRICE = "3,99 €";
 const DAILY_FREE_RESPONSE_LIMIT = 5;
 const UNLIMITED_RESPONSES_FEATURE: UnlockedFeature = "unlimited_responses";
 const UNLIMITED_RESPONSES_PRICE = "3,99 €";
+const PAID_FEATURES: UnlockedFeature[] = [
+  UNLIMITED_RESPONSES_FEATURE,
+  CUSTOM_CARDS_UNLIMITED_FEATURE,
+  NO_ADS_FEATURE,
+];
 const GAME_CARD_SETTLE_MS = 500;
 const GAME_CARD_EXIT_MS = 420;
 const HEART_BURST_MS = 3000;
@@ -238,6 +248,7 @@ const SIGNED_CHAT_ATTACHMENT_URL_CACHE_MS = 5 * 60 * 60 * 1000;
 const PERSONAL_CATEGORY: DesireCategory = "Perso";
 const PACK_CATEGORIES: DesireCategory[] = DESIRE_CATEGORIES.filter((category) => category !== PERSONAL_CATEGORY);
 const COUPLE_PACK_CATEGORIES: DesireCategory[] = [...PACK_CATEGORIES, PERSONAL_CATEGORY];
+const PACK_PICKER_CATEGORIES: DesireCategory[] = ["Vanille", PERSONAL_CATEGORY, ...PACK_CATEGORIES.filter((category) => category !== "Vanille")];
 const PAID_PACK_CATEGORIES: DesireCategory[] = PACK_CATEGORIES.filter((category) => category !== "Vanille");
 const FREE_CATEGORIES: DesireCategory[] = ["Vanille", PERSONAL_CATEGORY];
 const PARTNER_IDS: PartnerId[] = ["me", "partner"];
@@ -250,6 +261,15 @@ const desireCardCountsByCategory = desireCards.reduce((counts, card) => {
   return counts;
 }, new Map<DesireCategory, number>());
 const useNativeAnimations = Platform.OS !== "web";
+const purchaseUnlockParticles = [
+  { color: candy.yellow, height: 10, left: 18, radius: 999, rotate: "0deg", top: 30, width: 10, x: -52, y: -36 },
+  { color: candy.cream, height: 24, left: 42, radius: 999, rotate: "-26deg", top: 94, width: 7, x: -46, y: 4 },
+  { color: candy.red, height: 9, left: 198, radius: 999, rotate: "0deg", top: 26, width: 9, x: 48, y: -42 },
+  { color: candy.cream, height: 24, left: 210, radius: 999, rotate: "28deg", top: 116, width: 7, x: 48, y: 8 },
+  { color: candy.yellow, height: 8, left: 98, radius: 999, rotate: "0deg", top: 6, width: 8, x: -12, y: -50 },
+  { color: candy.red, height: 21, left: 116, radius: 999, rotate: "42deg", top: 236, width: 7, x: -20, y: 46 },
+  { color: candy.cream, height: 8, left: 184, radius: 999, rotate: "0deg", top: 222, width: 8, x: 42, y: 42 },
+] as const;
 const localModeEnabled = process.env.NODE_ENV !== "production" || process.env.EXPO_PUBLIC_ENABLE_LOCAL_MODE === "true";
 
 function desireCardCount(category: DesireCategory) {
@@ -312,7 +332,7 @@ function userFacingSyncNotice(message: string) {
     return message;
   }
 
-  return "Connexion instable. Tes changements sont gardés automatiquement.";
+  return "Hors ligne. Vos réponses sont gardées au chaud et repartiront toutes seules.";
 }
 
 type BurstParticle = { emoji: string; floatX: number; rotate: string; size: number; x: number; y: number };
@@ -363,6 +383,16 @@ function Text({ style, ...props }: TextProps) {
 const PROFILE_SHORTCUT_TOP = 14;
 const PROFILE_SHORTCUT_SIZE = 54;
 const APP_HEADER_TOP_SPACE = PROFILE_SHORTCUT_TOP + PROFILE_SHORTCUT_SIZE + 8;
+const TAB_DOCK_VISIBLE_HEIGHT = 76;
+const CHAT_COMPOSER_NAV_GAP = 12;
+
+function fullScreenSurfaceMetrics(viewportWidth: number) {
+  const sideInset = viewportWidth >= 900 ? 24 : viewportWidth >= 700 ? 18 : viewportWidth >= 520 ? 14 : 12;
+  return {
+    contentWidth: Math.max(0, viewportWidth - sideInset * 2),
+    sideInset,
+  };
+}
 
 const stickers = {
   cherries: "🍒",
@@ -377,20 +407,30 @@ const stickers = {
 
 const statusEmojiPresets = ["🍒", "🔥", "💋", "🍆", "👀", "😇", "🫦", "🖤", "🫧", "✨"];
 const customDesireEmojiPresets = ["🍑", "🍆", "💖", "🔥", "💋", "👀", "🫦", "✨", "🖤", "🌶️", "🍒", "🔐"];
+const customDesireQuickEmojis = ["💫", "🔥", "🍒", "🎲", "🖤"];
+const customDesireAmbianceOptions = ["Complice", "Tendre", "Chaud", "Discussion"] as const;
 
 const moodOptions: Array<{ emoji: string; hint: string; label: string; level: CoupleMoodLevel }> = [
-  { level: 0, emoji: "🫧", label: "Calme", hint: "Besoin de douceur" },
-  { level: 1, emoji: "🍬", label: "Tendre", hint: "Envie de flirt" },
-  { level: 2, emoji: "🔥", label: "Chaud", hint: "Envie plus directe" },
-  { level: 3, emoji: "💋", label: "Très chaud", hint: "Envie assumée" },
+  { level: 0, emoji: "🫶", label: "Tendre", hint: "Besoin de douceur" },
+  { level: 1, emoji: "🤍", label: "Câlin", hint: "Envie d'être proches" },
+  { level: 2, emoji: "🎲", label: "Joueur", hint: "Envie de flirt" },
+  { level: 3, emoji: "🔥", label: "Chaud", hint: "Envie plus directe" },
 ];
+
+const moodSignalOptions: Array<{ color: string; description: string; label: string; level: CoupleMoodLevel }> = [
+  { level: 0, color: "#FF8EBE", label: "Tendre", description: "Envie de proximité, de douceur." },
+  { level: 1, color: "#E6D8C5", label: "Câlin", description: "Envie d'être proches, tranquille." },
+  { level: 2, color: candy.yellow, label: "Joueur", description: "Envie de rire et provoquer un peu." },
+  { level: 3, color: candy.black, label: "Chaud", description: "Envie plus directe, si ça s'aligne." },
+];
+const hiddenMatchPatternDots = Array.from({ length: 64 }, (_, index) => index);
 
 const desireFilterOptions: Array<{ key: DesireFilterKey; label: string }> = [
   { key: "all", label: "Toutes" },
   { key: "todo", label: "À répondre" },
-  { key: "flame", label: "Flamme" },
+  { key: "hot", label: "Chaud" },
   { key: "curious", label: "Pourquoi pas" },
-  { key: "matches", label: "Matchs" },
+  { key: "no", label: "Non" },
 ];
 
 const dailyAdviceItems: DailyAdvice[] = [
@@ -516,6 +556,16 @@ function isCardMatch(couple: CoupleState, cardId: string) {
   return isPositiveMatchVote(couple.votes.me[cardId]) && isPositiveMatchVote(couple.votes.partner[cardId]);
 }
 
+function homeSurpriseStatusLabel(couple: CoupleState, card: DesireCard): "Nouveau" | "Répondu" | "Match" {
+  const ownVote = couple.votes[couple.activePartnerId]?.[card.id];
+
+  if (ownVote === undefined) {
+    return "Nouveau";
+  }
+
+  return isCardMatch(couple, card.id) ? "Match" : "Répondu";
+}
+
 function allDesireCards(couple: CoupleState) {
   return [...(couple.customDesires ?? []), ...desireCards];
 }
@@ -534,6 +584,43 @@ function unlockedFeatures(couple: CoupleState) {
 
 function isFeatureUnlocked(couple: CoupleState, feature: UnlockedFeature) {
   return unlockedFeatures(couple).includes(feature);
+}
+
+function withUnlockedCategories(couple: CoupleState, categories: DesireCategory[]) {
+  return {
+    ...couple,
+    unlockedCategories: Array.from(new Set([...unlockedCategories(couple), ...categories])),
+  };
+}
+
+function withUnlockedFeatures(couple: CoupleState, features: UnlockedFeature[]) {
+  return {
+    ...couple,
+    unlockedFeatures: Array.from(new Set([...unlockedFeatures(couple), ...features])),
+  };
+}
+
+function purchaseSuccessForFeature(feature: UnlockedFeature): PurchaseSuccess {
+  if (feature === CUSTOM_CARDS_UNLIMITED_FEATURE) {
+    return { kind: "custom", category: "Perso" };
+  }
+
+  if (feature === NO_ADS_FEATURE) {
+    return { kind: "no_ads" };
+  }
+
+  return { kind: "unlimited_responses" };
+}
+
+function withPurchaseTargetUnlocked(
+  couple: CoupleState,
+  config: ReturnType<typeof categoryPurchaseConfig> | ReturnType<typeof featurePurchaseConfig>,
+) {
+  if (config.target.kind === "category") {
+    return withUnlockedCategories(couple, [config.target.category]);
+  }
+
+  return withUnlockedFeatures(couple, [config.target.feature]);
 }
 
 function isRemoteCoupleId(coupleId: string) {
@@ -618,6 +705,10 @@ function hiddenMatchCountForCouple(couple: CoupleState, matches: DesireCard[], r
 }
 
 function hasLinkedPartner(couple: CoupleState) {
+  if (isDebugCouple(couple)) {
+    return true;
+  }
+
   const partner = couple.profiles.partner;
   return !(partner.displayName === "Partenaire" && partner.vibe === "Invitation en attente");
 }
@@ -656,6 +747,22 @@ function withDailyResponseIncrement(couple: CoupleState, partnerId: PartnerId, d
       },
     },
   };
+}
+
+function withLocalDesireVote(couple: CoupleState, cardId: string, level: VoteLevel): CoupleState {
+  const activeId = couple.activePartnerId;
+  const nextCouple: CoupleState = {
+    ...couple,
+    votes: {
+      ...couple.votes,
+      [activeId]: {
+        ...couple.votes[activeId],
+        [cardId]: level,
+      },
+    },
+  };
+
+  return hasUnlimitedResponses(couple) ? nextCouple : withDailyResponseIncrement(nextCouple, activeId);
 }
 
 function otherPartnerId(partnerId: PartnerId): PartnerId {
@@ -913,7 +1020,13 @@ function createDebugCouple(preset: DebugPresetId): CoupleState {
 }
 
 function isDebugCouple(couple: CoupleState) {
-  return couple.id.startsWith("debug-");
+  const partner = couple.profiles.partner;
+
+  return couple.id.startsWith("debug-")
+    || couple.inviteCode === "DEV420"
+    || couple.inviteCode === "FULL69"
+    || partner.displayName === "Sam"
+    || partner.vibe === "Profil de test pour QA.";
 }
 
 function fallbackProfileFromSession(session: Session | null): Omit<PartnerProfile, "id"> {
@@ -1351,6 +1464,22 @@ function voteRevealLabel(level?: VoteLevel) {
   return "Pas répondu";
 }
 
+function galleryVoteAnswerLabel(level?: VoteLevel) {
+  if (level === 0) {
+    return "Non";
+  }
+
+  if (level === 1) {
+    return "Pourquoi pas";
+  }
+
+  if (typeof level === "number" && level >= FLAME_THRESHOLD) {
+    return "Chaud";
+  }
+
+  return "";
+}
+
 function voteRevealEmoji(level?: VoteLevel) {
   if (level === 0) {
     return "✕";
@@ -1666,7 +1795,7 @@ export default function App() {
   });
 
   if (!fontsLoaded && !fontError) {
-    return <View style={styles.fontLoadingScreen} />;
+    return <AppSkeletonLoadingScreen />;
   }
 
   return (
@@ -1741,6 +1870,8 @@ function Root() {
   const [leaveConfirmVisible, setLeaveConfirmVisible] = useState(false);
   const [purchaseSuccess, setPurchaseSuccess] = useState<PurchaseSuccess | null>(null);
   const [enviesFocusCategory, setEnviesFocusCategory] = useState<DesireCategory | null>(null);
+  const [enviesFocusCardId, setEnviesFocusCardId] = useState<string | null>(null);
+  const [enviesGameModeRequest, setEnviesGameModeRequest] = useState(0);
   const [revealedMatchIds, setRevealedMatchIds] = useState<string[]>([]);
   const [secretToastVisible, setSecretToastVisible] = useState(false);
   const [secretToastNonce, setSecretToastNonce] = useState(0);
@@ -1846,7 +1977,11 @@ function Root() {
         return false;
       }
 
-      const coupleId = preferredCoupleId && isRemoteCoupleId(preferredCoupleId) ? preferredCoupleId : null;
+      if (preferredCoupleId && !isRemoteCoupleId(preferredCoupleId)) {
+        return false;
+      }
+
+      const coupleId = preferredCoupleId ?? null;
       const coupleKey = coupleId ?? "latest";
       const now = Date.now();
       const currentRefresh = remoteRefreshRef.current;
@@ -2472,17 +2607,14 @@ function Root() {
       const previousActiveVote = couple.votes[activeId][cardId];
       const isVoteChange = previousActiveVote !== level;
       const writeKey = `${coupleId}:${cardId}`;
+      const canWriteRemote = canWriteRemoteCouple(couple);
 
       if (!isVoteChange) {
         return false;
       }
 
-      if (!canWriteRemoteCouple(couple)) {
+      if (!canWriteRemote && !localModeEnabled) {
         setSyncError("Attends que ton espace soit synchronisé avant de répondre.");
-        return false;
-      }
-
-      if (voteWriteKeys.current.has(writeKey)) {
         return false;
       }
 
@@ -2492,33 +2624,48 @@ function Root() {
         return false;
       }
 
+      if (canWriteRemote && voteWriteKeys.current.has(writeKey)) {
+        return false;
+      }
+
       const partnerVote = couple.votes[partnerId][cardId];
       const wasAlreadyMatch = isPositiveMatchVote(previousActiveVote) && isPositiveMatchVote(partnerVote);
       const becomesMatch = isPositiveMatchVote(level) && isPositiveMatchVote(partnerVote);
       const newMatchCreated = becomesMatch && !wasAlreadyMatch;
       const responseCountBeforeVote = activeResponseCount(couple);
 
-      voteWriteKeys.current.add(writeKey);
-
-      try {
-        await saveRemoteVote(coupleId, cardId, level);
-        await sendOrQueueRemoteNotificationEvent({ cardId, coupleId, type: "new_match" });
-        await loadOfflineQueueCount().then(setOfflineQueueCount).catch(() => undefined);
-        await refreshRemoteCoupleState(coupleId, { force: true });
+      if (!canWriteRemote) {
+        setCouple((current) => (current?.id === coupleId ? withLocalDesireVote(current, cardId, level) : current));
         setSyncError("");
-      } catch (error) {
-        const message = errorMessage(error, "");
-        if (message.includes("daily_limit_reached")) {
-          setResponseLimitPromptVisible(true);
-          setSyncError("Limite quotidienne atteinte côté serveur.");
-          void refreshRemoteCoupleState(coupleId, { force: true });
-        } else {
-          setSyncError("Réponse non enregistrée. Vérifie ta connexion et réessaie.");
+      } else {
+        voteWriteKeys.current.add(writeKey);
+
+        try {
+          await saveRemoteVote(coupleId, cardId, level);
+          await sendOrQueueRemoteNotificationEvent({ cardId, coupleId, type: "new_match" });
+          await loadOfflineQueueCount().then(setOfflineQueueCount).catch(() => undefined);
+          await refreshRemoteCoupleState(coupleId, { force: true });
+          setSyncError("");
+        } catch (error) {
+          const message = errorMessage(error, "");
+          if (message.includes("daily_limit_reached") && localModeEnabled && hasUnlimitedResponses(couple)) {
+            setCouple((current) => (current?.id === coupleId ? withLocalDesireVote(current, cardId, level) : current));
+            setResponseLimitPromptVisible(false);
+            setSyncError("");
+          } else if (message.includes("daily_limit_reached")) {
+            setResponseLimitPromptVisible(true);
+            setSyncError("Limite quotidienne atteinte côté serveur.");
+            void refreshRemoteCoupleState(coupleId, { force: true });
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            return false;
+          } else {
+            setSyncError("Réponse non enregistrée. Vérifie ta connexion et réessaie.");
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            return false;
+          }
+        } finally {
+          voteWriteKeys.current.delete(writeKey);
         }
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        return false;
-      } finally {
-        voteWriteKeys.current.delete(writeKey);
       }
 
       setSecretToastVisible(true);
@@ -2553,17 +2700,36 @@ function Root() {
   );
 
   const handleActorChange = useCallback((nextId: PartnerId) => {
-    setCouple((current) => (current ? { ...current, activePartnerId: nextId } : current));
+    setCouple((current) => {
+      if (!current) {
+        return current;
+      }
+
+      if (nextId !== "partner" || hasLinkedPartner(current)) {
+        return { ...current, activePartnerId: nextId };
+      }
+
+      return {
+        ...current,
+        activePartnerId: nextId,
+        profiles: {
+          ...current.profiles,
+          partner: {
+            ...current.profiles.partner,
+            displayName: "Sam",
+            color: "mint",
+            statusEmoji: "👀",
+            statusUpdatedAt: new Date().toISOString(),
+            vibe: "Profil de test pour QA.",
+          },
+        },
+      };
+    });
   }, []);
 
   const handleMoodChange = useCallback(
     async (level: CoupleMoodLevel) => {
       if (!couple) {
-        return;
-      }
-
-      if (!canWriteRemoteCouple(couple)) {
-        setSyncError("Attends que ton espace soit synchronisé avant de changer ton humeur.");
         return;
       }
 
@@ -2576,6 +2742,14 @@ function Root() {
       };
       const didReveal = !isMoodAligned(couple) && isMoodAligned(nextCouple);
 
+      setCouple(nextCouple);
+
+      if (!canWriteRemoteCouple(couple)) {
+        setSyncError("");
+        await Haptics.selectionAsync();
+        return;
+      }
+
       try {
         await saveRemoteMood(couple.id, level);
         await sendOrQueueRemoteNotificationEvent({ coupleId: couple.id, type: "mood_aligned" });
@@ -2586,6 +2760,7 @@ function Root() {
           ? Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
           : Haptics.selectionAsync());
       } catch {
+        setCouple(couple);
         setSyncError("Le mood n'a pas pu être enregistré. Vérifie ta connexion et réessaie.");
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
@@ -2746,6 +2921,19 @@ function Root() {
         return;
       }
 
+      if (Platform.OS === "web") {
+        setCouple(withPurchaseTargetUnlocked(couple, config));
+        if (config.target.kind === "feature" && config.target.feature === NO_ADS_FEATURE) {
+          fakeAdStats.current = { matchesSinceAd: 0, votesSinceAd: 0 };
+          completeFakeAd();
+        }
+        setResponseLimitPromptVisible(false);
+        setSyncError("");
+        setPurchaseSuccess(success);
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        return;
+      }
+
       if (session) {
         if (!canWriteRemoteCouple(couple)) {
           setSyncError("Achat impossible tant que l'espace n'est pas synchronisé avec Supabase.");
@@ -2830,21 +3018,121 @@ function Root() {
     [couple, runPurchaseOrLocalUnlock],
   );
 
+  const debugUnlockNotice = useCallback(
+    (targetCouple: CoupleState) =>
+      canWriteRemoteCouple(targetCouple)
+        ? "Achat debug simulé localement. Le serveur et RevenueCat ne sont pas modifiés."
+        : "Achat debug simulé.",
+    [canWriteRemoteCouple],
+  );
+
+  const handleDebugUnlockCategory = useCallback(
+    async (category: DesireCategory) => {
+      if (!couple || !PAID_PACK_CATEGORIES.includes(category)) {
+        return;
+      }
+
+      if (isCategoryUnlocked(couple, category)) {
+        setSyncError(`Pack ${categoryLabel(category)} déjà actif.`);
+        await Haptics.selectionAsync();
+        return;
+      }
+
+      setCouple(withUnlockedCategories(couple, [category]));
+      setResponseLimitPromptVisible(false);
+      setSyncError(debugUnlockNotice(couple));
+      setPurchaseSuccess({ kind: "category", category });
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    [couple, debugUnlockNotice],
+  );
+
+  const handleDebugUnlockFeature = useCallback(
+    async (feature: UnlockedFeature) => {
+      if (!couple || !PAID_FEATURES.includes(feature)) {
+        return;
+      }
+
+      if (isFeatureUnlocked(couple, feature)) {
+        setSyncError("Option déjà active.");
+        await Haptics.selectionAsync();
+        return;
+      }
+
+      setCouple(withUnlockedFeatures(couple, [feature]));
+      if (feature === NO_ADS_FEATURE) {
+        fakeAdStats.current = { matchesSinceAd: 0, votesSinceAd: 0 };
+        completeFakeAd();
+      }
+      setResponseLimitPromptVisible(false);
+      setSyncError(debugUnlockNotice(couple));
+      setPurchaseSuccess(purchaseSuccessForFeature(feature));
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    [completeFakeAd, couple, debugUnlockNotice],
+  );
+
+  const handleDebugUnlockAllPurchases = useCallback(async () => {
+    if (!couple) {
+      return;
+    }
+
+    const nextCouple = withUnlockedFeatures(withUnlockedCategories(couple, PAID_PACK_CATEGORIES), PAID_FEATURES);
+    const alreadyComplete =
+      PAID_PACK_CATEGORIES.every((category) => isCategoryUnlocked(couple, category))
+      && PAID_FEATURES.every((feature) => isFeatureUnlocked(couple, feature));
+
+    setCouple(nextCouple);
+    fakeAdStats.current = { matchesSinceAd: 0, votesSinceAd: 0 };
+    completeFakeAd();
+    setResponseLimitPromptVisible(false);
+    setPurchaseSuccess(null);
+    setSyncError(alreadyComplete ? "Tout est déjà actif." : debugUnlockNotice(couple));
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [completeFakeAd, couple, debugUnlockNotice]);
+
   const handleDiscoverPurchase = useCallback(() => {
     if (!purchaseSuccess) {
       return;
     }
 
-    if (purchaseSuccess.kind === "no_ads" || purchaseSuccess.kind === "unlimited_responses") {
+    if (purchaseSuccess.kind === "category") {
+      setEnviesFocusCategory(purchaseSuccess.category);
+      setEnviesFocusCardId(null);
+      setEnviesGameModeRequest((current) => current + 1);
       setPurchaseSuccess(null);
-      setTab("home");
+      setTab("envies");
       return;
     }
 
-    setEnviesFocusCategory(purchaseSuccess.category);
+    if (purchaseSuccess.kind === "custom") {
+      setEnviesFocusCategory(purchaseSuccess.category);
+      setEnviesFocusCardId(null);
+      setPurchaseSuccess(null);
+      setTab("envies");
+      return;
+    }
+
     setPurchaseSuccess(null);
-    setTab("envies");
+    setTab("home");
   }, [purchaseSuccess]);
+
+  const handleOpenEnvieCard = useCallback((card: DesireCard) => {
+    setEnviesFocusCategory(card.category);
+    setEnviesFocusCardId(card.id);
+    setTab("envies");
+  }, []);
+
+  const handleOpenEnviesGameMode = useCallback(() => {
+    setEnviesFocusCategory(null);
+    setEnviesFocusCardId(null);
+    setEnviesGameModeRequest((current) => current + 1);
+    setTab("envies");
+  }, []);
+
+  const handleEnviesGameModeRequestHandled = useCallback(() => {
+    setEnviesGameModeRequest(0);
+  }, []);
 
   const handleRestorePurchases = useCallback(async () => {
     if (!session || !couple || !canWriteRemoteCouple(couple)) {
@@ -2884,17 +3172,25 @@ function Root() {
 
   const handleTabChange = useCallback(
     (nextTab: TabKey) => {
+      const currentCouple = coupleRef.current;
+
+      if (nextTab === "envies") {
+        setEnviesFocusCardId(null);
+        setEnviesFocusCategory(null);
+        setEnviesGameModeRequest(0);
+      }
+
       setTab(nextTab);
 
-      if (nextTab === "couple") {
-        void refreshRemoteCoupleState(coupleRef.current?.id);
+      if (nextTab === "couple" && canWriteRemoteCouple(currentCouple)) {
+        void refreshRemoteCoupleState(currentCouple.id);
       }
 
       if (nextTab === "chat") {
-        void refreshRemoteChatMessages(coupleRef.current?.id, { force: true });
+        void refreshRemoteChatMessages(currentCouple?.id, { force: true });
       }
     },
-    [refreshRemoteChatMessages, refreshRemoteCoupleState],
+    [canWriteRemoteCouple, refreshRemoteChatMessages, refreshRemoteCoupleState],
   );
 
   const handleSendChatMessage = useCallback(
@@ -3096,6 +3392,7 @@ function Root() {
     setLeaveConfirmVisible(false);
     setPurchaseSuccess(null);
     setEnviesFocusCategory(null);
+    setEnviesFocusCardId(null);
     setTab("debug");
 
     await clearDebugBackupState();
@@ -3123,7 +3420,7 @@ function Root() {
       return;
     }
 
-    setJoinReturnToInvite(returnToInvite);
+    setJoinReturnToInvite(returnToInvite === true);
     setInvitePromptVisible(false);
     setTutorialReplayVisible(false);
     setLeaveConfirmVisible(false);
@@ -3506,20 +3803,26 @@ function Root() {
   if (purchaseSuccess) {
     return (
       <CandyFrame>
-        <PurchaseSuccessScreen purchase={purchaseSuccess} onDiscover={handleDiscoverPurchase} />
+        <PurchaseSuccessScreen
+          partnerName={couple?.profiles[otherPartnerId(couple.activePartnerId)].displayName}
+          purchase={purchaseSuccess}
+          onDiscover={handleDiscoverPurchase}
+        />
       </CandyFrame>
     );
   }
 
   return (
-    <CandyFrame>
+    <CandyFrame dark={tab === "chat"}>
       <MainShell
         allowActorSwitch={!session || guestMode}
         authError={authError}
         chatContextCardId={chatContextCardId}
         couple={couple}
         debugEnabled={localModeEnabled}
+        enviesFocusCardId={enviesFocusCardId}
         enviesFocusCategory={enviesFocusCategory}
+        enviesGameModeRequest={enviesGameModeRequest}
         providerLoading={providerLoading}
         revealedMatchIds={revealedMatchIds}
         session={session}
@@ -3534,11 +3837,17 @@ function Root() {
         onCopyInvite={handleCopyInvite}
         onDisableDebugProfiles={handleDisableDebugProfiles}
         onDebugFakeAd={handleDebugFakeAd}
+        onDebugUnlockAllPurchases={handleDebugUnlockAllPurchases}
+        onDebugUnlockCategory={handleDebugUnlockCategory}
+        onDebugUnlockFeature={handleDebugUnlockFeature}
         onDeleteAccount={handleDeleteAccount}
         onLogout={handleLogout}
         onMoodChange={handleMoodChange}
         onMoodNotificationPreference={handleMoodNotificationPreference}
         onNotificationPreference={handleNotificationPreference}
+        onEnviesGameModeRequestHandled={handleEnviesGameModeRequestHandled}
+        onOpenEnvieCard={handleOpenEnvieCard}
+        onOpenEnviesGameMode={handleOpenEnviesGameMode}
         onJoinPartner={handleShowJoinPrompt}
         onOpenChat={handleOpenChat}
         onProvider={handleProvider}
@@ -3587,6 +3896,7 @@ function Root() {
         limitReached
         onClose={() => setResponseLimitPromptVisible(false)}
         onUnlock={handleUnlockUnlimitedResponses}
+        partnerName={couple?.profiles[otherPartnerId(couple.activePartnerId)].displayName}
         visible={responseLimitPromptVisible}
       />
       <SecretVoteToast nonce={secretToastNonce} visible={secretToastVisible} />
@@ -3595,36 +3905,19 @@ function Root() {
   );
 }
 
-function CandyFrame({ children, hideDoodles = false }: { children: React.ReactNode; hideDoodles?: boolean }) {
+function CandyFrame({ children, dark = false, hideDoodles = false }: { children: React.ReactNode; dark?: boolean; hideDoodles?: boolean }) {
   return (
-    <LinearGradient colors={[candy.red, candy.red]} style={styles.frame}>
-      {!hideDoodles ? (
+    <LinearGradient colors={dark ? [candy.darkColor, candy.darkColor] : [candy.red, candy.red]} style={[styles.frame, dark && styles.frameDark]}>
+      {!hideDoodles && !dark ? (
         <>
           <View style={styles.doodleOne} />
           <View style={styles.doodleTwo} />
-          <View style={styles.doodleThree} />
         </>
       ) : null}
-      <SafeAreaView style={styles.safeArea}>{children}</SafeAreaView>
+      <SafeAreaView style={[styles.safeArea, dark && styles.safeAreaDark]}>{children}</SafeAreaView>
       <StatusBar style="light" />
     </LinearGradient>
   );
-}
-
-function syncNoticeTitle(message: string) {
-  if (/achat/i.test(message)) {
-    return "Achat en attente";
-  }
-
-  if (/notification|push|permission|project id|eas|téléphone|telephone|ios|android/i.test(message)) {
-    return "Notifications";
-  }
-
-  if (/connecte-toi|connexion/i.test(message)) {
-    return "Connexion";
-  }
-
-  return "Connexion instable";
 }
 
 function ServerNoticeToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
@@ -3673,15 +3966,9 @@ function ServerNoticeToast({ message, onDismiss }: { message: string; onDismiss:
         ]}
       >
         <View style={styles.serverNoticeIcon}>
-          <RefreshCcw size={16} color={candy.white} />
+          <Send size={15} color="#6D7CFF" />
         </View>
-        <View style={styles.serverNoticeCopy}>
-          <Text style={styles.serverNoticeTitle}>{syncNoticeTitle(message)}</Text>
-          <Text style={styles.serverNoticeText}>{message}</Text>
-        </View>
-        <SpringPressable onPress={onDismiss} style={styles.serverNoticeClose}>
-          <X size={15} color="rgba(35,18,36,0.62)" />
-        </SpringPressable>
+        <Text style={styles.serverNoticeText}>{message}</Text>
       </Animated.View>
     </View>
   );
@@ -3819,11 +4106,209 @@ function SplashScreen() {
 
 function LoadingScreenContent() {
   return (
-    <View style={styles.loadingScreen}>
-      <WeSpiceLogo />
-      <ActivityIndicator color={candy.red} />
-      <Text style={styles.loadingText}>Préparation de WeSpice...</Text>
+    <AppSkeletonLoadingContent />
+  );
+}
+
+const loadingSkeletonLayouts = ["home", "envies", "store"] as const;
+const loadingSkeletonRevealCount = 14;
+type LoadingSkeletonLayout = (typeof loadingSkeletonLayouts)[number];
+
+function AppSkeletonLoadingScreen() {
+  return (
+    <View style={styles.fontLoadingScreen}>
+      <AppSkeletonLoadingContent />
+      <StatusBar style="light" />
     </View>
+  );
+}
+
+function AppSkeletonLoadingContent() {
+  const spin = useRef(new Animated.Value(0)).current;
+  const revealValuesRef = useRef<Animated.Value[]>([]);
+  const [layoutIndex, setLayoutIndex] = useState(0);
+
+  if (revealValuesRef.current.length === 0) {
+    revealValuesRef.current = Array.from({ length: loadingSkeletonRevealCount }, () => new Animated.Value(0));
+  }
+
+  const revealValues = revealValuesRef.current;
+  const layout = loadingSkeletonLayouts[layoutIndex] ?? "home";
+  const spinRotation = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.timing(spin, {
+        duration: 760,
+        easing: Easing.linear,
+        toValue: 1,
+        useNativeDriver: useNativeAnimations,
+      }),
+    );
+
+    animation.start();
+    return () => animation.stop();
+  }, [spin]);
+
+  useEffect(() => {
+    let mounted = true;
+    let restartTimer: ReturnType<typeof setTimeout> | undefined;
+    let activeAnimation: Animated.CompositeAnimation | undefined;
+
+    const reveal = () => {
+      revealValues.forEach((value) => value.setValue(0));
+      activeAnimation = Animated.stagger(
+        78,
+        revealValues.map((value) => Animated.timing(value, {
+          duration: 330,
+          easing: Easing.out(Easing.cubic),
+          toValue: 1,
+          useNativeDriver: useNativeAnimations,
+        })),
+      );
+
+      activeAnimation.start(({ finished }) => {
+        if (!mounted || !finished) {
+          return;
+        }
+
+        restartTimer = setTimeout(() => {
+          activeAnimation = Animated.stagger(
+            18,
+            [...revealValues].reverse().map((value) => Animated.timing(value, {
+              duration: 160,
+              easing: Easing.in(Easing.quad),
+              toValue: 0,
+              useNativeDriver: useNativeAnimations,
+            })),
+          );
+
+          activeAnimation.start(({ finished: cleared }) => {
+            if (!mounted || !cleared) {
+              return;
+            }
+
+            setLayoutIndex((current) => {
+              const nextOffset = 1 + Math.floor(Math.random() * (loadingSkeletonLayouts.length - 1));
+              return (current + nextOffset) % loadingSkeletonLayouts.length;
+            });
+            restartTimer = setTimeout(reveal, 60);
+          });
+        }, 680);
+      });
+    };
+
+    reveal();
+
+    return () => {
+      mounted = false;
+      if (restartTimer) {
+        clearTimeout(restartTimer);
+      }
+      activeAnimation?.stop();
+      revealValues.forEach((value) => value.stopAnimation());
+    };
+  }, [revealValues]);
+
+  const skeletonBlock = (slot: number, style: StyleProp<ViewStyle>) => (
+    <SkeletonBlock key={slot} reveal={revealValues[slot]} style={style} />
+  );
+
+  const renderHeader = () => (
+    <View style={styles.loadingSkeletonTopRow}>
+      {skeletonBlock(0, styles.loadingSkeletonBrand)}
+      {skeletonBlock(1, styles.loadingSkeletonProfile)}
+    </View>
+  );
+
+  const renderHomeLayout = () => (
+    <>
+      {renderHeader()}
+      {skeletonBlock(2, styles.loadingSkeletonTitleWide)}
+      {skeletonBlock(3, styles.loadingSkeletonTitleShort)}
+      <View style={styles.loadingSkeletonChips}>
+        {skeletonBlock(4, styles.loadingSkeletonChip)}
+        {skeletonBlock(5, styles.loadingSkeletonChip)}
+        {skeletonBlock(6, styles.loadingSkeletonChip)}
+      </View>
+      {skeletonBlock(7, styles.loadingSkeletonHeroCard)}
+      {skeletonBlock(8, styles.loadingSkeletonAdvice)}
+      <View style={styles.loadingSkeletonStoreRow}>
+        {skeletonBlock(9, styles.loadingSkeletonStoreCard)}
+        {skeletonBlock(10, styles.loadingSkeletonStoreCard)}
+      </View>
+    </>
+  );
+
+  const renderEnviesLayout = () => (
+    <>
+      {renderHeader()}
+      {skeletonBlock(2, [styles.loadingSkeletonTitleWide, styles.loadingSkeletonTitleWideEnvies])}
+      {skeletonBlock(3, [styles.loadingSkeletonTitleShort, styles.loadingSkeletonTitleShortEnvies])}
+      <View style={styles.loadingSkeletonChips}>
+        {skeletonBlock(4, [styles.loadingSkeletonChip, styles.loadingSkeletonChipWide])}
+        {skeletonBlock(5, styles.loadingSkeletonChip)}
+        {skeletonBlock(6, [styles.loadingSkeletonChip, styles.loadingSkeletonChipWide])}
+      </View>
+      <View style={styles.loadingSkeletonList}>
+        {[0, 1, 2, 3, 4].map((item) => skeletonBlock(7 + item, [
+          styles.loadingSkeletonListRow,
+          item % 2 === 1 && styles.loadingSkeletonListRowSoft,
+        ]))}
+      </View>
+    </>
+  );
+
+  const renderStoreLayout = () => (
+    <>
+      {renderHeader()}
+      {skeletonBlock(2, [styles.loadingSkeletonTitleWide, styles.loadingSkeletonTitleWideStore])}
+      <View style={styles.loadingSkeletonOffers}>
+        {skeletonBlock(3, [styles.loadingSkeletonOfferRow, styles.loadingSkeletonOfferRowHot])}
+        {skeletonBlock(4, styles.loadingSkeletonOfferRow)}
+        {skeletonBlock(5, styles.loadingSkeletonOfferRow)}
+      </View>
+      <View style={styles.loadingSkeletonPackGrid}>
+        {[0, 1, 2, 3, 4, 5].map((item) => skeletonBlock(6 + item, [
+          styles.loadingSkeletonPackTile,
+          item === 1 && styles.loadingSkeletonPackTileDark,
+          item === 2 && styles.loadingSkeletonPackTileHot,
+        ]))}
+      </View>
+    </>
+  );
+
+  return (
+    <View style={styles.loadingScreen}>
+      <View style={styles.loadingSkeletonStage}>
+        {layout === "home" ? renderHomeLayout() : null}
+        {layout === "envies" ? renderEnviesLayout() : null}
+        {layout === "store" ? renderStoreLayout() : null}
+      </View>
+      <View style={styles.loadingSyncPill}>
+        <Animated.View style={[styles.loadingSyncSpinner, { transform: [{ rotate: spinRotation }] }]} />
+        <Text style={styles.loadingSyncText}>Synchronisation de votre espace...</Text>
+      </View>
+    </View>
+  );
+}
+
+function SkeletonBlock({ reveal, style }: { reveal: Animated.Value; style: StyleProp<ViewStyle> }) {
+  const opacity = reveal.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
+  const translateY = reveal.interpolate({ inputRange: [0, 1], outputRange: [-18, 0] });
+  const scale = reveal.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1] });
+
+  return (
+    <Animated.View
+      style={[
+        styles.loadingSkeletonBlock,
+        style,
+        {
+          opacity,
+          transform: [{ translateY }, { scale }],
+        },
+      ]}
+    />
   );
 }
 
@@ -3929,7 +4414,9 @@ function MainShell({
   chatContextCardId,
   couple,
   debugEnabled,
+  enviesFocusCardId,
   enviesFocusCategory,
+  enviesGameModeRequest,
   providerLoading,
   revealedMatchIds,
   session,
@@ -3943,12 +4430,18 @@ function MainShell({
   onQueueChatAttachmentConsumption,
   onCopyInvite,
   onDebugFakeAd,
+  onDebugUnlockAllPurchases,
+  onDebugUnlockCategory,
+  onDebugUnlockFeature,
   onDeleteAccount,
   onDisableDebugProfiles,
   onLogout,
   onMoodChange,
   onMoodNotificationPreference,
   onNotificationPreference,
+  onEnviesGameModeRequestHandled,
+  onOpenEnvieCard,
+  onOpenEnviesGameMode,
   onOpenChat,
   onJoinPartner,
   onProvider,
@@ -3974,7 +4467,9 @@ function MainShell({
   chatContextCardId?: string;
   couple: CoupleState;
   debugEnabled: boolean;
+  enviesFocusCardId: string | null;
   enviesFocusCategory: DesireCategory | null;
+  enviesGameModeRequest: number;
   providerLoading: AuthProvider | null;
   revealedMatchIds: string[];
   session: Session | null;
@@ -3988,12 +4483,18 @@ function MainShell({
   onQueueChatAttachmentConsumption: (payload: { attachmentId: string; messageId: string }) => void | Promise<void>;
   onCopyInvite: () => void;
   onDebugFakeAd: () => void;
+  onDebugUnlockAllPurchases: () => void;
+  onDebugUnlockCategory: (category: DesireCategory) => void;
+  onDebugUnlockFeature: (feature: UnlockedFeature) => void;
   onDeleteAccount: () => void;
   onDisableDebugProfiles: () => void;
   onLogout: () => void;
   onMoodChange: (level: CoupleMoodLevel) => void;
   onMoodNotificationPreference: (enabled: boolean) => void;
   onNotificationPreference: (key: NotificationToggleKey, enabled: boolean) => void;
+  onEnviesGameModeRequestHandled: () => void;
+  onOpenEnvieCard: (card: DesireCard) => void;
+  onOpenEnviesGameMode: () => void;
   onOpenChat: (cardId?: string) => void;
   onJoinPartner: () => void;
   onProvider: (provider: AuthProvider) => void;
@@ -4014,14 +4515,20 @@ function MainShell({
   onUnlockUnlimitedResponses: () => void;
   onVote: (cardId: string, level: VoteLevel) => Promise<boolean>;
 }) {
+  const mainSafeAreaInsets = useSafeAreaInsets();
+  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
   const syncNotice = userFacingSyncNotice(syncError);
   const [dismissedSyncNotice, setDismissedSyncNotice] = useState("");
-  const [profileShortcutFaded, setProfileShortcutFaded] = useState(false);
   const chatNotificationsEnabled = isNotificationPreferenceEnabled(couple, couple.activePartnerId, "chatMessageEnabled");
   const visibleSyncNotice = syncNotice && syncNotice !== dismissedSyncNotice ? syncNotice : "";
   const dismissSyncNotice = useCallback(() => setDismissedSyncNotice(syncNotice), [syncNotice]);
   const tabBarActive: VisibleTabKey | null =
     tab === "profil" || tab === "rules" || (!debugEnabled && tab === "debug") ? null : tab;
+  const tabDockPaddingBottom = homeLayoutMetrics(viewportHeight, viewportWidth, mainSafeAreaInsets).rhythm;
+  const chatBottomNavInset = tabDockPaddingBottom + TAB_DOCK_VISIBLE_HEIGHT + CHAT_COMPOSER_NAV_GAP;
+  const tabDockFadeColors: readonly [string, string, string] = tab === "chat"
+    ? ["rgba(38,18,46,0)", "rgba(38,18,46,0.72)", candy.darkColor]
+    : ["rgba(245,40,110,0)", "rgba(245,40,110,0.72)", "rgba(245,40,110,0.98)"];
 
   useEffect(() => {
     if (!syncNotice) {
@@ -4029,45 +4536,37 @@ function MainShell({
     }
   }, [syncNotice]);
 
-  useEffect(() => {
-    if (tab !== "envies") {
-      setProfileShortcutFaded(false);
-    }
-  }, [tab]);
-
   return (
-    <View style={styles.app}>
+    <View style={[styles.app, tab === "chat" && styles.appDark]}>
       <View style={styles.content}>
         {tab === "home" ? (
           <HomeScreen
             couple={couple}
             onGoEnvies={() => onTabChange("envies")}
-            onGoMatch={() => onTabChange("match")}
-            onInvitePartner={onShowInvitePrompt}
-            onJoinPartner={onJoinPartner}
             onMoodChange={onMoodChange}
             onMoodNotificationPreference={onMoodNotificationPreference}
-            onOpenChat={onOpenChat}
+            onOpenEnvieCard={onOpenEnvieCard}
             onOpenProfile={() => onTabChange("profil")}
-            revealedMatchIds={revealedMatchIds}
-            onStatusEmojiChange={onStatusEmojiChange}
+            onRestorePurchases={onRestorePurchases}
             onUnlockCustomCards={onUnlockCustomCards}
             onUnlockCategory={onUnlockCategory}
             onUnlockNoAds={onUnlockNoAds}
             onUnlockUnlimitedResponses={onUnlockUnlimitedResponses}
-            onVote={onVote}
           />
         ) : null}
         {tab === "envies" ? (
           <EnviesScreen
             couple={couple}
+            focusCardId={enviesFocusCardId}
             focusCategory={enviesFocusCategory}
+            startInGameRequest={enviesGameModeRequest}
             onAddCustomDesire={onAddCustomDesire}
+            onStartInGameRequestHandled={onEnviesGameModeRequestHandled}
             onUnlockCustomCards={onUnlockCustomCards}
             onUnlockCategory={onUnlockCategory}
             onUnlockNoAds={onUnlockNoAds}
             onUnlockUnlimitedResponses={onUnlockUnlimitedResponses}
-            onProfileShortcutFadeChange={setProfileShortcutFaded}
+            onRestorePurchases={onRestorePurchases}
             onVote={onVote}
           />
         ) : null}
@@ -4076,7 +4575,7 @@ function MainShell({
             <MatchScreen
               couple={couple}
               revealedMatchIds={revealedMatchIds}
-              onGoEnvies={() => onTabChange("envies")}
+              onOpenGameMode={onOpenEnviesGameMode}
               onOpenChat={onOpenChat}
               onBeforeRevealMatch={onBeforeRevealMatch}
               onRevealMatch={onRevealMatch}
@@ -4089,8 +4588,15 @@ function MainShell({
               couple={couple}
               revealedMatchIds={revealedMatchIds}
               onCopyInvite={onCopyInvite}
+              onGoEnvies={() => onTabChange("envies")}
               onGoMatch={() => onTabChange("match")}
               onJoinPartner={onJoinPartner}
+              onOpenSettings={() => onTabChange("profil")}
+              onRestorePurchases={onRestorePurchases}
+              onUnlockCategory={onUnlockCategory}
+              onUnlockCustomCards={onUnlockCustomCards}
+              onUnlockNoAds={onUnlockNoAds}
+              onUnlockUnlimitedResponses={onUnlockUnlimitedResponses}
             />
           </Entrance>
         ) : null}
@@ -4104,6 +4610,7 @@ function MainShell({
               onLogout={onLogout}
               onMoodNotificationPreference={onMoodNotificationPreference}
               onNotificationPreference={onNotificationPreference}
+              onBack={() => onTabChange("home")}
               onProvider={onProvider}
               onDeleteAccount={onDeleteAccount}
               onRequestLeaveCouple={onRequestLeaveCouple}
@@ -4121,6 +4628,9 @@ function MainShell({
               onActorChange={onActorChange}
               onApplyPreset={onApplyDebugPreset}
               onDebugFakeAd={onDebugFakeAd}
+              onDebugUnlockAllPurchases={onDebugUnlockAllPurchases}
+              onDebugUnlockCategory={onDebugUnlockCategory}
+              onDebugUnlockFeature={onDebugUnlockFeature}
               onDisableDebugProfiles={onDisableDebugProfiles}
               onReplayTutorial={onReplayTutorial}
               onReset={onReset}
@@ -4132,13 +4642,23 @@ function MainShell({
         ) : null}
         {tab === "chat" ? (
           <Entrance delay={0} style={styles.flex}>
-            <ChatScreen
-              contextCardId={chatContextCardId}
-            couple={couple}
-            onConsumePhoto={onConsumeChatAttachment}
-            onQueuePhotoConsumption={onQueueChatAttachmentConsumption}
-            onSendMessage={onSendChatMessage}
-          />
+            {hasLinkedPartner(couple) ? (
+              <ChatScreen
+                bottomNavInset={chatBottomNavInset}
+                contextCardId={chatContextCardId}
+                couple={couple}
+                onConsumePhoto={onConsumeChatAttachment}
+                onBack={() => onTabChange("home")}
+                onQueuePhotoConsumption={onQueueChatAttachmentConsumption}
+                onSendMessage={onSendChatMessage}
+              />
+            ) : (
+              <ChatUnavailableScreen
+                bottomNavInset={chatBottomNavInset}
+                onBack={() => onTabChange("home")}
+                onGoCouple={() => onTabChange("couple")}
+              />
+            )}
           </Entrance>
         ) : null}
         {tab === "rules" ? (
@@ -4147,15 +4667,9 @@ function MainShell({
           </Entrance>
         ) : null}
       </View>
-      <ProfileShortcutButton
-        active={tab === "profil"}
-        faded={tab === "envies" && profileShortcutFaded}
-        profile={couple.profiles[couple.activePartnerId]}
-        onPress={() => onTabChange("profil")}
-      />
-      <View pointerEvents="box-none" style={styles.tabDock}>
+      <View pointerEvents="box-none" style={[styles.tabDock, tab === "chat" && styles.tabDockDark, { paddingBottom: tabDockPaddingBottom }]}>
         <LinearGradient
-          colors={["rgba(245,40,110,0)", "rgba(245,40,110,0.72)", "rgba(245,40,110,0.98)"]}
+          colors={tabDockFadeColors}
           pointerEvents="none"
           style={styles.tabDockFade}
         />
@@ -4238,12 +4752,12 @@ function CandyTabs({
   showDebug: boolean;
 }) {
   const allItems: Array<{ key: VisibleTabKey; label: string; icon: React.ReactNode }> = [
-    { key: "home", label: "Accueil", icon: <Home size={18} /> },
-    { key: "envies", label: "Envies", icon: <Flame size={18} /> },
-    { key: "match", label: "Matchs", icon: <Sparkles size={18} /> },
-    { key: "chat", label: "Chat", icon: <MessageCircle size={18} /> },
-    { key: "couple", label: "Nous", icon: <Heart size={18} /> },
-    { key: "debug", label: "Debug", icon: <Code2 size={18} /> },
+    { key: "home", label: "Accueil", icon: <Home size={20} /> },
+    { key: "envies", label: "Envies", icon: <Flame size={20} /> },
+    { key: "match", label: "Matchs", icon: <Sparkles size={20} /> },
+    { key: "chat", label: "Chat", icon: <MessageCircle size={20} /> },
+    { key: "couple", label: "Nous", icon: <Heart size={20} /> },
+    { key: "debug", label: "Debug", icon: <Code2 size={20} /> },
   ];
   const items = showDebug ? allItems : allItems.filter((item) => item.key !== "debug");
 
@@ -4283,33 +4797,42 @@ function CandyTabs({
 
 function EnviesScreen({
   couple,
+  focusCardId,
   focusCategory,
+  startInGameRequest,
   onAddCustomDesire,
+  onStartInGameRequestHandled,
   onUnlockCustomCards,
   onUnlockCategory,
   onUnlockNoAds,
   onUnlockUnlimitedResponses,
-  onProfileShortcutFadeChange,
+  onRestorePurchases,
   onVote,
 }: {
   couple: CoupleState;
+  focusCardId: string | null;
   focusCategory: DesireCategory | null;
+  startInGameRequest: number;
   onAddCustomDesire: (desire: CustomDesireDraft) => void;
+  onStartInGameRequestHandled: () => void;
   onUnlockCustomCards: () => void;
   onUnlockCategory: (category: DesireCategory) => void;
   onUnlockNoAds: () => void;
   onUnlockUnlimitedResponses: () => void;
-  onProfileShortcutFadeChange: (faded: boolean) => void;
+  onRestorePurchases: () => void;
   onVote: (cardId: string, level: VoteLevel) => Promise<boolean>;
 }) {
-  const { width } = useWindowDimensions();
+  const safeAreaInsets = useSafeAreaInsets();
+  const { height: viewportHeight, width } = useWindowDimensions();
   const [category, setCategory] = useState<DesireCategory>("Vanille");
   const [filter, setFilter] = useState<DesireFilterKey>("all");
   const [editorOpen, setEditorOpen] = useState(false);
-  const [libraryOpen, setLibraryOpen] = useState(false);
-  const [libraryCardIds, setLibraryCardIds] = useState<string[]>([]);
+  const [libraryOpen, setLibraryOpen] = useState(() => startInGameRequest <= 0);
+  const [localFocusCardId, setLocalFocusCardId] = useState<string | null>(null);
   const [gameTransitionCardId, setGameTransitionCardId] = useState<string | null>(null);
+  const [gameTransitionVoteLevel, setGameTransitionVoteLevel] = useState<VoteLevel | null>(null);
   const [exitingGameCardId, setExitingGameCardId] = useState<string | null>(null);
+  const [replayDeckIds, setReplayDeckIds] = useState<string[]>([]);
   const [gameBurstNonce, setGameBurstNonce] = useState(0);
   const [gameBurstVoteLevel, setGameBurstVoteLevel] = useState<VoteLevel>(2);
   const [purchaseCategory, setPurchaseCategory] = useState<DesireCategory | null>(null);
@@ -4319,7 +4842,6 @@ function EnviesScreen({
   const [unlimitedPurchaseOpen, setUnlimitedPurchaseOpen] = useState(false);
   const [storeOpen, setStoreOpen] = useState(false);
   const enviesHeaderScrollY = useRef(new Animated.Value(0)).current;
-  const profileShortcutFadedRef = useRef(false);
   const gameTransitionTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const ownVotes = couple.votes[couple.activePartnerId] ?? {};
   const [answeredInSession, setAnsweredInSession] = useState<Record<string, boolean>>({});
@@ -4329,77 +4851,149 @@ function EnviesScreen({
     () => categoryCards.filter((card) => ownVotes[card.id] === undefined),
     [categoryCards, ownVotes],
   );
-  const filterCounts = useMemo<Record<DesireFilterKey, number>>(() => ({
-    all: categoryCards.length,
-    todo: unansweredCards.length,
-    flame: categoryCards.filter((card) => isFlameVote(ownVotes[card.id])).length,
-    curious: categoryCards.filter((card) => ownVotes[card.id] === 1).length,
-    matches: categoryCards.filter((card) => isCardMatch(couple, card.id)).length,
-  }), [categoryCards, couple, ownVotes, unansweredCards.length]);
-  const buildLibraryCardIds = useCallback((nextCategory: DesireCategory, nextFilter: DesireFilterKey) => allCards.filter((card) => {
-    if (card.category !== nextCategory) {
-      return false;
+  const galleryCards = useMemo(() => {
+    const filteredCards = categoryCards.filter((card) => {
+      const vote = ownVotes[card.id];
+
+      if (filter === "all") {
+        return true;
+      }
+      if (filter === "todo") {
+        return vote === undefined;
+      }
+      if (filter === "hot") {
+        return isFlameVote(vote);
+      }
+      if (filter === "curious") {
+        return vote === 1;
+      }
+
+      return vote === 0;
+    });
+
+    if (filter !== "all") {
+      return filteredCards;
     }
 
-    const vote = ownVotes[card.id];
+    return [...filteredCards].sort((firstCard, secondCard) => {
+      const firstAnswered = ownVotes[firstCard.id] !== undefined;
+      const secondAnswered = ownVotes[secondCard.id] !== undefined;
 
-    if (nextFilter === "all") {
-      return true;
-    }
-    if (nextFilter === "todo") {
-      return vote === undefined;
-    }
-    if (nextFilter === "flame") {
-      return isFlameVote(vote);
-    }
-    if (nextFilter === "curious") {
-      return vote === 1;
+      if (firstAnswered === secondAnswered) {
+        return 0;
+      }
+
+      return firstAnswered ? 1 : -1;
+    });
+  }, [categoryCards, filter, ownVotes]);
+  const gameFocusCardId = focusCardId ?? localFocusCardId;
+  const replayAnsweredCards = replayDeckIds.length > 0;
+  const gameCards = useMemo(() => {
+    if (replayAnsweredCards) {
+      const categoryCardById = new Map(categoryCards.map((card) => [card.id, card]));
+      const replayCards = replayDeckIds
+        .map((cardId) => categoryCardById.get(cardId))
+        .filter((card): card is DesireCard => Boolean(card))
+        .filter((card) => {
+          if (answeredInSession[card.id]) {
+            return card.id === gameTransitionCardId || card.id === gameFocusCardId;
+          }
+
+          return true;
+        });
+
+      if (!gameFocusCardId) {
+        return replayCards;
+      }
+
+      const focusIndex = replayCards.findIndex((card) => card.id === gameFocusCardId);
+      if (focusIndex <= 0) {
+        return replayCards;
+      }
+
+      const focusedCard = replayCards[focusIndex];
+      if (!focusedCard) {
+        return replayCards;
+      }
+
+      return [focusedCard, ...replayCards.filter((card) => card.id !== gameFocusCardId)];
     }
 
-    return isCardMatch(couple, card.id);
-  }).map((card) => card.id), [allCards, couple, ownVotes]);
-  const libraryCardLookup = useMemo(() => new Map(categoryCards.map((card) => [card.id, card])), [categoryCards]);
-  const libraryCards = useMemo(
-    () => libraryCardIds
-      .map((cardId) => libraryCardLookup.get(cardId))
-      .filter((card): card is DesireCard => Boolean(card)),
-    [libraryCardIds, libraryCardLookup],
-  );
-  const gameCards = useMemo(() => categoryCards.filter((card) => {
-    if (answeredInSession[card.id]) {
-      return false;
+    const cards = categoryCards.filter((card) => {
+      if (answeredInSession[card.id]) {
+        return false;
+      }
+
+      return ownVotes[card.id] === undefined || card.id === gameTransitionCardId || card.id === gameFocusCardId;
+    });
+
+    if (!gameFocusCardId) {
+      return cards;
     }
 
-    return ownVotes[card.id] === undefined || card.id === gameTransitionCardId;
-  }), [answeredInSession, categoryCards, gameTransitionCardId, ownVotes]);
+    const focusIndex = cards.findIndex((card) => card.id === gameFocusCardId);
+    if (focusIndex <= 0) {
+      return cards;
+    }
+
+    const focusedCard = cards[focusIndex];
+    if (!focusedCard) {
+      return cards;
+    }
+
+    return [focusedCard, ...cards.filter((card) => card.id !== gameFocusCardId)];
+  }, [answeredInSession, categoryCards, gameFocusCardId, gameTransitionCardId, ownVotes, replayAnsweredCards, replayDeckIds]);
   const activeGameCard = gameCards[0];
+  const categoryAnsweredCount = useMemo(
+    () => categoryCards.filter((card) => ownVotes[card.id] !== undefined).length,
+    [categoryCards, ownVotes],
+  );
+  const categoryMatchCount = useMemo(
+    () => categoryCards.filter((card) => isCardMatch(couple, card.id)).length,
+    [categoryCards, couple],
+  );
   const customCount = customDesireCount(couple);
   const customUnlimited = hasCustomCardsUnlimited(couple);
   const customSlotsLeft = customDesireSlotsLeft(couple);
   const canCreateCustom = customUnlimited || customSlotsLeft > 0;
-  const unlimitedResponses = hasUnlimitedResponses(couple);
-  const dailyLeft = dailyResponsesLeft(couple, couple.activePartnerId);
-  const dailyQuotaLabel = unlimitedResponses ? "Réponses illimitées" : `${dailyLeft}/${DAILY_FREE_RESPONSE_LIMIT} choix restants`;
-  const libraryHint = filter === "all" ? `${filterCounts.all} cartes` : `${filterCounts[filter]} dans ce filtre`;
+  const gameProgressLabel = `${Math.max(0, categoryCards.length - unansweredCards.length)}/${Math.max(1, categoryCards.length)}`;
   const compactEnviesLayout = width < 620;
+  const enviesHeaderTopSpace = homeLayoutMetrics(viewportHeight, width, safeAreaInsets).rhythm;
   const enviesHeaderPaddingTop = useMemo(
     () => enviesHeaderScrollY.interpolate({
       extrapolate: "clamp",
-      inputRange: [0, APP_HEADER_TOP_SPACE - 8],
-      outputRange: [APP_HEADER_TOP_SPACE, 8],
+      inputRange: [0, 22],
+      outputRange: [enviesHeaderTopSpace, enviesHeaderTopSpace],
     }),
-    [enviesHeaderScrollY],
+    [enviesHeaderScrollY, enviesHeaderTopSpace],
   );
   const openCustomDesire = () => (canCreateCustom ? setEditorOpen(true) : setStoreOpen(true));
-  const refreshLibrarySnapshot = useCallback((nextCategory = category, nextFilter = filter) => {
-    setLibraryCardIds(buildLibraryCardIds(nextCategory, nextFilter));
-  }, [buildLibraryCardIds, category, filter]);
   const openLibrary = () => {
     setFilter("all");
-    refreshLibrarySnapshot(category, "all");
     setLibraryOpen(true);
+    setLocalFocusCardId(null);
+    setReplayDeckIds([]);
+    void Haptics.selectionAsync();
   };
-  const closeLibrary = () => setLibraryOpen(false);
+  const openGameMode = (card?: DesireCard) => {
+    if (card) {
+      setCategory(card.category);
+      setLocalFocusCardId(card.id);
+    }
+    setReplayDeckIds([]);
+    setLibraryOpen(false);
+    void Haptics.selectionAsync();
+  };
+  const replayAnsweredPack = () => {
+    clearGameTransitionTimers();
+    setAnsweredInSession({});
+    setExitingGameCardId(null);
+    setGameTransitionCardId(null);
+    setGameTransitionVoteLevel(null);
+    setLocalFocusCardId(null);
+    setReplayDeckIds(shuffledCards(categoryCards).map((card) => card.id));
+    void Haptics.selectionAsync();
+  };
   const selectCategoryFromPicker = (nextCategory: DesireCategory) => {
     changeCategory(nextCategory);
     setCategoryPickerOpen(false);
@@ -4415,43 +5009,30 @@ function EnviesScreen({
   };
   const changeCategory = (nextCategory: DesireCategory) => {
     setCategory(nextCategory);
-    if (libraryOpen) {
-      refreshLibrarySnapshot(nextCategory, filter);
-    }
+    setLocalFocusCardId(null);
+    setReplayDeckIds([]);
   };
-  const changeFilter = (nextFilter: DesireFilterKey) => {
-    setFilter(nextFilter);
-    if (libraryOpen) {
-      refreshLibrarySnapshot(category, nextFilter);
-    }
-  };
+  const changeFilter = (nextFilter: DesireFilterKey) => setFilter(nextFilter);
   const handleEnviesScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const scrollY = Math.max(0, event.nativeEvent.contentOffset.y);
-      const faded = scrollY > 12;
-
       enviesHeaderScrollY.setValue(scrollY);
-
-      if (profileShortcutFadedRef.current === faded) {
-        return;
-      }
-
-      profileShortcutFadedRef.current = faded;
-      onProfileShortcutFadeChange(faded);
     },
-    [enviesHeaderScrollY, onProfileShortcutFadeChange],
+    [enviesHeaderScrollY],
   );
   const voteInGame = async (cardId: string, level: VoteLevel) => {
     if (gameTransitionCardId) {
       return;
     }
 
-    const accepted = await onVote(cardId, level);
+    const replaySameVote = replayAnsweredCards && ownVotes[cardId] === level;
+    const accepted = replaySameVote || (await onVote(cardId, level));
     if (!accepted) {
       return;
     }
 
     setGameTransitionCardId(cardId);
+    setGameTransitionVoteLevel(level);
     setGameBurstVoteLevel(level);
 
     const exitTimer = setTimeout(() => {
@@ -4462,6 +5043,7 @@ function EnviesScreen({
       setAnsweredInSession((current) => ({ ...current, [cardId]: true }));
       setExitingGameCardId(null);
       setGameTransitionCardId(null);
+      setGameTransitionVoteLevel(null);
       gameTransitionTimers.current = gameTransitionTimers.current.filter((timer) => timer !== exitTimer && timer !== nextTimer);
     }, GAME_CARD_TOTAL_TRANSITION_MS);
 
@@ -4473,48 +5055,55 @@ function EnviesScreen({
       style={[styles.addDesireButton, !canCreateCustom && styles.addDesireButtonLocked]}
     >
       <Text style={styles.addDesireText}>
-        {canCreateCustom ? "+ Carte perso" : "Cartes perso"}
+        {canCreateCustom ? "+ Créer une carte perso" : "Cartes perso"}
       </Text>
-      <Text style={styles.addDesireLimitText}>
-        {customUnlimited ? "Illimité actif" : `${customCount}/${CUSTOM_CARD_FREE_LIMIT} gratuites`}
-      </Text>
-      <View style={styles.addDesireIcon}>
-        <Text style={styles.addDesireIconText}>{canCreateCustom ? "✎" : "🔐"}</Text>
-      </View>
     </SpringPressable>
   );
 
   useEffect(() => {
     if (focusCategory) {
       setCategory(focusCategory);
-      if (libraryOpen) {
-        refreshLibrarySnapshot(focusCategory, filter);
-      }
     }
-  }, [filter, focusCategory, libraryOpen, refreshLibrarySnapshot]);
+  }, [focusCategory]);
+
+  useEffect(() => {
+    if (!focusCardId) {
+      return;
+    }
+
+    setLibraryOpen(false);
+    setLocalFocusCardId(null);
+  }, [focusCardId]);
+
+  useEffect(() => {
+    if (startInGameRequest <= 0) {
+      return;
+    }
+
+    clearGameTransitionTimers();
+    setFilter("all");
+    setLibraryOpen(false);
+    setLocalFocusCardId(null);
+    setGameTransitionCardId(null);
+    setGameTransitionVoteLevel(null);
+    setExitingGameCardId(null);
+    setReplayDeckIds([]);
+    setAnsweredInSession({});
+    onStartInGameRequestHandled();
+  }, [onStartInGameRequestHandled, startInGameRequest]);
 
   useEffect(() => {
     clearGameTransitionTimers();
     setGameTransitionCardId(null);
+    setGameTransitionVoteLevel(null);
     setExitingGameCardId(null);
     setAnsweredInSession({});
+    setReplayDeckIds([]);
   }, [category, couple.activePartnerId]);
 
   useEffect(() => {
-    if (libraryOpen) {
-      refreshLibrarySnapshot(category, filter);
-    }
-  }, [category, couple.activePartnerId, filter, libraryOpen, refreshLibrarySnapshot]);
-
-  useEffect(() => {
     enviesHeaderScrollY.setValue(0);
-    profileShortcutFadedRef.current = false;
-    onProfileShortcutFadeChange(false);
-  }, [enviesHeaderScrollY, libraryOpen, onProfileShortcutFadeChange]);
-
-  useEffect(() => () => {
-    onProfileShortcutFadeChange(false);
-  }, [onProfileShortcutFadeChange]);
+  }, [enviesHeaderScrollY, libraryOpen]);
 
   useEffect(() => () => clearGameTransitionTimers(), []);
 
@@ -4527,41 +5116,41 @@ function EnviesScreen({
       />
       <Entrance delay={0} style={styles.enviesStickyContent}>
         <View style={styles.enviesGamePanel}>
-          <View style={styles.enviesTopGameBar}>
-            <View style={styles.enviesTopGameCopy}>
-              <View style={styles.enviesTopGameLabelRow}>
-                <Text style={styles.enviesGameEyebrow}>{libraryOpen ? "Bibliothèque" : "Mode jeu"}</Text>
-                <Text style={styles.enviesTopGameHint}>
-                  {libraryOpen ? libraryHint : activeGameCard ? dailyQuotaLabel : "Pack terminé"}
-                </Text>
+          {libraryOpen ? (
+            <View style={styles.enviesGalleryHero}>
+              <Text style={styles.enviesGalleryTitle}>Envies</Text>
+              <View pointerEvents="box-none" style={styles.enviesGalleryPackCenter}>
+                <SpringPressable onPress={() => setCategoryPickerOpen(true)} style={[styles.enviesPackPill, styles.enviesGalleryPackPill]}>
+                  <View style={styles.enviesPackPillDot} />
+                  <Text style={styles.enviesPackPillText}>{categoryLabel(category)}</Text>
+                  <ChevronRight size={15} color={candy.text} style={styles.enviesPackPillChevron} />
+                </SpringPressable>
               </View>
-              <Text style={styles.enviesGameTitle}>{libraryOpen ? "Toutes les cartes" : "Pack du moment"}</Text>
-              <Text style={styles.enviesGameSubtitle}>
-                {libraryOpen ? "Filtre les envies du pack choisi." : "Change de pack sans fouiller dans une liste minuscule."}
-              </Text>
+              <SpringPressable onPress={() => openGameMode()} style={styles.enviesModeButton}>
+                <Text style={styles.enviesModeButtonText}>Mode jeu</Text>
+                <ChevronRight size={18} color={candy.red} />
+              </SpringPressable>
             </View>
-            {libraryOpen ? (
-              <SpringPressable onPress={closeLibrary} style={styles.enviesLibraryButton}>
-                <ArrowLeft size={15} color={candy.red} />
-                <Text style={styles.enviesLibraryButtonText}>Jeu</Text>
-              </SpringPressable>
-            ) : (
-              <SpringPressable onPress={openLibrary} style={styles.enviesLibraryButton}>
-                <Search size={15} color={candy.red} />
-                <Text style={styles.enviesLibraryButtonText}>Toutes</Text>
-              </SpringPressable>
-            )}
-          </View>
-          <PackSelectorCard
-            active={category}
-            couple={couple}
-            onOpen={() => setCategoryPickerOpen(true)}
-          />
+          ) : (
+            <>
+              <View style={styles.enviesTopGameBar}>
+                <SpringPressable onPress={openLibrary} style={[styles.enviesGalleryBackButton, styles.enviesGameBackButton]}>
+                  <ArrowLeft size={15} color={candy.red} />
+                  <Text style={styles.enviesGalleryBackText}>Galerie</Text>
+                </SpringPressable>
+                <SpringPressable onPress={() => setCategoryPickerOpen(true)} style={[styles.enviesPackPill, styles.enviesGamePackPill]}>
+                  <View style={styles.enviesPackPillDot} />
+                  <Text style={styles.enviesPackPillText}>{categoryLabel(category)}</Text>
+                  <ChevronRight size={15} color={candy.text} style={styles.enviesPackPillChevron} />
+                </SpringPressable>
+                <Text style={styles.enviesGameProgress}>{gameProgressLabel}</Text>
+              </View>
+            </>
+          )}
         </View>
         {libraryOpen ? (
           <DesireFilterChips
             active={filter}
-            counts={filterCounts}
             onChange={changeFilter}
           />
         ) : null}
@@ -4582,9 +5171,9 @@ function EnviesScreen({
           >
             {enviesHeader}
             <View style={styles.cardStack}>
-              {libraryCards.map((card, index) => (
+              {galleryCards.map((card, index) => (
                 <Entrance delay={70 + index * 70} key={card.id}>
-                  <DesireCandyCard card={card} couple={couple} onVote={onVote} />
+                  <DesireGalleryRow card={card} couple={couple} onPress={() => openGameMode(card)} />
                 </Entrance>
               ))}
             </View>
@@ -4608,9 +5197,11 @@ function EnviesScreen({
                 <GameCardTransition
                   exiting={exitingGameCardId === activeGameCard.id}
                   key={activeGameCard.id}
+                  voteLevel={gameTransitionVoteLevel ?? undefined}
                 >
                   <DesireGameCard
                     card={activeGameCard}
+                    confirmingVote={activeGameCard.id === gameTransitionCardId ? gameTransitionVoteLevel ?? undefined : undefined}
                     disabled={Boolean(gameTransitionCardId)}
                     selectedVote={ownVotes[activeGameCard.id]}
                     onVote={voteInGame}
@@ -4619,22 +5210,20 @@ function EnviesScreen({
               ) : (
                 <Entrance delay={80}>
                   <EnviesGameEmpty
+                    answeredCount={categoryAnsweredCount}
                     category={category}
+                    matchCount={categoryMatchCount}
                     onOpenLibrary={openLibrary}
-                    onOpenCustomDesire={openCustomDesire}
+                    onReplayAnsweredCards={replayAnsweredPack}
+                    totalCount={categoryCards.length}
                   />
                 </Entrance>
               )}
               <PersistentBurstLayer triggerKey={gameBurstNonce} voteLevel={gameBurstVoteLevel} />
             </View>
-            {compactEnviesLayout ? (
-              <View style={styles.addDesireInlineDock}>
-                <Entrance delay={120}>{addDesireButton}</Entrance>
-              </View>
-            ) : null}
           </ScrollView>
         )}
-        {!compactEnviesLayout ? (
+        {libraryOpen && !compactEnviesLayout ? (
           <View pointerEvents="box-none" style={styles.addDesireFloatingDock}>
             <Entrance delay={120}>{addDesireButton}</Entrance>
           </View>
@@ -4656,7 +5245,7 @@ function EnviesScreen({
         onSave={(desire) => {
           onAddCustomDesire(desire);
           setCategory(desire.category);
-          closeLibrary();
+          setLibraryOpen(false);
           setEditorOpen(false);
         }}
         visible={editorOpen}
@@ -4689,6 +5278,7 @@ function EnviesScreen({
         onOpenNoAds={() => setNoAdsPurchaseOpen(true)}
         onOpenUnlimitedResponses={() => setUnlimitedPurchaseOpen(true)}
         onOpenPack={setPurchaseCategory}
+        onRestorePurchases={onRestorePurchases}
         visible={storeOpen}
       />
       <NoAdsPurchaseModal
@@ -4727,13 +5317,33 @@ function CustomDesireEditor({
   onSave: (desire: CustomDesireDraft) => void;
   visible: boolean;
 }) {
+  const safeAreaInsets = useSafeAreaInsets();
   const [title, setTitle] = useState("");
   const [blurb, setBlurb] = useState("");
   const [emoji, setEmoji] = useState(() => randomCustomDesireEmoji());
+  const [ambiance, setAmbiance] = useState<(typeof customDesireAmbianceOptions)[number]>("Complice");
   const cleanTitle = title.trim();
   const cleanBlurb = blurb.trim();
   const previewEmoji = normalizeEmoji(emoji, stickers.heart);
   const canSave = cleanTitle.length >= 3 && cleanBlurb.length >= 8;
+  const freeSlotsLeft = Math.max(0, CUSTOM_CARD_FREE_LIMIT - customCount);
+  const quotaLabel = customUnlimited
+    ? "Illimité actif"
+    : `${Math.min(customCount, CUSTOM_CARD_FREE_LIMIT)} / ${CUSTOM_CARD_FREE_LIMIT} gratuites`;
+  const footerCopy = customUnlimited
+    ? "Cartes perso illimitées actives"
+    : freeSlotsLeft === 1
+      ? `Plus que 1 carte gratuite · Illimitées pour ${CUSTOM_CARDS_UNLIMITED_PRICE}`
+      : `${freeSlotsLeft} cartes gratuites restantes · Illimitées pour ${CUSTOM_CARDS_UNLIMITED_PRICE}`;
+  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
+  const editorSurface = fullScreenSurfaceMetrics(viewportWidth);
+  const editorSideInset = editorSurface.sideInset;
+  const editorContentWidth = editorSurface.contentWidth;
+  const editorLayoutRhythm = Math.round(Math.min(34, Math.max(18, viewportHeight * 0.02)));
+  const editorPreviewMinHeight = Math.round(Math.min(306, Math.max(226, viewportHeight * 0.2)));
+  const editorBottomReserve = Math.max(136, safeAreaInsets.bottom + 118);
+  const editorContentMinHeight = Math.max(0, viewportHeight - safeAreaInsets.top - editorBottomReserve);
+  const editorWebInputReset = Platform.OS === "web" ? ({ outlineStyle: "none" } as never) : null;
 
   useEffect(() => {
     if (!visible) {
@@ -4743,6 +5353,7 @@ function CustomDesireEditor({
     setTitle("");
     setBlurb("");
     setEmoji(randomCustomDesireEmoji());
+    setAmbiance("Complice");
   }, [visible]);
 
   function save() {
@@ -4760,103 +5371,141 @@ function CustomDesireEditor({
   }
 
   return (
-    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.editorOverlay}>
-        <Pressable style={styles.editorBackdrop} onPress={onClose} />
-        <View style={styles.editorSheet}>
-          <View style={styles.editorHandle} />
-          <View style={styles.editorHeader}>
-            <View style={styles.editorHeaderCopy}>
-              <Text style={styles.editorEyebrow}>Envie perso</Text>
-              <Text style={styles.editorTitle}>Ajouter votre propre carte</Text>
-              <Text style={styles.editorIntro}>Elle sera rangée dans la catégorie Perso.</Text>
-              <Text style={styles.editorQuota}>
-                {customUnlimited ? "Pack illimité actif" : `${Math.min(customCount, CUSTOM_CARD_FREE_LIMIT)}/${CUSTOM_CARD_FREE_LIMIT} cartes gratuites utilisées`}
-              </Text>
-            </View>
-            <SpringPressable onPress={onClose} style={styles.editorCloseButton}>
-              <X size={18} color={candy.red} />
-            </SpringPressable>
-          </View>
+    <Modal animationType="slide" visible={visible} onRequestClose={onClose}>
+      <LinearGradient colors={[candy.red, candy.red]} style={styles.editorScreen}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.editorOverlay}>
+          <SafeAreaView style={styles.editorSafe}>
+            <ScrollView
+              contentContainerStyle={[
+                styles.editorScrollContent,
+                {
+                  paddingBottom: editorBottomReserve,
+                  paddingHorizontal: editorSideInset,
+                },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={[styles.editorContent, { minHeight: editorContentMinHeight, width: editorContentWidth }]}>
+                <View style={styles.editorTopBar}>
+                  <SpringPressable onPress={onClose} style={styles.editorBackButton}>
+                    <ArrowLeft size={20} color={candy.white} />
+                  </SpringPressable>
+                  <Text style={styles.editorQuota}>{quotaLabel}</Text>
+                </View>
 
-          <View style={styles.editorIconField}>
-            <View style={styles.editorIconPreview}>
-              <Text style={styles.editorIconPreviewEmoji}>{previewEmoji}</Text>
-            </View>
-            <View style={styles.editorIconCopy}>
-              <Text style={styles.editorLabel}>Icône de la carte</Text>
-              <TextInput
-                maxLength={8}
-                onChangeText={setEmoji}
-                placeholder="🍑"
-                placeholderTextColor="rgba(59,23,55,0.38)"
-                style={styles.editorEmojiInput}
-                value={emoji}
-              />
-              <View style={styles.editorEmojiPresetRow}>
-                {customDesireEmojiPresets.map((preset) => {
-                  const active = previewEmoji === preset;
-                  return (
-                    <SpringPressable
-                      key={preset}
-                      onPress={() => setEmoji(preset)}
-                      style={[styles.editorEmojiPreset, active && styles.editorEmojiPresetActive]}
-                    >
-                      <Text style={styles.editorEmojiPresetText}>{preset}</Text>
-                    </SpringPressable>
-                  );
-                })}
+                <View style={[styles.editorMainArea, { gap: editorLayoutRhythm }]}>
+                  <Text style={styles.editorTitle}>
+                    Votre carte à vous<Text style={styles.editorTitleDot}>.</Text>
+                  </Text>
+
+                  <View style={[styles.editorPreviewCard, { minHeight: editorPreviewMinHeight }]}>
+                    <View style={styles.editorPreviewHeader}>
+                      <Text style={styles.editorEyebrow}>Perso · aperçu</Text>
+                      <View style={styles.editorPreviewRing} />
+                    </View>
+                    <View style={styles.editorPreviewBody}>
+                      <View style={styles.editorIconPreview}>
+                        <Text style={styles.editorIconPreviewEmoji}>{previewEmoji}</Text>
+                      </View>
+                      <View style={styles.editorPreviewCopy}>
+                        <View style={[styles.editorEditableField, styles.editorTitleField]}>
+                          <Text style={styles.editorFieldLabel}>Titre</Text>
+                          <TextInput
+                            maxLength={70}
+                            multiline
+                            onChangeText={setTitle}
+                            placeholder="Ecrivez quelque chose..."
+                            placeholderTextColor="rgba(59,23,55,0.42)"
+                            style={[styles.editorTitleInput, editorWebInputReset]}
+                            value={title}
+                          />
+                        </View>
+                        <View style={[styles.editorEditableField, styles.editorBlurbField]}>
+                          <Text style={styles.editorFieldLabel}>Précision</Text>
+                          <TextInput
+                            maxLength={150}
+                            multiline
+                            onChangeText={setBlurb}
+                            placeholder="Ajoutez une precision..."
+                            placeholderTextColor="rgba(59,23,55,0.42)"
+                            style={[styles.editorBlurbInput, editorWebInputReset]}
+                            value={blurb}
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.editorControls}>
+                    <View style={styles.editorSection}>
+                      <Text style={styles.editorLabel}>Emoji</Text>
+                      <View style={styles.editorEmojiPresetRow}>
+                        {customDesireQuickEmojis.map((preset) => {
+                          const active = previewEmoji === preset;
+                          return (
+                            <SpringPressable
+                              key={preset}
+                              onPress={() => setEmoji(preset)}
+                              style={[styles.editorEmojiPreset, active && styles.editorEmojiPresetActive]}
+                            >
+                              <Text style={styles.editorEmojiPresetText}>{preset}</Text>
+                            </SpringPressable>
+                          );
+                        })}
+                        <SpringPressable onPress={() => setEmoji(randomCustomDesireEmoji())} style={styles.editorEmojiPreset}>
+                          <Text style={styles.editorMoreText}>...</Text>
+                        </SpringPressable>
+                      </View>
+                    </View>
+
+                    <View style={styles.editorSection}>
+                      <Text style={styles.editorLabel}>Ambiance</Text>
+                      <View style={styles.editorAmbianceRow}>
+                        {customDesireAmbianceOptions.map((option) => {
+                          const active = ambiance === option;
+                          return (
+                            <SpringPressable
+                              key={option}
+                              onPress={() => setAmbiance(option)}
+                              style={[styles.editorAmbianceChip, active && styles.editorAmbianceChipActive]}
+                            >
+                              <Text style={[styles.editorAmbianceText, active && styles.editorAmbianceTextActive]}>{option}</Text>
+                            </SpringPressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View
+              pointerEvents="box-none"
+              style={[
+                styles.editorBottomBar,
+                {
+                  paddingBottom: Math.max(10, safeAreaInsets.bottom),
+                  paddingHorizontal: editorSideInset,
+                },
+              ]}
+            >
+              <View style={[styles.editorBottomContent, { width: editorContentWidth }]}>
+                <SpringPressable
+                  disabled={!canSave}
+                  onPress={save}
+                  style={[styles.editorSubmitButton, !canSave && styles.editorSubmitButtonDisabled]}
+                >
+                  <Text style={styles.editorSubmitText}>Ajouter à notre jeu</Text>
+                </SpringPressable>
+                <Text style={styles.editorFooterText}>{footerCopy}</Text>
               </View>
             </View>
-          </View>
-
-          <View style={styles.editorField}>
-            <Text style={styles.editorLabel}>Titre</Text>
-            <TextInput
-              maxLength={70}
-              onChangeText={setTitle}
-              placeholder="Ex: Bain moussant interdit"
-              placeholderTextColor="rgba(59,23,55,0.46)"
-              style={styles.editorInput}
-              value={title}
-            />
-          </View>
-
-          <View style={styles.editorField}>
-            <Text style={styles.editorLabel}>Phrase courte</Text>
-            <TextInput
-              maxLength={150}
-              multiline
-              onChangeText={setBlurb}
-              placeholder="Une phrase claire, concrète, qui donne envie."
-              placeholderTextColor="rgba(59,23,55,0.46)"
-              style={[styles.editorInput, styles.editorTextArea]}
-              value={blurb}
-            />
-          </View>
-
-          <View style={styles.editorField}>
-            <Text style={styles.editorLabel}>Rangement</Text>
-            <View style={styles.editorPersonalCategory}>
-              <Text style={styles.editorPersonalEmoji}>💭</Text>
-              <View style={styles.editorPersonalCopy}>
-                <Text style={styles.editorPersonalTitle}>Catégorie Perso</Text>
-                <Text style={styles.editorPersonalText}>Vos cartes perso restent séparées des packs officiels.</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.editorStorageHint}>
-            <LockKeyhole size={14} color={candy.red} />
-            <Text style={styles.editorStorageHintText}>L'icône et le texte sont sauvegardés ensemble. Les votes restent séparés.</Text>
-          </View>
-
-          <View style={styles.editorActions}>
-            <WsButton label="Annuler" onPress={onClose} size="md" style={styles.editorSecondaryButton} variant="secondary" />
-            <WsButton disabled={!canSave} label="Créer la carte" onPress={save} size="md" style={styles.editorPrimaryButton} variant="hot" />
-          </View>
-        </View>
-      </KeyboardAvoidingView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+        <StatusBar style="light" />
+      </LinearGradient>
     </Modal>
   );
 }
@@ -5181,6 +5830,8 @@ function CategoryPickerModal({
   onSelect: (category: DesireCategory) => void;
   visible: boolean;
 }) {
+  const customCount = customDesireCount(couple);
+  const customUnlimited = hasCustomCardsUnlimited(couple);
   const categoryCounts = useMemo(() => {
     const counts = new Map<DesireCategory, number>();
 
@@ -5199,44 +5850,102 @@ function CategoryPickerModal({
           <View style={styles.categoryPickerSheet}>
             <View style={styles.categoryPickerHeader}>
               <View style={styles.categoryPickerHeaderCopy}>
-                <Text style={styles.categoryPickerEyebrow}>Changer de pack</Text>
-                <Text style={styles.categoryPickerTitle}>Toutes les ambiances</Text>
-                <Text style={styles.categoryPickerText}>Choisis le pack qui donne le ton de la prochaine carte.</Text>
+                <Text style={styles.categoryPickerTitle}>Packs</Text>
+                <Text style={styles.categoryPickerText}>Des univers à explorer, à deux.</Text>
               </View>
               <SpringPressable onPress={onClose} style={styles.categoryPickerClose}>
                 <X size={20} color={candy.red} />
               </SpringPressable>
             </View>
             <ScrollView contentContainerStyle={styles.categoryPickerGrid} showsVerticalScrollIndicator={false}>
-              {DESIRE_CATEGORIES.map((category) => {
-                const tone = categoryTone(category);
+              {PACK_PICKER_CATEGORIES.map((category) => {
+                const visual = categoryVisual(category);
                 const unlocked = isCategoryUnlocked(couple, category);
                 const selected = category === active;
-                const count = categoryCounts.get(category) ?? 0;
+                const personal = category === PERSONAL_CATEGORY;
+                const count = personal ? customCount : categoryCounts.get(category) ?? desireCardCount(category);
+                const countLabel = personal
+                  ? customUnlimited
+                    ? "Illimité"
+                    : `${Math.min(customCount, CUSTOM_CARD_FREE_LIMIT)} / ${CUSTOM_CARD_FREE_LIMIT} cartes`
+                  : `${count} cartes`;
+                const badgeLabel = selected
+                  ? "Actif"
+                  : personal
+                    ? "Choisir"
+                    : category === "Vanille"
+                      ? "Inclus"
+                      : unlocked
+                        ? "Ouvert"
+                        : CATEGORY_PRICES[category] ?? "4,99 €";
+                const darkCard = ["Jeux & Défis", "Scénarios", "BDSM", "Tabous"].includes(category);
+                const creamCard = category === "Vanille" || personal;
+                const hotCard = category === "Hot";
+                const action = unlocked ? () => onSelect(category) : () => onLockedCategory(category);
 
                 return (
                   <SpringPressable
                     key={category}
-                    onPress={() => (unlocked ? onSelect(category) : onLockedCategory(category))}
+                    onPress={action}
                     style={[
                       styles.categoryPickerCard,
-                      { backgroundColor: selected ? tone.active : tone.bg },
+                      creamCard && styles.categoryPickerCardCream,
+                      personal && styles.categoryPickerCardPersonal,
+                      !creamCard && { backgroundColor: visual.accent },
                       selected && styles.categoryPickerCardSelected,
                       selected && categoryChipShadow(category, true, unlocked),
                       !unlocked && styles.categoryPickerCardLocked,
                     ]}
+                    testID={`category-picker-card-${category}`}
                   >
-                    <View style={styles.categoryPickerIcon}>
-                      <Text style={styles.categoryPickerEmoji}>{tone.icon}</Text>
+                    {!creamCard ? (
+                      <LinearGradient colors={visual.colors} pointerEvents="none" style={styles.categoryPickerCardFill} />
+                    ) : null}
+                    <CategoryPickerPattern category={category} />
+                    <View style={styles.categoryPickerCardCopy}>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.categoryPickerCardTitle,
+                          darkCard && styles.categoryPickerCardTitleLight,
+                          hotCard && styles.categoryPickerCardTitleDark,
+                        ]}
+                      >
+                        {categoryLabel(category)}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.categoryPickerCardText,
+                          darkCard && styles.categoryPickerCardTextLight,
+                          hotCard && styles.categoryPickerCardTextDark,
+                        ]}
+                      >
+                        {countLabel}
+                      </Text>
+                      <View
+                        style={[
+                          styles.categoryPickerLock,
+                          selected && styles.categoryPickerBadgeActive,
+                          personal && styles.categoryPickerBadgeCreate,
+                        ]}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.categoryPickerBadgeText,
+                            selected && styles.categoryPickerBadgeTextActive,
+                            hotCard && !selected && !unlocked && styles.categoryPickerBadgeTextHot,
+                            personal && styles.categoryPickerBadgeTextCreate,
+                          ]}
+                        >
+                          {badgeLabel}
+                        </Text>
+                      </View>
                     </View>
-                    <Text numberOfLines={1} style={styles.categoryPickerCardTitle}>{categoryLabel(category)}</Text>
-                    <Text numberOfLines={2} style={styles.categoryPickerCardText}>
-                      {unlocked ? `${count} cartes disponibles` : "Pack à débloquer"}
-                    </Text>
-                    {selected ? <Text style={styles.categoryPickerSelectedText}>Actif</Text> : null}
-                    {!unlocked ? (
-                      <View style={styles.categoryPickerLock}>
-                        <LockKeyhole size={14} color={candy.red} />
+                    {!unlocked && !personal ? (
+                      <View style={styles.categoryPickerLockIcon}>
+                        <LockKeyhole size={17} color={hotCard ? candy.black : candy.yellow} />
                       </View>
                     ) : null}
                   </SpringPressable>
@@ -5248,6 +5957,56 @@ function CategoryPickerModal({
       </View>
     </Modal>
   );
+}
+
+function CategoryPickerPattern({ category }: { category: DesireCategory }) {
+  const dotCategories: DesireCategory[] = ["Sensuel", "Hot", "Jeux & Défis", "BDSM"];
+  const stripeCategories: DesireCategory[] = ["Vanille", "Séduction", "Scénarios", "Kinky Soft", "Plaisirs explicites", "Tabous"];
+
+  if (category === PERSONAL_CATEGORY) {
+    return null;
+  }
+
+  if (dotCategories.includes(category)) {
+    return (
+      <View pointerEvents="none" style={styles.categoryPickerPatternLayer}>
+        {Array.from({ length: 24 }).map((_, index) => (
+          <View
+            key={index}
+            style={[
+              styles.categoryPickerDot,
+              {
+                left: `${10 + (index % 6) * 16}%`,
+                opacity: category === "Jeux & Défis" || category === "BDSM" ? 0.16 : 0.28,
+                top: `${10 + Math.floor(index / 6) * 22}%`,
+              },
+            ]}
+          />
+        ))}
+      </View>
+    );
+  }
+
+  if (stripeCategories.includes(category)) {
+    return (
+      <View pointerEvents="none" style={styles.categoryPickerPatternLayer}>
+        {Array.from({ length: 8 }).map((_, index) => (
+          <View
+            key={index}
+            style={[
+              styles.categoryPickerStripe,
+              {
+                left: `${index * 18 - 34}%`,
+                opacity: category === "Vanille" ? 0.42 : 0.18,
+              },
+            ]}
+          />
+        ))}
+      </View>
+    );
+  }
+
+  return null;
 }
 
 function CategoryChips({
@@ -5338,15 +6097,18 @@ function CategoryChips({
 
 function DesireFilterChips({
   active,
-  counts,
   onChange,
 }: {
   active: DesireFilterKey;
-  counts: Record<DesireFilterKey, number>;
   onChange: (filter: DesireFilterKey) => void;
 }) {
   return (
-    <View style={styles.desireFilterRow}>
+    <ScrollView
+      horizontal
+      contentContainerStyle={styles.desireFilterRow}
+      style={styles.desireFilterScroll}
+      showsHorizontalScrollIndicator={false}
+    >
       {desireFilterOptions.map((option) => {
         const selected = option.key === active;
 
@@ -5356,12 +6118,97 @@ function DesireFilterChips({
             onPress={() => onChange(option.key)}
             style={[styles.desireFilterChip, selected && styles.desireFilterChipActive]}
           >
-            <Text style={[styles.desireFilterText, selected && styles.desireFilterTextActive]}>{option.label}</Text>
-            <Text style={[styles.desireFilterCount, selected && styles.desireFilterCountActive]}>{counts[option.key]}</Text>
+            <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.desireFilterText, selected && styles.desireFilterTextActive]}>{option.label}</Text>
           </SpringPressable>
         );
       })}
-    </View>
+    </ScrollView>
+  );
+}
+
+function DesireGalleryRow({
+  card,
+  couple,
+  onPress,
+}: {
+  card: DesireCard;
+  couple: CoupleState;
+  onPress: () => void;
+}) {
+  const ownVote = couple.votes[couple.activePartnerId][card.id];
+  const matched = isCardMatch(couple, card.id);
+  const answered = ownVote !== undefined;
+  const statusLabel = matched ? "Match" : answered ? "Répondu" : "À répondre";
+  const responseLabel = answered ? galleryVoteAnswerLabel(ownVote) : "";
+
+  return (
+    <SpringPressable
+      onPress={onPress}
+      style={[
+        styles.desireGalleryRow,
+        matched && styles.desireGalleryRowMatch,
+        answered && !matched && styles.desireGalleryRowAnswered,
+      ]}
+      testID={`desire-gallery-row-${card.id}`}
+    >
+      <View style={styles.desireGalleryCopy}>
+        <Text
+          numberOfLines={2}
+          style={[styles.desireGalleryCardTitle, matched && styles.desireGalleryCardTitleMatch]}
+        >
+          {card.title}
+        </Text>
+        <View style={styles.desireGalleryMetaRow}>
+          <Text
+            numberOfLines={1}
+            style={[styles.desireGalleryCategory, matched && styles.desireGalleryCategoryMatch]}
+          >
+            {categoryLabel(card.category)}
+          </Text>
+          {responseLabel ? (
+            <View
+              style={[
+                styles.desireGalleryAnswerPill,
+                ownVote === 0 && styles.desireGalleryAnswerPillNo,
+                ownVote === 1 && styles.desireGalleryAnswerPillCurious,
+                isFlameVote(ownVote) && styles.desireGalleryAnswerPillHot,
+                matched && !isFlameVote(ownVote) && styles.desireGalleryAnswerPillMatch,
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.desireGalleryAnswerText,
+                  isFlameVote(ownVote) && styles.desireGalleryAnswerTextHot,
+                  matched && !isFlameVote(ownVote) && styles.desireGalleryAnswerTextMatch,
+                ]}
+              >
+                {responseLabel}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+      <View
+        style={[
+          styles.desireGalleryStatus,
+          !answered && styles.desireGalleryStatusTodo,
+          answered && !matched && styles.desireGalleryStatusAnswered,
+          matched && styles.desireGalleryStatusMatch,
+        ]}
+      >
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.desireGalleryStatusText,
+            !answered && styles.desireGalleryStatusTextTodo,
+            matched && styles.desireGalleryStatusTextMatch,
+          ]}
+        >
+          {statusLabel}
+        </Text>
+      </View>
+    </SpringPressable>
   );
 }
 
@@ -5547,9 +6394,11 @@ function PersistentBurstLayer({
 function GameCardTransition({
   children,
   exiting,
+  voteLevel,
 }: {
   children: React.ReactNode;
   exiting: boolean;
+  voteLevel?: VoteLevel;
 }) {
   const entrance = useRef(new Animated.Value(0)).current;
   const exit = useRef(new Animated.Value(0)).current;
@@ -5587,40 +6436,53 @@ function GameCardTransition({
   }, [exit, exiting]);
 
   const exitOpacity = exit.interpolate({
-    inputRange: [0, 0.72, 0.86, 1],
-    outputRange: [1, 1, 0.34, 0],
+    inputRange: [0, 0.62, 0.86, 1],
+    outputRange: [1, 1, 0.44, 0],
   });
   const exitScale = exit.interpolate({
-    inputRange: [0, 0.72, 1],
-    outputRange: [1, 0.4, 0.5],
+    inputRange: [0, 0.62, 1],
+    outputRange: [1, 1.035, 0.88],
   });
   const exitRotate = exit.interpolate({
-    inputRange: [0, 0.72, 1],
-    outputRange: ["0deg", "-1deg", "4deg"],
+    inputRange: [0, 0.62, 1],
+    outputRange: ["0deg", voteLevel === 0 ? "-2deg" : voteLevel === 1 ? "2deg" : "0deg", voteLevel === 0 ? "-7deg" : voteLevel === 1 ? "7deg" : "3deg"],
+  });
+  const exitTranslateX = exit.interpolate({
+    inputRange: [0, 0.62, 1],
+    outputRange: [0, voteLevel === 0 ? -6 : voteLevel === 1 ? 6 : 0, voteLevel === 0 ? -54 : voteLevel === 1 ? 54 : 0],
+  });
+  const exitTranslateY = exit.interpolate({
+    inputRange: [0, 0.62, 1],
+    outputRange: [0, 12, 86],
   });
 
   return (
     <View style={[styles.gameCardTransitionHost, exiting ? styles.gameCardTransitionHostExiting : styles.gameCardTransitionHostEntering]}>
       <Animated.View
-        style={{
-          opacity: exiting ? exitOpacity : entrance,
-          transform: [
-            {
-              translateY: entrance.interpolate({
-                inputRange: [0, 1],
-                outputRange: [16, 0],
-              }),
-            },
-            {
-              scale: entrance.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.96, 1],
-              }),
-            },
-            { scale: exitScale },
-            { rotate: exitRotate },
-          ],
-        }}
+        style={[
+          styles.gameCardTransitionBody,
+          {
+            opacity: exiting ? exitOpacity : entrance,
+            transform: [
+              {
+                translateY: entrance.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [16, 0],
+                }),
+              },
+              { translateX: exitTranslateX },
+              { translateY: exitTranslateY },
+              {
+                scale: entrance.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.96, 1],
+                }),
+              },
+              { scale: exitScale },
+              { rotate: exitRotate },
+            ],
+          },
+        ]}
       >
         {children}
       </Animated.View>
@@ -5630,69 +6492,174 @@ function GameCardTransition({
 
 function DesireGameCard({
   card,
+  confirmingVote,
   disabled,
   selectedVote,
   onVote,
 }: {
   card: DesireCard;
+  confirmingVote?: VoteLevel;
   disabled?: boolean;
   selectedVote?: VoteLevel;
   onVote: (cardId: string, level: VoteLevel) => void;
 }) {
-  const tone = categoryCardTone(card.category);
-  const { width } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   const roomy = width >= 620;
+  const voteGap = roomy ? 12 : 6;
+  const desiredSideVoteSize = roomy ? 124 : 106;
+  const desiredFeaturedVoteSize = roomy ? 148 : 130;
+  const availableVoteWidth = Math.max(300, width - 36);
+  const desiredVoteWidth = desiredSideVoteSize * 2 + desiredFeaturedVoteSize + voteGap * 2;
+  const voteScale = Math.min(1, availableVoteWidth / desiredVoteWidth);
+  const sideVoteSize = Math.round(desiredSideVoteSize * voteScale);
+  const featuredVoteSize = Math.round(desiredFeaturedVoteSize * voteScale);
+  const prompt = card.title || card.blurb;
+  const description = card.blurb || card.title;
+  const activeVote = confirmingVote ?? selectedVote;
+  const validationProgress = useRef(new Animated.Value(0)).current;
+  const gameVerticalDrop = Math.round(Math.min(roomy ? 64 : 52, Math.max(26, height * 0.048)));
+  const validationTone = confirmingVote === 2
+    ? { backgroundColor: candy.yellow, iconColor: candy.ink, veilColor: "rgba(255,210,63,0.24)" }
+    : confirmingVote === 1
+      ? { backgroundColor: candy.black, iconColor: candy.white, veilColor: "rgba(38,18,46,0.18)" }
+      : { backgroundColor: candy.cream, iconColor: candy.ink, veilColor: "rgba(255,249,240,0.2)" };
+
+  useEffect(() => {
+    validationProgress.stopAnimation();
+
+    if (confirmingVote === undefined) {
+      validationProgress.setValue(0);
+      return;
+    }
+
+    validationProgress.setValue(0);
+    Animated.sequence([
+      Animated.timing(validationProgress, {
+        duration: 190,
+        easing: Easing.out(Easing.back(1.3)),
+        toValue: 1,
+        useNativeDriver: useNativeAnimations,
+      }),
+      Animated.timing(validationProgress, {
+        duration: 150,
+        easing: Easing.inOut(Easing.cubic),
+        toValue: 0.92,
+        useNativeDriver: useNativeAnimations,
+      }),
+      Animated.timing(validationProgress, {
+        duration: 120,
+        easing: Easing.out(Easing.cubic),
+        toValue: 1,
+        useNativeDriver: useNativeAnimations,
+      }),
+    ]).start();
+  }, [confirmingVote, validationProgress]);
 
   return (
-    <LinearGradient
-      colors={tone.colors}
-      style={[styles.desireGameCard, roomy && styles.desireGameCardRoomy]}
-      testID={`desire-game-card-${card.id}`}
-    >
-      <CardPattern emoji={tone.patternEmoji} />
-      <EmojiSticker
-        emoji={cardStickerEmoji(card)}
-        size={roomy ? 148 : 138}
-        style={[styles.desireGameSticker, roomy && styles.desireGameStickerRoomy]}
-      />
-      <View style={styles.desireGameTopRow}>
-        <CardMetaCluster category={card.category} large status={cardResponseStatusLabel(selectedVote)} />
+    <View style={[styles.desireGameStage, roomy && styles.desireGameStageRoomy, { paddingTop: gameVerticalDrop }]}>
+      <View style={[styles.desireGameDeck, roomy && styles.desireGameDeckRoomy]}>
+        <View style={[styles.desireGameBackCard, styles.desireGameBackCardLeft]} />
+        <View style={[styles.desireGameBackCard, styles.desireGameBackCardRight]} />
+        <View
+          style={[styles.desireGameCard, roomy && styles.desireGameCardRoomy]}
+          testID={`desire-game-card-${card.id}`}
+        >
+          <View style={styles.desireGameTopRow}>
+            <Text numberOfLines={1} style={styles.desireGameCategoryLabel}>{categoryLabel(card.category)}</Text>
+            <View style={styles.desireGameCornerRing} />
+          </View>
+          <View style={[styles.desireGameCopy, roomy && styles.desireGameCopyRoomy]}>
+            <Text adjustsFontSizeToFit numberOfLines={5} style={styles.desireGameTitle}>{prompt}</Text>
+          </View>
+          <Text numberOfLines={2} style={styles.desireGameText}>{description}</Text>
+          {confirmingVote !== undefined ? (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.desireGameValidationVeil,
+                {
+                  backgroundColor: validationTone.veilColor,
+                  opacity: validationProgress.interpolate({
+                    inputRange: [0, 0.24, 1],
+                    outputRange: [0, 1, 1],
+                  }),
+                },
+              ]}
+            >
+              <Animated.View
+                style={[
+                  styles.desireGameValidationBadge,
+                  { backgroundColor: validationTone.backgroundColor },
+                  {
+                    opacity: validationProgress.interpolate({
+                      inputRange: [0, 0.18, 1],
+                      outputRange: [0, 1, 1],
+                    }),
+                    transform: [
+                      {
+                        scale: validationProgress.interpolate({
+                          inputRange: [0, 0.62, 1],
+                          outputRange: [0.46, 1.1, 1],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <Check color={validationTone.iconColor} size={34} strokeWidth={4} />
+              </Animated.View>
+            </Animated.View>
+          ) : null}
+        </View>
       </View>
-      <View style={[styles.desireGameCopy, roomy && styles.desireGameCopyRoomy]}>
-        <Text style={[styles.desireGameTitle, { color: tone.titleText }]}>{card.title}</Text>
-        <Text style={[styles.desireGameText, { color: tone.bodyText }]}>{card.blurb}</Text>
+      <View style={[styles.desireGameVoteDock, roomy && styles.desireGameVoteDockRoomy]}>
+        <View style={[styles.desireGameVoteRow, roomy && styles.desireGameVoteRowRoomy, { gap: voteGap }]}>
+          <VoteButton disabled={disabled} label="Non" onPress={() => onVote(card.id, 0)} prominent selected={activeVote === 0} size={sideVoteSize} testID={`game-vote-${card.id}-0`} />
+          <VoteButton disabled={disabled} featured label="Chaud" onPress={() => onVote(card.id, 2)} prominent selected={isFlameVote(activeVote)} size={featuredVoteSize} testID={`game-vote-${card.id}-2`} />
+          <VoteButton disabled={disabled} flame label="Pourquoi pas" onPress={() => onVote(card.id, 1)} prominent selected={activeVote === 1} size={sideVoteSize} testID={`game-vote-${card.id}-1`} />
+        </View>
       </View>
-      <View style={[styles.desireGameVoteRow, roomy && styles.desireGameVoteRowRoomy]}>
-        <VoteButton disabled={disabled} icon="×" label="Non" onPress={() => onVote(card.id, 0)} prominent selected={selectedVote === 0} testID={`game-vote-${card.id}-0`} />
-        <VoteButton disabled={disabled} icon="?" label="Pourquoi pas" onPress={() => onVote(card.id, 1)} prominent selected={selectedVote === 1} testID={`game-vote-${card.id}-1`} />
-        <VoteButton accent={tone.accent} disabled={disabled} flame onPress={() => onVote(card.id, 2)} prominent selected={isFlameVote(selectedVote)} testID={`game-vote-${card.id}-2`} />
-      </View>
-    </LinearGradient>
+    </View>
   );
 }
 
 function EnviesGameEmpty({
+  answeredCount,
   category,
-  onOpenCustomDesire,
+  matchCount,
   onOpenLibrary,
+  onReplayAnsweredCards,
+  totalCount,
 }: {
+  answeredCount: number;
   category: DesireCategory;
-  onOpenCustomDesire: () => void;
+  matchCount: number;
   onOpenLibrary: () => void;
+  onReplayAnsweredCards: () => void;
+  totalCount: number;
 }) {
+  const categoryName = categoryLabel(category);
+  const exploredCount = totalCount || answeredCount;
+  const matchLabel = `${matchCount} match${matchCount > 1 ? "s" : ""}`;
+
   return (
     <View style={styles.enviesGameEmpty}>
-      <Text style={styles.enviesGameEmptyEmoji}>✨</Text>
-      <Text style={styles.enviesGameEmptyTitle}>Pack {categoryLabel(category)} terminé</Text>
+      <View pointerEvents="none" style={styles.enviesGameEmptyDeck}>
+        <View style={[styles.enviesGameEmptyCard, styles.enviesGameEmptyBackCard]} />
+        <View style={[styles.enviesGameEmptyCard, styles.enviesGameEmptyFrontCard]}>
+          <Check color={candy.red} size={42} strokeWidth={3.4} />
+        </View>
+      </View>
+      <Text style={styles.enviesGameEmptyTitle}>Pack exploré à fond</Text>
       <Text style={styles.enviesGameEmptyText}>
-        Tu as répondu à toutes les cartes disponibles ici. Tu peux revoir la bibliothèque ou créer une carte perso.
+        Vous avez croisé les {exploredCount} cartes de {categoryName} - {matchLabel} à la clé. La suite chauffe un peu plus.
       </Text>
       <View style={styles.enviesGameEmptyActions}>
-        <SpringPressable onPress={onOpenCustomDesire} style={styles.enviesGameEmptyPrimary}>
-          <Text style={styles.enviesGameEmptyPrimaryText}>Ajouter une envie</Text>
+        <SpringPressable onPress={onReplayAnsweredCards} style={styles.enviesGameEmptyPrimary}>
+          <Text style={styles.enviesGameEmptyPrimaryText}>Rejouer les cartes</Text>
         </SpringPressable>
         <SpringPressable onPress={onOpenLibrary} style={styles.enviesGameEmptySecondary}>
-          <Text style={styles.enviesGameEmptySecondaryText}>Voir la bibliothèque</Text>
+          <Text style={styles.enviesGameEmptySecondaryText}>ou revenir à la galerie</Text>
         </SpringPressable>
       </View>
     </View>
@@ -5702,49 +6669,68 @@ function EnviesGameEmpty({
 function VoteButton({
   accent,
   disabled,
+  featured,
   flame,
   icon,
   label,
   onPress,
   prominent,
   selected,
+  size,
   testID,
 }: {
   accent?: string;
   disabled?: boolean;
+  featured?: boolean;
   flame?: boolean;
   icon?: string;
   label?: string;
   onPress: () => void;
   prominent?: boolean;
   selected: boolean;
+  size?: number;
   testID: string;
 }) {
+  const prominentSizeStyle = prominent && size
+    ? { height: size, minHeight: size, minWidth: size, width: size }
+    : null;
+
   return (
     <SpringPressable
       disabled={disabled}
       onPress={onPress}
       style={[
-        styles.voteButton,
-        flame && styles.voteButtonFire,
-        flame && accent ? { backgroundColor: accent } : null,
-        prominent && styles.voteButtonProminent,
+        prominent ? styles.voteButtonProminent : styles.voteButton,
+        prominentSizeStyle,
+        !prominent && flame && styles.voteButtonFire,
+        !prominent && flame && accent ? { backgroundColor: accent } : null,
+        featured && styles.voteButtonFeatured,
         flame && prominent && styles.voteButtonFireProminent,
         selected && !flame && styles.voteButtonSelected,
         selected && flame && styles.voteButtonFireSelected,
         prominent && selected && !flame && styles.voteButtonProminentSelected,
+        prominent && selected && featured && styles.voteButtonFeaturedSelected,
         prominent && selected && flame && styles.voteButtonFireProminentSelected,
       ]}
       testID={testID}
     >
-      {flame ? (
+      {flame && !prominent ? (
         <Text style={[styles.voteButtonEmoji, prominent && styles.voteButtonEmojiProminent]}>🔥</Text>
       ) : (
         <View style={[styles.voteButtonContent, prominent && styles.voteButtonProminentContent]}>
           {prominent && icon ? (
             <Text style={[styles.voteButtonIcon, selected && styles.voteButtonIconSelected]}>{icon}</Text>
           ) : null}
-          <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.voteButtonText, prominent && styles.voteButtonTextProminent, selected && styles.voteButtonTextSelected]}>
+          <Text
+            adjustsFontSizeToFit
+            numberOfLines={prominent ? 2 : 1}
+            style={[
+              styles.voteButtonText,
+              prominent && styles.voteButtonTextProminent,
+              selected && !flame && styles.voteButtonTextSelected,
+              flame && prominent && styles.voteButtonTextFireProminent,
+            ]}
+          >
             {label}
           </Text>
         </View>
@@ -5756,14 +6742,14 @@ function VoteButton({
 function MatchScreen({
   couple,
   revealedMatchIds,
-  onGoEnvies,
+  onOpenGameMode,
   onOpenChat,
   onBeforeRevealMatch,
   onRevealMatch,
 }: {
   couple: CoupleState;
   revealedMatchIds: string[];
-  onGoEnvies: () => void;
+  onOpenGameMode: () => void;
   onOpenChat: (cardId?: string) => void;
   onBeforeRevealMatch: () => Promise<boolean>;
   onRevealMatch: (cardId?: string) => Promise<void>;
@@ -5786,18 +6772,23 @@ function MatchScreen({
   const [revealingMatchId, setRevealingMatchId] = useState<string | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<DesireCard | null>(null);
   const revealAnim = useRef(new Animated.Value(0)).current;
-  const hotVotes = useMemo(
-    () => allDesireCards(couple).filter((card) => isFlameVote(couple.votes[couple.activePartnerId][card.id])).length,
-    [couple],
-  );
-  const pulse = useLoop(1700);
-  const heat = Math.min(1, Math.max(matches.length / 4, hotVotes / 8, 0.15));
+  const safeAreaInsets = useSafeAreaInsets();
+  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
+  const matchLayout = homeLayoutMetrics(viewportHeight, viewportWidth, safeAreaInsets);
   const hasHiddenReveal = hiddenMatchCount > 0;
   const hasAnyMatch = matches.length > 0 || hasHiddenReveal;
   const revealToken = newestHiddenMatch?.id ?? "__next-hidden-match__";
   const isNewestOpening = hasHiddenReveal && revealingMatchId === revealToken;
-  const isNewestRevealed = !hasHiddenReveal;
   const listedMatches = hasHiddenReveal ? revealedMatches : matches;
+  const hasSecondaryMatchContent = hasHiddenReveal ? revealedMatches.length > 0 : listedMatches.length > 0;
+  const centerPrimaryMatchStage = hasHiddenReveal && !hasSecondaryMatchContent;
+  const matchContentStyle = useMemo<ViewStyle>(() => ({
+    gap: hasAnyMatch ? Math.max(14, matchLayout.rhythm * 0.62) : 0,
+    minHeight: matchLayout.frameHeight,
+    paddingBottom: matchLayout.bottomPadding,
+    paddingHorizontal: Math.max(10, 14 * matchLayout.widthScale),
+    paddingTop: Math.max(12, matchLayout.rhythm),
+  }), [hasAnyMatch, matchLayout.bottomPadding, matchLayout.frameHeight, matchLayout.rhythm, matchLayout.widthScale]);
 
   useEffect(() => {
     revealAnim.setValue(0);
@@ -5839,106 +6830,67 @@ function MatchScreen({
 
   return (
     <>
-      <ScrollView contentContainerStyle={[styles.matchScreen, !hasAnyMatch && styles.matchScreenEmptyMode]} showsVerticalScrollIndicator={false}>
-        {hasAnyMatch ? (
-          <LinearGradient colors={[candy.black, "#35173E", "#4A1F50"]} style={styles.matchStage}>
-            <View pointerEvents="none" style={styles.matchStageFx}>
-              <EmojiSticker
-                animated
-                emoji={stickers.flame}
-                size={132}
-                style={[
-                  styles.matchStageFlameRight,
-                  {
-                    opacity: 0.2 + heat * 0.32,
-                    transform: [
-                      { translateY: pulse.interpolate({ inputRange: [0, 1], outputRange: [0, -14] }) },
-                      { scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] }) },
-                      { rotate: "12deg" },
-                    ],
-                  },
-                ]}
-              />
-            </View>
+      <ScrollView
+        contentContainerStyle={[
+          styles.matchScreen,
+          matchContentStyle,
+          !hasAnyMatch && styles.matchScreenEmptyMode,
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.matchScreenHeader}>
+          <Text style={styles.matchScreenTitle}>Matchs</Text>
+          <Text style={styles.matchScreenSubtitle}>Ce qui vous plaît à tous les deux. Rien d'autre.</Text>
+        </View>
 
-            <View style={styles.matchStageTop}>
-              <View style={styles.matchCounterPill}>
-                <Sparkles size={15} color={candy.red} />
-                <Text style={styles.matchCounterText}>
-                  {hasHiddenReveal
-                    ? `${hiddenMatchCount} à ouvrir`
-                    : `${revealedMatches.length} révélé${revealedMatches.length > 1 ? "s" : ""}`}
+        {hasHiddenReveal || !hasAnyMatch ? (
+          <View
+            style={[
+              styles.matchPrimaryStage,
+              centerPrimaryMatchStage && styles.matchPrimaryStageCentered,
+              !hasAnyMatch && styles.matchPrimaryStageEmpty,
+            ]}
+          >
+            {hasHiddenReveal ? (
+              <HiddenMatchRevealPanel
+                hiddenMatchCount={hiddenMatchCount}
+                isOpening={isNewestOpening}
+                onReveal={revealNewestMatch}
+                revealAnim={revealAnim}
+              />
+            ) : (
+              <NoMatchEmptyState onOpenGameMode={onOpenGameMode} />
+            )}
+          </View>
+        ) : null}
+
+        {hasAnyMatch ? (
+          hasHiddenReveal ? (
+            <>
+              {revealedMatches.length ? (
+                <View style={styles.matchList}>
+                  {revealedMatches.map((card, index) => (
+                    <MatchListItem card={card} index={index} key={card.id} onOpen={() => setSelectedMatch(card)} />
+                  ))}
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <View style={styles.matchListHeader}>
+                <Text style={styles.matchListTitle}>Tous vos matchs</Text>
+                <Text style={styles.matchListCount}>
+                  {listedMatches.length} envie{listedMatches.length > 1 ? "s" : ""}
                 </Text>
               </View>
-              <View style={styles.matchStageStatusPill}>
-                <LockKeyhole size={13} color={candy.white} />
-                <Text style={styles.matchStageStatusText}>{hasHiddenReveal ? "Privé pour toi" : "Révélés"}</Text>
+              <View style={styles.matchList}>
+                {listedMatches.map((card, index) => (
+                  <MatchListItem card={card} index={index} key={card.id} onOpen={() => setSelectedMatch(card)} />
+                ))}
               </View>
-            </View>
-
-            <Text style={styles.matchStageTitle}>{hasHiddenReveal ? "Un match est prêt" : "Vos matchs"}</Text>
-            {hasHiddenReveal ? (
-              <Text style={styles.matchStageCopy}>
-                Ouvre ton envie commune quand tu veux. Ton/ta partenaire la révèle de son côté.
-              </Text>
-            ) : null}
-
-            <MatchRevealCard
-              couple={couple}
-              isOpen={isNewestRevealed}
-              isOpening={isNewestOpening}
-              match={newestMatch}
-              onReveal={revealNewestMatch}
-              revealAnim={revealAnim}
-            />
-
-            {newestRevealedMatch && isNewestRevealed ? (
-              <View style={styles.matchActions}>
-                <SpringPressable onPress={() => onOpenChat(newestRevealedMatch.id)} style={styles.matchActionLight}>
-                  <MessageCircle size={16} color={candy.red} />
-                  <Text style={styles.matchActionLightText}>En parler dans le chat</Text>
-                </SpringPressable>
-                <SpringPressable onPress={onGoEnvies} style={styles.matchActionDark}>
-                  <Flame size={16} color={candy.white} fill={candy.white} />
-                  <Text style={styles.matchActionDarkText}>Répondre à d'autres cartes</Text>
-                </SpringPressable>
-              </View>
-            ) : (
-              null
-            )}
-          </LinearGradient>
-        ) : (
-          <View style={styles.matchSimpleEmpty}>
-            <Text style={styles.matchSimpleEmptyTitle}>Aucun match pour l'instant</Text>
-            <SpringPressable onPress={onGoEnvies} style={styles.matchNoResultCTA}>
-              <Flame size={18} color={candy.red} fill={candy.red} />
-              <Text style={styles.matchNoResultCTAText}>Répondre à des cartes</Text>
-              <ChevronRight size={18} color={candy.red} />
-            </SpringPressable>
-          </View>
-        )}
-
-      {hasAnyMatch ? (
-        <>
-          <View style={styles.matchListHeader}>
-            <Text style={styles.matchListTitle}>{hasHiddenReveal ? "Déjà révélés" : "Matchs révélés"}</Text>
-            <Text style={styles.matchListCount}>
-              {listedMatches.length
-                ? `${listedMatches.length} envie${listedMatches.length > 1 ? "s" : ""}`
-                : "1 à ouvrir"}
-            </Text>
-          </View>
-          {listedMatches.length ? (
-            <View style={styles.matchList}>
-              {listedMatches.map((card, index) => (
-                <MatchListItem card={card} index={index} key={card.id} onOpen={() => setSelectedMatch(card)} />
-              ))}
-            </View>
-          ) : (
-            <HiddenMatchTeaser isOpening={isNewestOpening} onReveal={revealNewestMatch} />
-          )}
-        </>
-      ) : null}
+            </>
+          )
+        ) : null}
       </ScrollView>
       <MatchDetailModal
         couple={couple}
@@ -5950,6 +6902,159 @@ function MatchScreen({
         }}
       />
     </>
+  );
+}
+
+function HiddenMatchRevealPanel({
+  hiddenMatchCount,
+  isOpening,
+  onReveal,
+  revealAnim,
+}: {
+  hiddenMatchCount: number;
+  isOpening: boolean;
+  onReveal: () => void;
+  revealAnim: Animated.Value;
+}) {
+  const breathing = useLoop(1900);
+  const cardScale = breathing.interpolate({ inputRange: [0, 1], outputRange: [1, 1.025] });
+  const cardLift = breathing.interpolate({ inputRange: [0, 1], outputRange: [0, -5] });
+  const shineX = revealAnim.interpolate({ inputRange: [0, 1], outputRange: [-260, 320] });
+  const otherHiddenCount = Math.max(0, hiddenMatchCount - 1);
+
+  return (
+    <View style={styles.hiddenRevealPanel}>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.hiddenRevealCardStack,
+          {
+            transform: [
+              { translateY: cardLift },
+              { scale: cardScale },
+            ],
+          },
+        ]}
+      >
+        <View style={[styles.hiddenRevealBackPlate, styles.hiddenRevealBackPlateLeft]} />
+        <View style={[styles.hiddenRevealBackPlate, styles.hiddenRevealBackPlateRight]} />
+        <View style={styles.hiddenRevealMysteryCard}>
+          <View pointerEvents="none" style={styles.hiddenRevealPattern}>
+            {hiddenMatchPatternDots.map((dot) => (
+              <View key={dot} style={styles.hiddenRevealPatternDot} />
+            ))}
+          </View>
+          {isOpening ? (
+            <Animated.View pointerEvents="none" style={[styles.hiddenRevealShine, { transform: [{ translateX: shineX }, { rotate: "-14deg" }] }]} />
+          ) : null}
+          <View style={styles.hiddenRevealQuestionBadge}>
+            <Text style={styles.hiddenRevealQuestionText}>?</Text>
+          </View>
+          <Text style={styles.hiddenRevealCardLabel}>Match caché</Text>
+        </View>
+      </Animated.View>
+
+      <View style={styles.hiddenRevealCopy}>
+        <Text style={styles.hiddenRevealTitle}>Un match vous attend.</Text>
+        <Text style={styles.hiddenRevealText}>Ni titre, ni indice. Découvrez-le quand vous êtes prêts.</Text>
+      </View>
+
+      <SpringPressable
+        disabled={isOpening}
+        onPress={onReveal}
+        style={[styles.hiddenRevealButton, isOpening && styles.hiddenRevealButtonDisabled]}
+      >
+        <Text style={styles.hiddenRevealButtonText}>{isOpening ? "Révélation..." : "Révéler le match"}</Text>
+      </SpringPressable>
+
+      <Text style={styles.hiddenRevealAdText}>
+        Une courte pub avant la révélation · <Text style={styles.hiddenRevealAdLink}>Zéro pub</Text>
+      </Text>
+
+      {otherHiddenCount ? (
+        <View style={styles.hiddenRevealPendingLine}>
+          <View style={styles.hiddenRevealPendingDot} />
+          <Text style={styles.hiddenRevealPendingText}>
+            {otherHiddenCount} autre{otherHiddenCount > 1 ? "s" : ""} envie{otherHiddenCount > 1 ? "s" : ""} en attente d'alignement
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function MatchRevealedPanel({
+  couple,
+  match,
+  onOpenChat,
+  onOpenDetail,
+}: {
+  couple: CoupleState;
+  match: DesireCard;
+  onOpenChat: () => void;
+  onOpenDetail: () => void;
+}) {
+  const activeId = couple.activePartnerId;
+  const partnerId = otherPartnerId(activeId);
+  const partnerName = couple.profiles[partnerId].displayName || "Partenaire";
+  const activeVote = couple.votes[activeId][match.id];
+  const partnerVote = couple.votes[partnerId][match.id];
+  const activeVoteText = isFlameVote(activeVote) ? "Très envie 🔥" : voteRevealLabel(activeVote);
+  const partnerVoteText = isFlameVote(partnerVote) ? "Très envie 🔥" : voteRevealLabel(partnerVote);
+
+  return (
+    <LinearGradient colors={[candy.darkColor, "#210D27", "#16051A"]} style={styles.matchRevealedPanel}>
+      <View pointerEvents="none" style={styles.matchRevealedDecor}>
+        <View style={styles.matchRevealedAura} />
+        <View style={[styles.matchRevealedSparkDot, styles.matchRevealedSparkDotOne]} />
+        <View style={[styles.matchRevealedSparkDot, styles.matchRevealedSparkDotTwo]} />
+        <View style={[styles.matchRevealedSparkDash, styles.matchRevealedSparkDashOne]} />
+        <View style={[styles.matchRevealedSparkDash, styles.matchRevealedSparkDashTwo]} />
+      </View>
+
+      <View style={styles.matchRevealedHeroCopy}>
+        <Text style={styles.matchRevealedHeadline}>
+          C'est un match<Text style={styles.matchRevealedHeadlineDot}>.</Text>
+        </Text>
+        <View style={styles.matchRevealedSubRow}>
+          <View style={styles.matchRevealedSubDot} />
+          <Text style={styles.matchRevealedSubtitle}>Vous avez répondu oui, tous les deux.</Text>
+        </View>
+      </View>
+
+      <SpringPressable onPress={onOpenDetail} style={styles.matchRevealedCardShell}>
+        <View pointerEvents="none" style={styles.matchRevealedCardGlow} />
+        <View pointerEvents="none" style={styles.matchRevealedSidePeek} />
+        <View pointerEvents="none" style={styles.matchRevealedTopDot} />
+        <View style={styles.matchRevealedBigCard}>
+          <Text style={styles.matchRevealedCategory}>{categoryLabel(match.category)}</Text>
+          <View style={styles.matchRevealedCornerDot} />
+          <Text numberOfLines={5} style={styles.matchRevealedCardTitle}>{match.title}</Text>
+          <View style={styles.matchRevealedAnswerRow}>
+            <MatchAnswerPill label="Toi" mine value={activeVoteText} />
+            <MatchAnswerPill label={partnerName} value={partnerVoteText} />
+          </View>
+        </View>
+      </SpringPressable>
+
+      <View style={styles.matchRevealedActionBlock}>
+        <SpringPressable onPress={onOpenChat} style={styles.matchRevealedChatButton}>
+          <Text style={styles.matchRevealedChatText}>En parler maintenant</Text>
+        </SpringPressable>
+        <SpringPressable onPress={onOpenDetail} style={styles.matchRevealedLaterButton}>
+          <Text style={styles.matchRevealedLaterText}>Plus tard</Text>
+        </SpringPressable>
+      </View>
+    </LinearGradient>
+  );
+}
+
+function MatchAnswerPill({ label, mine, value }: { label: string; mine?: boolean; value: string }) {
+  return (
+    <View style={[styles.matchAnswerPill, mine ? styles.matchAnswerPillMine : styles.matchAnswerPillPartner]}>
+      <Text numberOfLines={1} style={[styles.matchAnswerLabel, mine && styles.matchAnswerLabelMine]}>{label}</Text>
+      <Text numberOfLines={2} style={[styles.matchAnswerValue, mine && styles.matchAnswerValueMine]}>{value}</Text>
+    </View>
   );
 }
 
@@ -6082,83 +7187,85 @@ function MatchDetailModal({
   onClose: () => void;
   onOpenChat: (cardId: string) => void;
 }) {
+  const safeAreaInsets = useSafeAreaInsets();
+  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
+  const detailSideInset = viewportWidth >= 700 ? 22 : viewportWidth >= 520 ? 20 : 18;
+  const detailStageMaxWidth = Math.min(334, Math.max(0, viewportWidth - detailSideInset * 2));
+  const detailContentMinHeight = Math.max(0, viewportHeight - safeAreaInsets.top - safeAreaInsets.bottom);
+  const detailTopPadding = Math.round(Math.max(safeAreaInsets.top + 28, Math.min(96, Math.max(44, viewportHeight * 0.075))));
+  const detailActionTopGap = Math.round(Math.min(168, Math.max(72, viewportHeight * 0.105)));
+  const detailBottomPadding = Math.max(18, safeAreaInsets.bottom + 18);
+
   if (!match) {
     return null;
   }
 
-  const tone = categoryCardTone(match.category);
+  const activeId = couple.activePartnerId;
+  const partnerId = otherPartnerId(activeId);
+  const partnerName = couple.profiles[partnerId].displayName || "Partenaire";
+  const activeVote = couple.votes[activeId][match.id];
+  const partnerVote = couple.votes[partnerId][match.id];
+  const activeVoteText = isFlameVote(activeVote) ? "Très envie 🔥" : voteRevealLabel(activeVote);
+  const partnerVoteText = isFlameVote(partnerVote) ? "Très envie 🔥" : voteRevealLabel(partnerVote);
 
   return (
     <Modal animationType="slide" transparent={false} visible onRequestClose={onClose}>
-      <LinearGradient colors={[candy.red, candy.red]} style={styles.matchDetailScreen}>
+      <LinearGradient colors={[candy.darkColor, "#210D27", "#16051A"]} style={styles.matchDetailScreen}>
         <View pointerEvents="none" style={styles.matchDetailFx}>
           <View style={[styles.matchDetailGlow, styles.matchDetailGlowTop]} />
           <View style={[styles.matchDetailGlow, styles.matchDetailGlowBottom]} />
-          <Text style={[styles.matchDetailSpark, styles.matchDetailSparkOne]}>✦</Text>
-          <Text style={[styles.matchDetailSpark, styles.matchDetailSparkTwo]}>✧</Text>
-          <Text style={[styles.matchDetailSpark, styles.matchDetailSparkThree]}>•</Text>
+          <View style={[styles.matchRevealedSparkDot, styles.matchRevealedSparkDotOne]} />
+          <View style={[styles.matchRevealedSparkDot, styles.matchRevealedSparkDotTwo]} />
+          <View style={[styles.matchRevealedSparkDash, styles.matchRevealedSparkDashOne]} />
+          <View style={[styles.matchRevealedSparkDash, styles.matchRevealedSparkDashTwo]} />
         </View>
         <SafeAreaView style={styles.matchDetailSafe}>
-          <View style={styles.matchDetailTopBar}>
-            <SpringPressable onPress={onClose} style={styles.matchDetailRoundButton}>
-              <LinearGradient
-                colors={["rgba(255,255,255,0.96)", "rgba(255,212,232,0.92)"]}
-                style={styles.matchDetailRoundButtonFill}
-              >
-                <ArrowLeft color={candy.red} size={22} strokeWidth={3} />
-              </LinearGradient>
-            </SpringPressable>
-            <SpringPressable onPress={onClose} style={styles.matchDetailRoundButton}>
-              <LinearGradient
-                colors={[candy.black, candy.roseDeep]}
-                style={[styles.matchDetailRoundButtonFill, styles.matchDetailRoundButtonFillDark]}
-              >
-                <X size={22} color={candy.white} strokeWidth={3} />
-              </LinearGradient>
-            </SpringPressable>
-          </View>
-
-          <ScrollView contentContainerStyle={styles.matchDetailContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.matchDetailStage}>
-              <View style={styles.matchDetailLogoBlock}>
-                <View style={styles.matchDetailRevealPill}>
-                  <Sparkles size={15} color={candy.red} />
-                  <Text style={styles.matchDetailRevealText}>Match révélé</Text>
+          <ScrollView
+            contentContainerStyle={[
+              styles.matchDetailContent,
+              {
+                minHeight: detailContentMinHeight,
+                paddingBottom: detailBottomPadding,
+                paddingHorizontal: detailSideInset,
+                paddingTop: detailTopPadding,
+              },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={[styles.matchDetailStage, { maxWidth: detailStageMaxWidth }]}>
+              <View style={styles.matchRevealedHeroCopy}>
+                <Text style={styles.matchRevealedHeadline}>
+                  C'est un match<Text style={styles.matchRevealedHeadlineDot}>.</Text>
+                </Text>
+                <View style={styles.matchRevealedSubRow}>
+                  <View style={styles.matchRevealedSubDot} />
+                  <Text style={styles.matchRevealedSubtitle}>Vous avez répondu oui, tous les deux.</Text>
                 </View>
-                <Text style={styles.matchDetailTitle}>Vous avez choisi la même envie.</Text>
-                <Text style={styles.matchDetailSub}>Vous avez tous les deux répondu au moins Pourquoi pas sur cette carte.</Text>
               </View>
 
-              <LinearGradient colors={tone.colors} style={styles.matchDetailCard}>
-                <CardPattern emoji={tone.patternEmoji} />
-                <EmojiSticker emoji={cardStickerEmoji(match)} size={112} style={styles.matchDetailCardSticker} />
-                <View style={styles.matchDetailHeartBubble}>
-                  <Heart size={24} color={candy.white} />
+              <View style={styles.matchRevealedCardShell}>
+                <View pointerEvents="none" style={styles.matchRevealedCardGlow} />
+                <View pointerEvents="none" style={styles.matchRevealedSidePeek} />
+                <View pointerEvents="none" style={styles.matchRevealedTopDot} />
+                <View style={styles.matchRevealedBigCard}>
+                  <Text style={styles.matchRevealedCategory}>{categoryLabel(match.category)}</Text>
+                  <View style={styles.matchRevealedCornerDot} />
+                  <Text numberOfLines={5} style={styles.matchRevealedCardTitle}>{match.title}</Text>
+                  <View style={styles.matchRevealedAnswerRow}>
+                    <MatchAnswerPill label="Toi" mine value={activeVoteText} />
+                    <MatchAnswerPill label={partnerName} value={partnerVoteText} />
+                  </View>
                 </View>
-                <Text style={[styles.matchDetailTag, { backgroundColor: tone.tagBg, color: tone.tagText }]}>{categoryLabel(match.category)}</Text>
-                <Text style={[styles.matchDetailCardTitle, { color: tone.titleText }]}>{match.title}</Text>
-                <Text style={[styles.matchDetailCardText, { color: tone.bodyText }]}>{match.blurb}</Text>
-                <View style={styles.matchDetailCardFooter}>
-                  <Text style={styles.matchDetailCardFooterText}>Prenez le temps d'en parler clairement.</Text>
-                </View>
-              </LinearGradient>
-              <MatchVoteComparison cardId={match.id} couple={couple} detail />
-
-              <View style={styles.matchDetailActions}>
-                <SpringPressable onPress={onClose} style={styles.matchDetailPrimaryAction}>
-                  <Sparkles size={20} color={candy.white} />
-                  <Text style={styles.matchDetailPrimaryText}>Fermer</Text>
-                </SpringPressable>
-                <SpringPressable onPress={() => onOpenChat(match.id)} style={styles.matchDetailSecondaryAction}>
-                  <MessageCircle size={18} color={candy.red} />
-                  <Text style={styles.matchDetailSecondaryText}>En parler ce soir</Text>
-                </SpringPressable>
               </View>
+            </View>
 
-              <View style={styles.matchDetailPrivacy}>
-                <LockKeyhole size={15} color={candy.white} />
-                <Text style={styles.matchDetailPrivacyText}>Vous pouvez toujours retirer cette envie plus tard.</Text>
-              </View>
+            <View style={[styles.matchDetailActions, { marginTop: detailActionTopGap, maxWidth: detailStageMaxWidth }]}>
+              <SpringPressable onPress={() => onOpenChat(match.id)} style={styles.matchDetailPrimaryAction}>
+                <Text style={styles.matchDetailPrimaryText}>En parler maintenant</Text>
+              </SpringPressable>
+              <SpringPressable onPress={onClose} style={styles.matchDetailSecondaryAction}>
+                <Text style={styles.matchDetailSecondaryText}>Plus tard</Text>
+              </SpringPressable>
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -6184,17 +7291,99 @@ function HiddenMatchTeaser({ isOpening, onReveal }: { isOpening: boolean; onReve
   );
 }
 
-function NoMatchEmptyState({ onGoEnvies }: { hotVotes: number; onGoEnvies: () => void }) {
+function HiddenMatchPendingRow({
+  index,
+  isOpening,
+  label,
+  onPress,
+}: {
+  index: number;
+  isOpening: boolean;
+  label: string;
+  onPress?: () => void;
+}) {
   return (
-    <Entrance delay={80}>
+    <Entrance delay={index * 50}>
+      <SpringPressable
+        disabled={!onPress || isOpening}
+        onPress={onPress}
+        style={[styles.matchPendingRow, isOpening && styles.matchPendingRowOpening]}
+      >
+        <View style={styles.matchPendingQuestion}>
+          <Text style={styles.matchPendingQuestionText}>?</Text>
+        </View>
+        <View style={styles.matchPendingCopy}>
+          <View style={styles.matchPendingBlurWide} />
+          <View style={styles.matchPendingBlurShort} />
+          <Text numberOfLines={1} style={styles.matchPendingText}>{isOpening ? "Révélation..." : label}</Text>
+        </View>
+      </SpringPressable>
+    </Entrance>
+  );
+}
+
+function NoMatchEmptyState({ onOpenGameMode }: { onOpenGameMode: () => void }) {
+  return (
+    <Entrance delay={80} style={styles.matchEmptyEntrance}>
       <View style={styles.matchEmpty}>
-        <Text style={styles.matchEmptyTitle}>Aucun match pour l'instant</Text>
-        <SpringPressable onPress={onGoEnvies} style={styles.matchEmptyCTA}>
-          <Text style={styles.matchEmptyCTAText}>Répondre à des cartes</Text>
-          <ChevronRight size={18} color={candy.white} />
+        <View pointerEvents="none" style={styles.matchEmptySymbol}>
+          <View style={[styles.matchEmptyCircle, styles.matchEmptyCircleSoft]} />
+          <View style={[styles.matchEmptyCircle, styles.matchEmptyCircleHot]} />
+        </View>
+        <Text style={styles.matchEmptyTitle}>Pas encore de match</Text>
+        <Text style={styles.matchEmptyText}>
+          Répondez à quelques cartes chacun de votre côté. Ça finit toujours par matcher.
+        </Text>
+        <SpringPressable onPress={onOpenGameMode} style={styles.matchEmptyCTA}>
+          <Text style={styles.matchEmptyCTAText}>Jouer</Text>
         </SpringPressable>
       </View>
     </Entrance>
+  );
+}
+
+function ChatUnavailableScreen({
+  bottomNavInset,
+  onBack,
+  onGoCouple,
+}: {
+  bottomNavInset: number;
+  onBack: () => void;
+  onGoCouple: () => void;
+}) {
+  const safeAreaInsets = useSafeAreaInsets();
+  const bottomPadding = Math.max(130, safeAreaInsets.bottom + bottomNavInset + 22);
+
+  return (
+    <View
+      style={[
+        styles.chatUnavailableScreen,
+        {
+          paddingBottom: bottomPadding,
+          paddingTop: Math.max(18, safeAreaInsets.top + 12),
+        },
+      ]}
+    >
+      <SpringPressable onPress={onBack} style={styles.chatUnavailableBack}>
+        <ArrowLeft size={18} color={candy.cream} />
+      </SpringPressable>
+
+      <View style={styles.chatUnavailableCenter}>
+        <View style={styles.chatUnavailableIcon}>
+          <MessageCircle size={44} color={candy.yellow} strokeWidth={2.8} />
+          <View style={styles.chatUnavailableLock}>
+            <LockKeyhole size={16} color={candy.black} strokeWidth={2.8} />
+          </View>
+        </View>
+        <Text style={styles.chatUnavailableTitle}>Chat impossible pour l'instant.</Text>
+        <Text style={styles.chatUnavailableText}>
+          Il faut être deux dans le même espace pour ouvrir une conversation privée.
+        </Text>
+        <SpringPressable onPress={onGoCouple} style={styles.chatUnavailablePrimary}>
+          <Text style={styles.chatUnavailablePrimaryText}>Inviter ou rejoindre</Text>
+        </SpringPressable>
+      </View>
+    </View>
   );
 }
 
@@ -6217,18 +7406,23 @@ function MatchListItem({ card, index, onOpen }: { card: DesireCard; index: numbe
 }
 
 function ChatScreen({
+  bottomNavInset,
   contextCardId,
   couple,
   onConsumePhoto,
+  onBack,
   onQueuePhotoConsumption,
   onSendMessage,
 }: {
+  bottomNavInset: number;
   contextCardId?: string;
   couple: CoupleState;
   onConsumePhoto: (payload: { attachmentId: string; messageId: string }) => void | Promise<void>;
+  onBack: () => void;
   onQueuePhotoConsumption: (payload: { attachmentId: string; delayMs?: number; messageId: string }) => void | Promise<void>;
   onSendMessage: (message: { attachments: ChatAttachment[]; body: string }) => void;
 }) {
+  const safeAreaInsets = useSafeAreaInsets();
   const [draft, setDraft] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [activePhoto, setActivePhoto] = useState<{ attachment: ChatAttachment; messageId: string } | null>(null);
@@ -6237,6 +7431,10 @@ function ChatScreen({
   const activeId = couple.activePartnerId;
   const partnerId = otherPartnerId(activeId);
   const partnerName = couple.profiles[partnerId].displayName;
+  const meInitial = (couple.profiles.me.displayName.trim()[0] ?? "M").toUpperCase();
+  const partnerInitial = (couple.profiles.partner.displayName.trim()[0] ?? "L").toUpperCase();
+  const pairName = `${couple.profiles.me.displayName} & ${couple.profiles.partner.displayName}`;
+  const todayLabel = `Aujourd'hui, ${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
   const contextCard = useMemo(
     () => (contextCardId ? allDesireCards(couple).find((card) => card.id === contextCardId) : undefined),
     [contextCardId, couple],
@@ -6252,6 +7450,8 @@ function ChatScreen({
   const hasMessages = messages.length > 0;
   const hasMessageContent = draft.trim().length > 0 || pendingAttachments.length > 0;
   const canSendMessage = hasMessageContent && !photoOptimizing;
+  const composerBottomPadding = Math.max(bottomNavInset, safeAreaInsets.bottom + TAB_DOCK_VISIBLE_HEIGHT + CHAT_COMPOSER_NAV_GAP);
+  const scrollBottomPadding = Math.max(22, safeAreaInsets.bottom + 14);
   const quickPrompts = useMemo(() => chatSuggestionPrompts({
     contextCard,
     hasMessages,
@@ -6351,42 +7551,54 @@ function ChatScreen({
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
       <View style={styles.chatFrame}>
-        <ScrollView contentContainerStyle={styles.chatScreen} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <LinearGradient colors={["#2B142A", "#8F104F", candy.red]} style={styles.chatHero}>
+        <ScrollView
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={[
+            styles.chatScreen,
+            {
+              paddingBottom: scrollBottomPadding,
+              paddingTop: Math.max(14, safeAreaInsets.top + 8),
+            },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          style={styles.chatScroller}
+        >
+          <View style={styles.chatHero}>
             <View style={styles.chatHeaderIdentity}>
-              <View style={styles.chatHeaderAvatar}>
-                <Text style={styles.chatHeaderAvatarEmoji}>{couple.profiles[partnerId].statusEmoji}</Text>
-                <View style={styles.chatHeaderStatusDot} />
-              </View>
-              <View style={styles.chatHeaderCopy}>
-                <Text numberOfLines={1} style={styles.chatHeaderName}>{partnerName}</Text>
-                <View style={styles.chatHeaderMetaRow}>
-                  <Text style={styles.chatHeaderMetaPill}>Privé</Text>
+              <SpringPressable onPress={onBack} style={styles.chatBackButton}>
+                <ArrowLeft size={18} color={candy.cream} strokeWidth={3} />
+              </SpringPressable>
+              <View style={styles.chatHeaderAvatarStack}>
+                <View style={[styles.chatHeaderMiniAvatar, styles.chatHeaderMiniAvatarMine]}>
+                  <Text style={styles.chatHeaderMiniAvatarText}>{meInitial}</Text>
+                </View>
+                <View style={[styles.chatHeaderMiniAvatar, styles.chatHeaderMiniAvatarPartner]}>
+                  <Text style={[styles.chatHeaderMiniAvatarText, styles.chatHeaderMiniAvatarTextDark]}>{partnerInitial}</Text>
                 </View>
               </View>
-              <View style={styles.chatHeaderLock}>
-                <LockKeyhole size={17} color={candy.white} />
+              <View style={styles.chatHeaderCopy}>
+                <Text numberOfLines={1} style={styles.chatHeaderName}>{pairName}</Text>
+                <View style={styles.chatHeaderMetaRow}>
+                  <Text numberOfLines={1} style={styles.chatHeaderMetaPill}>Éphémère · s'efface demain à 6:00</Text>
+                </View>
               </View>
             </View>
             {contextCard ? (
               <View style={styles.chatContext}>
-                <EmojiSticker
-                  emoji={cardStickerEmoji(contextCard)}
-                  size={44}
-                  style={styles.chatContextSticker}
-                />
+                <View style={styles.chatContextSticker}>
+                  <View style={styles.chatContextDiamond} />
+                </View>
                 <View style={styles.chatContextCopy}>
-                  <Text style={styles.chatContextLabel}>Match</Text>
+                  <Text style={styles.chatContextLabel}>À propos de votre match</Text>
                   <Text style={styles.chatContextTitle}>{contextCard.title}</Text>
                 </View>
               </View>
             ) : null}
-          </LinearGradient>
+          </View>
 
           <View style={styles.chatDateDivider}>
-            <View style={styles.chatDividerLine} />
-            <Text style={styles.chatDateText}>Aujourd'hui</Text>
-            <View style={styles.chatDividerLine} />
+            <Text style={styles.chatDateText}>{todayLabel}</Text>
           </View>
 
           <View style={styles.chatMessages}>
@@ -6415,8 +7627,8 @@ function ChatScreen({
           </View>
         </ScrollView>
 
-        <View pointerEvents="box-none" style={styles.chatComposerDock}>
-          {!hasMessageContent ? (
+        <View pointerEvents="box-none" style={[styles.chatComposerDock, { paddingBottom: composerBottomPadding }]}>
+          {!hasMessageContent && !hasMessages ? (
             <View style={styles.chatSuggestionPanel}>
               <View style={styles.chatQuickRow}>
                 {quickPrompts.map((prompt) => (
@@ -6459,16 +7671,16 @@ function ChatScreen({
               testID="chat-photo-button"
             >
               {photoOptimizing ? (
-                <ActivityIndicator color={candy.red} size="small" />
+                <ActivityIndicator color={candy.cream} size="small" />
               ) : (
-                <ImagePlus size={20} color={candy.red} />
+                <Camera size={20} color={candy.cream} />
               )}
             </SpringPressable>
             <TextInput
               multiline
               onChangeText={setDraft}
-              placeholder={`Écrire à ${couple.profiles[partnerId].displayName}...`}
-              placeholderTextColor="rgba(35,18,36,0.45)"
+              placeholder="Message éphémère..."
+              placeholderTextColor="rgba(124,75,105,0.58)"
               style={[styles.chatInput, Platform.OS === "web" ? ({ outlineStyle: "none" } as never) : null]}
               testID="chat-input"
               value={draft}
@@ -6613,8 +7825,10 @@ const ChatBubble = React.memo(function ChatBubble({
                       style={styles.chatPhotoRevealImage}
                     />
                     <View style={styles.chatPhotoBlurOverlay}>
-                      <LockKeyhole size={21} color={candy.white} />
-                      <Text style={styles.chatPhotoRevealLabel}>Voir 10s</Text>
+                      <View style={styles.chatPhotoEye}>
+                        <Eye size={18} color={candy.cream} />
+                      </View>
+                      <Text style={styles.chatPhotoRevealLabel}>Photo privée · vue unique · 10 s</Text>
                     </View>
                   </SpringPressable>
                 );
@@ -6767,76 +7981,232 @@ function RulesScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
+function homeLayoutMetrics(
+  viewportHeight: number,
+  viewportWidth: number,
+  safeAreaInsets: { bottom: number; top: number },
+) {
+  const frameHeight = Math.max(0, viewportHeight - safeAreaInsets.top - safeAreaInsets.bottom);
+  const widthScale = Math.min(1.12, Math.max(0.88, viewportWidth / 390));
+  const verticalScale = Math.min(1.18, Math.max(0.84, frameHeight / 812));
+  const scale = Math.min(1.18, Math.max(0.86, widthScale * 0.64 + verticalScale * 0.36));
+  const targetRhythm = 42;
+  const headerHeight = 57 * scale;
+  const navVisibleHeight = TAB_DOCK_VISIBLE_HEIGHT;
+  const titleLineHeight = 59 * scale;
+  const moodButtonHeight = 47 * scale;
+  const adviceHeight = Math.min(94, Math.max(78, 92 * verticalScale));
+  const baseStorePackHeight = Math.min(60, Math.max(52, 60 * verticalScale));
+  const storePackHeight = baseStorePackHeight * 1.3;
+  const storeHeaderHeight = 27 * scale;
+  const storeInternalGap = 7 * verticalScale;
+  const storeHeight = storeHeaderHeight + storeInternalGap + storePackHeight;
+  const baseStoreHeight = storeHeaderHeight + storeInternalGap + baseStorePackHeight;
+  const baseMinimumCardHeight = 112 * verticalScale;
+  const baseMaxRhythm = (
+    frameHeight
+    - headerHeight
+    - navVisibleHeight
+    - titleLineHeight * 2
+    - moodButtonHeight
+    - baseMinimumCardHeight
+    - adviceHeight
+    - baseStoreHeight
+  ) / 7;
+  const baseRhythm = Math.min(targetRhythm, Math.max(8, baseMaxRhythm));
+  const baseTopPadding = baseRhythm + headerHeight + baseRhythm;
+  const baseBottomPadding = navVisibleHeight + baseRhythm * 2;
+  const baseAvailableHeight = Math.max(0, frameHeight - baseTopPadding - baseBottomPadding - baseRhythm * 3);
+  const baseHeroHeight = titleLineHeight * 2 + baseRhythm + moodButtonHeight;
+  const baseSurpriseHeight = Math.max(0, baseAvailableHeight - baseHeroHeight - adviceHeight - baseStoreHeight);
+  const targetSurpriseHeight = baseSurpriseHeight * 0.7;
+  const maxRhythm = (
+    frameHeight
+    - headerHeight
+    - navVisibleHeight
+    - titleLineHeight * 2
+    - moodButtonHeight
+    - targetSurpriseHeight
+    - adviceHeight
+    - storeHeight
+  ) / 7;
+  const rhythm = Math.min(targetRhythm, Math.max(8, maxRhythm));
+  const topPadding = rhythm + headerHeight + rhythm;
+  const bottomPadding = navVisibleHeight + rhythm * 2;
+  const availableHeight = Math.max(0, frameHeight - topPadding - bottomPadding - rhythm * 3);
+  const heroHeight = titleLineHeight * 2 + rhythm + moodButtonHeight;
+  const surpriseHeight = Math.max(0, availableHeight - heroHeight - adviceHeight - storeHeight);
+
+  return {
+    adviceHeight,
+    bottomPadding,
+    frameHeight,
+    heroHeight,
+    rhythm,
+    scale,
+    storeHeight,
+    surpriseHeight,
+    topPadding,
+    verticalScale,
+    widthScale,
+  };
+}
+
 function HomeScreen({
   couple,
   onGoEnvies,
-  onGoMatch,
-  onInvitePartner,
-  onJoinPartner,
   onMoodChange,
   onMoodNotificationPreference,
-  onOpenChat,
+  onOpenEnvieCard,
   onOpenProfile,
-  revealedMatchIds,
-  onStatusEmojiChange,
+  onRestorePurchases,
   onUnlockCustomCards,
   onUnlockCategory,
   onUnlockNoAds,
   onUnlockUnlimitedResponses,
-  onVote,
 }: {
   couple: CoupleState;
   onGoEnvies: () => void;
-  onGoMatch: () => void;
-  onInvitePartner: () => void;
-  onJoinPartner: () => void;
   onMoodChange: (level: CoupleMoodLevel) => void;
   onMoodNotificationPreference: (enabled: boolean) => void;
-  onOpenChat: (cardId?: string) => void;
+  onOpenEnvieCard: (card: DesireCard) => void;
   onOpenProfile: () => void;
-  revealedMatchIds: string[];
-  onStatusEmojiChange: (emoji: string) => void;
+  onRestorePurchases: () => void;
   onUnlockCustomCards: () => void;
   onUnlockCategory: (category: DesireCategory) => void;
   onUnlockNoAds: () => void;
   onUnlockUnlimitedResponses: () => void;
-  onVote: (cardId: string, level: VoteLevel) => Promise<boolean>;
 }) {
   const [purchaseCategory, setPurchaseCategory] = useState<DesireCategory | null>(null);
   const [customPurchaseOpen, setCustomPurchaseOpen] = useState(false);
   const [noAdsPurchaseOpen, setNoAdsPurchaseOpen] = useState(false);
   const [unlimitedPurchaseOpen, setUnlimitedPurchaseOpen] = useState(false);
   const [storeOpen, setStoreOpen] = useState(false);
+  const [moodSheetOpen, setMoodSheetOpen] = useState(false);
+  const homeScrollY = useRef(new Animated.Value(0)).current;
+  const [homeHeaderDetached, setHomeHeaderDetached] = useState(false);
+  const safeAreaInsets = useSafeAreaInsets();
+  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
+  const homeFontScale = PixelRatio.getFontScale();
+  const {
+    adviceHeight: homeAdviceHeight,
+    bottomPadding: homeBottomPadding,
+    frameHeight: homeFrameHeight,
+    heroHeight: homeHeroHeight,
+    rhythm: homeRhythm,
+    scale: homeScale,
+    storeHeight: homeStoreHeight,
+    surpriseHeight: homeSurpriseHeight,
+    topPadding: homeTopPadding,
+    verticalScale: homeVerticalScale,
+    widthScale: homeWidthScale,
+  } = homeLayoutMetrics(viewportHeight, viewportWidth, safeAreaInsets);
+  const homeScrollFallback = (
+    homeFontScale > 1.08
+    || viewportWidth < 360
+    || homeFrameHeight < 690
+    || homeRhythm <= 10
+    || homeSurpriseHeight < 132
+  );
+  const activeProfile = couple.profiles[couple.activePartnerId];
+  const homeHeaderOpacity = useMemo(
+    () => homeScrollY.interpolate({
+      extrapolate: "clamp",
+      inputRange: [0, 28, 78],
+      outputRange: [1, 0.82, 0],
+    }),
+    [homeScrollY],
+  );
+  const homeContentStyle = useMemo<ViewStyle>(() => ({
+    flexGrow: 1,
+    gap: homeRhythm,
+    justifyContent: "flex-start",
+    minHeight: homeFrameHeight,
+    overflow: homeScrollFallback ? "visible" : "hidden",
+    paddingBottom: homeScrollFallback ? homeBottomPadding + homeRhythm : homeBottomPadding,
+    paddingHorizontal: 14 * homeWidthScale,
+    paddingTop: homeTopPadding,
+    ...(homeScrollFallback ? {} : { height: homeFrameHeight }),
+  }), [homeBottomPadding, homeFrameHeight, homeRhythm, homeScrollFallback, homeTopPadding, homeWidthScale]);
+  const handleHomeScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const scrollY = Math.max(0, event.nativeEvent.contentOffset.y);
+
+    homeScrollY.setValue(scrollY);
+    setHomeHeaderDetached((current) => {
+      const detached = scrollY > 70;
+      return current === detached ? current : detached;
+    });
+  }, [homeScrollY]);
 
   return (
     <>
-      <ScrollView contentContainerStyle={[styles.screen, styles.homeScreen]} showsVerticalScrollIndicator={false}>
-        <WeSpiceLogo small style={styles.homeLogo} />
-        <Entrance delay={40}>
-          <MoodWidget couple={couple} onChange={onMoodChange} onNotificationPreference={onMoodNotificationPreference} />
-        </Entrance>
-        <Entrance delay={100}>
-          <HomeNextStepPanel
-            couple={couple}
-            onGoEnvies={onGoEnvies}
-            onGoMatch={onGoMatch}
-            onInvitePartner={onInvitePartner}
-            onJoinPartner={onJoinPartner}
-            onOpenChat={onOpenChat}
-            onOpenStore={() => setStoreOpen(true)}
-            revealedMatchIds={revealedMatchIds}
-          />
-        </Entrance>
-        <Entrance delay={140}>
-          <HomeSurpriseDeck couple={couple} onGoEnvies={onGoEnvies} onVote={onVote} />
-        </Entrance>
-        <Entrance delay={200}>
-          <HomeDailyAdvice couple={couple} />
-        </Entrance>
-        <Entrance delay={260}>
-          <HomeStatusTeaser couple={couple} onOpenProfile={onOpenProfile} onStatusEmojiChange={onStatusEmojiChange} />
-        </Entrance>
-      </ScrollView>
+      <View style={styles.homeFrame}>
+        <ScrollView
+          contentContainerStyle={[styles.screen, styles.homeScreen, homeContentStyle]}
+          contentInsetAdjustmentBehavior="automatic"
+          onScroll={handleHomeScroll}
+          scrollEventThrottle={16}
+          scrollEnabled={homeScrollFallback}
+          showsVerticalScrollIndicator={false}
+        >
+          <Entrance delay={40}>
+            <HomeMoodHero
+              couple={couple}
+              onChange={onMoodChange}
+              onOpenMoodPanel={() => setMoodSheetOpen(true)}
+              height={homeHeroHeight}
+              rhythm={homeRhythm}
+              scale={homeScale}
+            />
+          </Entrance>
+          <Entrance delay={100}>
+            <HomeSurpriseDeck
+              couple={couple}
+              onGoEnvies={onGoEnvies}
+              height={homeSurpriseHeight}
+              onOpenCard={onOpenEnvieCard}
+              scale={homeScale}
+              verticalScale={homeVerticalScale}
+            />
+          </Entrance>
+          <Entrance delay={160}>
+            <HomeDailyAdvice couple={couple} height={homeAdviceHeight} scale={homeScale} verticalScale={homeVerticalScale} />
+          </Entrance>
+          <Entrance delay={220}>
+            <HomeStoreModule
+              couple={couple}
+              height={homeStoreHeight}
+              onGoEnvies={onGoEnvies}
+              onOpenStore={() => setStoreOpen(true)}
+              scale={homeScale}
+              verticalScale={homeVerticalScale}
+            />
+          </Entrance>
+        </ScrollView>
+        <Animated.View
+          pointerEvents={homeHeaderDetached ? "none" : "box-none"}
+          style={[
+            styles.homeFloatingHeader,
+            {
+              left: 14 * homeWidthScale,
+              opacity: homeHeaderOpacity,
+              right: 14 * homeWidthScale,
+              top: homeRhythm,
+            },
+          ]}
+        >
+          <View style={styles.homeHeroTop}>
+            <View style={[styles.homeBrandPill, { minHeight: 54 * homeScale, paddingHorizontal: 27 * homeScale }]}>
+              <Text style={[styles.homeBrandText, { fontSize: 21 * homeScale, lineHeight: 26 * homeScale }]}>WeSpice</Text>
+            </View>
+            <SpringPressable onPress={onOpenProfile} style={styles.homeProfileButton}>
+              <View style={[styles.homeProfileBubble, { height: 57 * homeScale, width: 57 * homeScale }]}>
+                <Text style={[styles.homeProfileIcon, { fontSize: 27 * homeScale, lineHeight: 33 * homeScale }]}>{profileEmoji(activeProfile)}</Text>
+              </View>
+            </SpringPressable>
+          </View>
+        </Animated.View>
+      </View>
       <StoreScreen
         couple={couple}
         onClose={() => setStoreOpen(false)}
@@ -6848,7 +8218,15 @@ function HomeScreen({
         onOpenNoAds={() => setNoAdsPurchaseOpen(true)}
         onOpenUnlimitedResponses={() => setUnlimitedPurchaseOpen(true)}
         onOpenPack={setPurchaseCategory}
+        onRestorePurchases={onRestorePurchases}
         visible={storeOpen}
+      />
+      <HomeMoodSettingsSheet
+        couple={couple}
+        onClose={() => setMoodSheetOpen(false)}
+        onMoodChange={onMoodChange}
+        onMoodNotificationPreference={onMoodNotificationPreference}
+        visible={moodSheetOpen}
       />
       <CategoryPurchaseModal
         category={purchaseCategory}
@@ -6887,6 +8265,189 @@ function HomeScreen({
         visible={unlimitedPurchaseOpen}
       />
     </>
+  );
+}
+
+function HomeMoodHero({
+  couple,
+  height,
+  onChange,
+  onOpenMoodPanel,
+  rhythm,
+  scale,
+}: {
+  couple: CoupleState;
+  height: number;
+  onChange: (level: CoupleMoodLevel) => void;
+  onOpenMoodPanel: () => void;
+  rhythm: number;
+  scale: number;
+}) {
+  const activeId = couple.activePartnerId;
+  const activeLevel = moodLevel(couple, activeId);
+  const heroScale = scale;
+
+  return (
+    <View style={[styles.homeHero, { gap: rhythm, height, minHeight: height, paddingBottom: 0 }]}>
+      <Text
+        adjustsFontSizeToFit
+        minimumFontScale={0.78}
+        numberOfLines={2}
+        style={[styles.homeHeroTitle, { fontSize: 59 * heroScale, lineHeight: 59 * heroScale, maxWidth: 348 * scale }]}
+      >
+        Ce soir,{`\n`}on joue
+        <Text style={styles.homeHeroQuestion}>?</Text>
+      </Text>
+      <View style={[styles.homeMoodRow, { gap: 7 * heroScale }]}>
+        {moodOptions.map((option) => {
+          const selected = option.level === activeLevel;
+
+          return (
+            <Pressable
+              key={option.level}
+              onPress={() => onChange(option.level)}
+              hitSlop={6}
+              style={({ pressed }) => [
+                styles.homeMoodChip,
+                {
+                  minHeight: 47 * heroScale,
+                  paddingHorizontal: 5 * heroScale,
+                },
+                selected && styles.homeMoodChipSelected,
+                pressed && styles.homeMoodChipPressed,
+              ]}
+            >
+              <Text
+                adjustsFontSizeToFit
+                minimumFontScale={0.76}
+                numberOfLines={1}
+                style={[styles.homeMoodChipText, { fontSize: 14.6 * heroScale, lineHeight: 18 * heroScale }, selected && styles.homeMoodChipTextSelected]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+        <Pressable
+          accessibilityLabel="Ouvrir les réglages de mood"
+          accessibilityRole="button"
+          hitSlop={6}
+          onPress={onOpenMoodPanel}
+          style={({ pressed }) => [
+            styles.homeMoodSettingsChip,
+            {
+              height: 47 * heroScale,
+              width: 47 * heroScale,
+            },
+            pressed && styles.homeMoodChipPressed,
+          ]}
+        >
+          <Settings color={candy.white} size={18 * heroScale} strokeWidth={3} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function HomeMoodSettingsSheet({
+  couple,
+  onClose,
+  onMoodChange,
+  onMoodNotificationPreference,
+  visible,
+}: {
+  couple: CoupleState;
+  onClose: () => void;
+  onMoodChange: (level: CoupleMoodLevel) => void;
+  onMoodNotificationPreference: (enabled: boolean) => void;
+  visible: boolean;
+}) {
+  const insets = useSafeAreaInsets();
+  const activeId = couple.activePartnerId;
+  const partnerProfile = couple.profiles[otherPartnerId(activeId)];
+  const activeMood = moodLevel(couple, activeId);
+  const partnerName = partnerProfile.displayName.trim() || "Ton/ta partenaire";
+  const notificationsEnabled = isMoodNotificationEnabled(couple, activeId);
+  const [pendingMood, setPendingMood] = useState<CoupleMoodLevel>(activeMood);
+
+  useEffect(() => {
+    if (visible) {
+      setPendingMood(activeMood);
+    }
+  }, [activeMood, visible]);
+
+  const handleMoodPress = useCallback((level: CoupleMoodLevel) => {
+    setPendingMood(level);
+    void Haptics.selectionAsync();
+  }, []);
+
+  const handleSendSignal = useCallback(() => {
+    onMoodChange(pendingMood);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    onClose();
+  }, [onClose, onMoodChange, pendingMood]);
+
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+      <View style={styles.homeMoodSheetOverlay}>
+        <Pressable accessibilityLabel="Fermer les réglages de mood" onPress={onClose} style={styles.homeMoodSheetBackdrop} />
+        <View style={[styles.homeMoodSheet, { paddingBottom: Math.max(18, insets.bottom + 12) }]}>
+          <View style={styles.homeMoodSheetHandle} />
+          <View style={styles.homeMoodSheetHeader}>
+            <View style={styles.homeMoodSheetTitleBlock}>
+              <Text style={styles.homeMoodSheetTitle}>
+                Ton mood, là,{`\n`}maintenant<Text style={styles.homeMoodSheetTitleDot}>.</Text>
+              </Text>
+              <Text style={styles.homeMoodSheetSubtitle}>{partnerName} ne verra rien... sauf si vos moods s'alignent.</Text>
+            </View>
+            <SpringPressable onPress={onClose} style={styles.homeMoodSheetClose}>
+              <X color={candy.ink} size={18} strokeWidth={3} />
+            </SpringPressable>
+          </View>
+
+          <View style={styles.homeMoodSignalList}>
+            {moodSignalOptions.map((option) => {
+              const selected = pendingMood === option.level;
+
+              return (
+                <SpringPressable
+                  key={option.level}
+                  onPress={() => handleMoodPress(option.level)}
+                  style={[styles.homeMoodSignalRow, selected && styles.homeMoodSignalRowSelected]}
+                >
+                  <View
+                    style={[
+                      styles.homeMoodSignalDot,
+                      { backgroundColor: option.color },
+                      selected && { backgroundColor: candy.cream, borderColor: candy.yellow, borderWidth: 2 },
+                    ]}
+                  />
+                  <View style={styles.homeMoodSignalCopy}>
+                    <Text style={[styles.homeMoodSignalTitle, selected && styles.homeMoodSignalTitleSelected]}>{option.label}</Text>
+                    <Text style={[styles.homeMoodSignalText, selected && styles.homeMoodSignalTextSelected]}>{option.description}</Text>
+                  </View>
+                </SpringPressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.homeMoodNotificationPanel}>
+            <Text style={styles.homeMoodNotificationTitle}>Notifications</Text>
+            <NotificationPreferenceRow
+              enabled={notificationsEnabled}
+              emoji="✨"
+              onToggle={() => onMoodNotificationPreference(!notificationsEnabled)}
+              title="Humeur partagée"
+            />
+          </View>
+
+          <SpringPressable onPress={handleSendSignal} style={styles.homeMoodSendButton}>
+            <Text style={styles.homeMoodSendText}>Envoyer le signal</Text>
+          </SpringPressable>
+          <Text style={styles.homeMoodSheetFootnote}>Si vos moods s'alignent, vous serez prévenus tous les deux.</Text>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -6936,28 +8497,35 @@ function HomeStatusTeaser({
   );
 }
 
-function HomeDailyAdvice({ couple }: { couple: CoupleState }) {
+function HomeDailyAdvice({ couple, height, scale, verticalScale }: { couple: CoupleState; height: number; scale: number; verticalScale: number }) {
   const advice = dailyAdviceForCouple(couple);
-  const dayLabel = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+  const adviceScale = Math.min(scale * 1.08, Math.max(0.82, height / 92));
 
   return (
-    <LinearGradient colors={["rgba(255,255,255,0.94)", candy.roseMist, candy.roseSoft]} style={styles.dailyAdviceCard}>
-      <Text pointerEvents="none" style={styles.dailyAdviceEmoji}>{advice.emoji}</Text>
-      <View style={styles.dailyAdviceTop}>
-        <View style={styles.dailyAdvicePill}>
-          <Text style={styles.dailyAdvicePillText}>Conseil du jour</Text>
-        </View>
-        <Text style={styles.dailyAdviceDate}>{dayLabel}</Text>
+    <View
+      style={[
+        styles.dailyAdviceCard,
+        {
+          borderRadius: 22 * adviceScale,
+          gap: 14 * adviceScale,
+          height,
+          justifyContent: "center",
+          minHeight: height,
+          paddingHorizontal: 16 * adviceScale,
+          paddingVertical: 12 * verticalScale,
+        },
+      ]}
+    >
+      <View style={[styles.dailyAdviceIcon, { borderRadius: 17 * adviceScale, height: 42 * adviceScale, width: 42 * adviceScale }]}>
+        <Lightbulb color={candy.black} size={22 * adviceScale} strokeWidth={3} />
       </View>
-      <Text style={styles.dailyAdviceCategory}>{advice.category}</Text>
-      <Text style={styles.dailyAdviceTitle}>{advice.title}</Text>
-      <Text style={styles.dailyAdviceText}>{advice.text}</Text>
-      <View style={styles.dailyAdviceFooter}>
-        <Text style={styles.dailyAdviceFooterText}>Nouvelle lecture demain</Text>
-        <Text style={styles.dailyAdviceFooterDot}>•</Text>
-        <Text style={styles.dailyAdviceFooterText}>1 min</Text>
+      <View style={styles.dailyAdviceCopy}>
+        <Text style={[styles.dailyAdvicePillText, { fontSize: 11.8 * adviceScale, lineHeight: 14 * adviceScale }]}>Conseil du jour</Text>
+        <Text adjustsFontSizeToFit minimumFontScale={0.78} numberOfLines={2} style={[styles.dailyAdviceText, { fontSize: 14.4 * adviceScale, lineHeight: 18.5 * adviceScale, marginTop: 3 * adviceScale }]}>
+          {advice.text}
+        </Text>
       </View>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -7112,80 +8680,60 @@ function HomeNextStepPanel({
 
 function HomeStoreModule({
   couple,
+  height,
   onGoEnvies,
   onOpenStore,
+  scale,
+  verticalScale,
 }: {
   couple: CoupleState;
+  height: number;
   onGoEnvies: () => void;
   onOpenStore: () => void;
+  scale: number;
+  verticalScale: number;
 }) {
-  const paidPacks = PAID_PACK_CATEGORIES;
-  const lockedPacks = paidPacks.filter((category) => !isCategoryUnlocked(couple, category));
-  const unlockedCount = paidPacks.length - lockedPacks.length;
-  const customUnlimited = hasCustomCardsUnlimited(couple);
-  const noAdsUnlocked = hasNoAds(couple);
-  const unlimitedResponsesUnlocked = hasUnlimitedResponses(couple);
-  const offerCount = lockedPacks.length + (customUnlimited ? 0 : 1) + (unlimitedResponsesUnlocked ? 0 : 1) + (noAdsUnlocked ? 0 : 1);
-  const action = offerCount ? onOpenStore : onGoEnvies;
-  const previewPacks = (lockedPacks.length ? lockedPacks : paidPacks).slice(0, 3);
+  const featuredCategory = dailyStoreCategory(couple);
+  const featuredUnlocked = isCategoryUnlocked(couple, featuredCategory);
+  const featuredCount = desireCardCount(featuredCategory);
+  const featuredPrice = CATEGORY_PRICES[featuredCategory] ?? "4,99 €";
+  const storeScale = Math.min(scale * 1.04, Math.max(0.8, height / 112));
+  const storeGap = 7 * verticalScale;
+  const storeHeaderLineHeight = 27 * storeScale;
+  const packHeight = Math.max(48 * storeScale, height - storeHeaderLineHeight - storeGap);
 
   return (
-    <LinearGradient colors={[candy.black, "#4A1F50", candy.red]} style={styles.homeStore}>
-      <EmojiSticker emoji={stickers.sparkles} size={72} style={styles.homeStoreSparkle} />
-      <EmojiSticker emoji={stickers.flame} size={86} style={styles.homeStoreFlame} />
+    <View style={[styles.homeStore, { gap: storeGap, height, minHeight: height, overflow: "hidden" }]}>
       <View style={styles.homeStoreTop}>
-        <Text style={styles.homeStoreEyebrow}>Packs</Text>
-        <Text style={styles.homeStoreBadge}>{offerCount ? `${offerCount} à découvrir` : "Tout ouvert"}</Text>
-      </View>
-      <Text style={styles.homeStoreTitle}>{offerCount ? "De nouvelles cartes pour vous deux" : "Tous les packs sont ouverts"}</Text>
-      <Text style={styles.homeStoreText}>
-        {offerCount
-          ? "Des cartes plus directes, des réponses illimitées et une option No Ads."
-          : "Vous avez accès à tous les packs. Il reste juste à jouer et laisser les matchs arriver."}
-      </Text>
-
-      <View style={styles.homeStorePackRow}>
-        {previewPacks.map((category) => {
-          const tone = categoryCardTone(category);
-          const unlocked = isCategoryUnlocked(couple, category);
-          const cardCount = desireCardCount(category);
-
-          return (
-            <SpringPressable
-              key={category}
-              onPress={() => (unlocked ? onGoEnvies() : onOpenStore())}
-              style={[styles.homeStorePack, unlocked && styles.homeStorePackOpen]}
-            >
-              <EmojiSticker emoji={tone.sticker} size={38} style={styles.homeStorePackEmoji} />
-              <View style={styles.homeStorePackCopy}>
-                <Text numberOfLines={1} style={styles.homeStorePackTitle}>{categoryLabel(category)}</Text>
-                <Text numberOfLines={2} style={styles.homeStorePackMeta}>{unlocked ? "Ouvert" : `${cardCount} cartes · ${CATEGORY_PRICES[category]}`}</Text>
-              </View>
-            </SpringPressable>
-          );
-        })}
+        <Text adjustsFontSizeToFit minimumFontScale={0.78} numberOfLines={1} style={[styles.homeStoreTitle, { fontSize: 25 * storeScale, lineHeight: storeHeaderLineHeight }]}>Monter d'un cran</Text>
+        <SpringPressable onPress={onOpenStore} style={styles.homeStoreLink}>
+          <Text adjustsFontSizeToFit minimumFontScale={0.78} numberOfLines={1} style={[styles.homeStoreLinkText, { fontSize: 14.5 * storeScale, lineHeight: 18 * storeScale }]}>Magasin</Text>
+          <ChevronRight size={15 * storeScale} color={candy.yellow} />
+        </SpringPressable>
       </View>
 
-      <SpringPressable
-        onPress={customUnlimited ? onGoEnvies : onOpenStore}
-        style={[styles.homeStorePack, styles.homeStoreCustomPack, customUnlimited && styles.homeStorePackOpen]}
-      >
-        <Text style={styles.homeStoreCustomEmoji}>💭</Text>
-        <View style={styles.homeStoreCustomCopy}>
-          <Text style={styles.homeStorePackTitle}>Cartes perso sans limite</Text>
-          <Text style={styles.homeStorePackMeta}>
-            {customUnlimited ? "Sans limite" : `${CUSTOM_CARD_FREE_LIMIT} gratuites puis sans limite · ${CUSTOM_CARDS_UNLIMITED_PRICE}`}
+      <View style={[styles.homeStorePackRow, { gap: 9 * storeScale }]}>
+        <SpringPressable
+          onPress={featuredUnlocked ? onGoEnvies : onOpenStore}
+          style={[styles.homeStorePack, styles.homeStorePackFeatured, { borderRadius: 18 * storeScale, height: packHeight, minHeight: packHeight, padding: 13 * storeScale }]}
+        >
+          <Text numberOfLines={1} style={[styles.homeStorePackTitle, { fontSize: 19 * storeScale, lineHeight: 21 * storeScale }]}>
+            Pack {categoryLabel(featuredCategory)}
+          </Text>
+          <Text numberOfLines={1} style={[styles.homeStorePackMeta, { fontSize: 12.8 * storeScale, lineHeight: 16 * storeScale, marginTop: 2 * storeScale }]}>
+            {featuredUnlocked ? "Déjà ouvert" : `${featuredCount} cartes · ${featuredPrice}`}
+          </Text>
+        </SpringPressable>
+        <View style={[styles.homeStorePack, styles.homeStorePackSoon, { borderRadius: 18 * storeScale, height: packHeight, minHeight: packHeight, padding: 13 * storeScale }]}>
+          <Text numberOfLines={1} style={[styles.homeStorePackTitle, styles.homeStorePackTitleSoon, { fontSize: 19 * storeScale, lineHeight: 21 * storeScale }]}>
+            Scénarios
+          </Text>
+          <Text numberOfLines={1} style={[styles.homeStorePackMeta, styles.homeStorePackMetaSoon, { fontSize: 12.8 * storeScale, lineHeight: 16 * storeScale, marginTop: 2 * storeScale }]}>
+            bientôt
           </Text>
         </View>
-      </SpringPressable>
-
-      <SpringPressable onPress={action} style={styles.homeStoreAction}>
-        <Text style={styles.homeStoreActionText}>
-          {offerCount ? "Voir les packs" : `${unlockedCount}/${paidPacks.length} packs ouverts`}
-        </Text>
-        <ChevronRight size={18} color={candy.red} />
-      </SpringPressable>
-    </LinearGradient>
+      </View>
+    </View>
   );
 }
 
@@ -7197,6 +8745,7 @@ function StoreScreen({
   onOpenNoAds,
   onOpenUnlimitedResponses,
   onOpenPack,
+  onRestorePurchases,
   visible,
 }: {
   couple: CoupleState;
@@ -7206,95 +8755,182 @@ function StoreScreen({
   onOpenNoAds: () => void;
   onOpenUnlimitedResponses: () => void;
   onOpenPack: (category: DesireCategory) => void;
+  onRestorePurchases: () => void;
   visible: boolean;
 }) {
+  const safeAreaInsets = useSafeAreaInsets();
+  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
+
   if (!visible) {
     return null;
   }
 
-  const paidPacks = PAID_PACK_CATEGORIES;
-  const unlockedPaidCount = paidPacks.filter((category) => isCategoryUnlocked(couple, category)).length;
   const customUnlimited = hasCustomCardsUnlimited(couple);
   const noAdsUnlocked = hasNoAds(couple);
   const unlimitedResponsesUnlocked = hasUnlimitedResponses(couple);
-  const customCount = customDesireCount(couple);
-  const offerCount = paidPacks.filter((category) => !isCategoryUnlocked(couple, category)).length
-    + (customUnlimited ? 0 : 1)
-    + (unlimitedResponsesUnlocked ? 0 : 1)
-    + (noAdsUnlocked ? 0 : 1);
+  const storeBottomPadding = Math.max(18, safeAreaInsets.bottom + 12);
+  const storeSurface = fullScreenSurfaceMetrics(viewportWidth);
+  const storePackColumns = 3;
+  const storePackGap = viewportWidth >= 700 ? 16 : viewportWidth >= 520 ? 14 : 10;
+  const storeInnerWidth = storeSurface.contentWidth;
+  const packCardWidth = Math.max(84, (storeInnerWidth - storePackGap * (storePackColumns - 1)) / storePackColumns);
+  const packCardHeight = Math.round(packCardWidth * (viewportWidth >= 700 ? 1.32 : 1.42));
+  const storeContentMinHeight = Math.max(0, viewportHeight - safeAreaInsets.top - safeAreaInsets.bottom - storeBottomPadding);
 
   return (
     <Modal animationType="slide" visible onRequestClose={onClose}>
       <LinearGradient colors={[candy.red, candy.red]} style={styles.storeScreen}>
         <SafeAreaView style={styles.storeSafe}>
-          <ScrollView contentContainerStyle={styles.storeContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.storeTopBar}>
-              <WeSpiceLogo small />
+          <ScrollView
+            contentContainerStyle={[
+              styles.storeContent,
+              {
+                minHeight: storeContentMinHeight,
+                paddingBottom: storeBottomPadding,
+                paddingHorizontal: storeSurface.sideInset,
+              },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.storeHeader}>
               <SpringPressable onPress={onClose} style={styles.storeCloseButton}>
-                <X size={22} color={candy.ink} />
+                <ArrowLeft size={19} color={candy.white} />
               </SpringPressable>
-            </View>
-
-            <LinearGradient colors={[candy.black, "#4A1F50", candy.red]} style={styles.storeHero}>
-              <EmojiSticker emoji={stickers.cherries} size={100} style={styles.storeHeroCherry} />
-              <Text style={styles.storeEyebrow}>Packs WeSpice</Text>
-              <Text style={styles.storeTitle}>Ajoute des cartes à votre jeu.</Text>
-              <Text style={styles.storeText}>
-                Les packs ajoutent des envies à explorer à deux. L'illimité ouvre plus de réponses par jour.
-              </Text>
-              <View style={styles.storeHeroStats}>
-                <StoreStat value={`${unlockedPaidCount}/${paidPacks.length}`} label="Packs ouverts" />
-                <StoreStat value={`${customCount}`} label="Cartes perso" />
-                <StoreStat value={offerCount ? `${offerCount}` : "0"} label="À ouvrir" />
+              <View style={styles.storeHeaderCopy}>
+                <Text style={styles.storeTitle}>Boutique</Text>
+                <Text style={styles.storeSubtitle}>Des extensions de jeu, pas des murs.</Text>
               </View>
-            </LinearGradient>
+            </View>
 
             <View style={styles.storeSectionHeader}>
-              <Text style={styles.storeSectionTitle}>Packs de cartes</Text>
-              <Text style={styles.storeSectionText}>Vanille est inclus. Les autres packs s'ouvrent pour vous deux.</Text>
+              <Text style={styles.storeSectionTitle}>Améliorer le jeu</Text>
             </View>
 
-            <View style={styles.storeOfferList}>
-              <StoreCategoryOffer category="Vanille" couple={couple} included onGoEnvies={onGoEnvies} onOpenPack={onOpenPack} />
-              {paidPacks.map((category) => (
-                <StoreCategoryOffer
+            <View style={styles.storeUpgradeList}>
+              <StoreUpgradeOffer
+                highlight
+                popular={!unlimitedResponsesUnlocked}
+                price={unlimitedResponsesUnlocked ? "Actif" : UNLIMITED_RESPONSES_PRICE}
+                subtitle="Jouez sans compter, tous les soirs"
+                title="Réponses illimitées"
+                onPress={unlimitedResponsesUnlocked ? onGoEnvies : onOpenUnlimitedResponses}
+              />
+              <StoreUpgradeOffer
+                price={customUnlimited ? "Actif" : CUSTOM_CARDS_UNLIMITED_PRICE}
+                subtitle={`Vos idées, sans limite de ${CUSTOM_CARD_FREE_LIMIT}`}
+                title="Cartes perso illimitées"
+                onPress={customUnlimited ? onGoEnvies : onOpenCustomPack}
+              />
+              <StoreUpgradeOffer
+                price={noAdsUnlocked ? "Actif" : NO_ADS_PRICE}
+                subtitle="Révélations sans interruption"
+                title="Zéro pub"
+                onPress={noAdsUnlocked ? onGoEnvies : onOpenNoAds}
+              />
+            </View>
+
+            <View style={styles.storePacksHeader}>
+              <View style={styles.storeSectionHeader}>
+                <Text style={styles.storeSectionTitle}>Nouveaux univers</Text>
+              </View>
+            </View>
+
+            <View style={[styles.storePackGrid, { gap: storePackGap }]}>
+              {PAID_PACK_CATEGORIES.map((category) => (
+                <StoreFeaturedPackCard
                   category={category}
                   couple={couple}
                   key={category}
                   onGoEnvies={onGoEnvies}
                   onOpenPack={onOpenPack}
+                  height={packCardHeight}
+                  width={packCardWidth}
                 />
               ))}
             </View>
 
-            <View style={styles.storeSectionHeader}>
-              <Text style={styles.storeSectionTitle}>Cartes perso</Text>
-              <Text style={styles.storeSectionText}>Pour ajouter vos propres idées sans limite.</Text>
+            <View style={styles.storeFooter}>
+              <SpringPressable onPress={onRestorePurchases} style={styles.storeRestoreButton}>
+                <Text style={styles.storeRestoreText}>Restaurer mes achats</Text>
+              </SpringPressable>
+              <Text style={styles.storeLegalText}>Achats uniques, partagés par le couple. Aucun abonnement.</Text>
             </View>
-
-            <StoreCustomOffer
-              customCount={customCount}
-              customUnlimited={customUnlimited}
-              onGoEnvies={onGoEnvies}
-              onOpenCustomPack={onOpenCustomPack}
-            />
-
-            <View style={styles.storeSectionHeader}>
-              <Text style={styles.storeSectionTitle}>Rythme & confort</Text>
-              <Text style={styles.storeSectionText}>Pour jouer plus longtemps ou retirer les interstitiels.</Text>
-            </View>
-
-            <StoreUnlimitedResponsesOffer
-              onGoEnvies={onGoEnvies}
-              onOpenUnlimitedResponses={onOpenUnlimitedResponses}
-              unlimitedResponsesUnlocked={unlimitedResponsesUnlocked}
-            />
-            <StoreNoAdsOffer noAdsUnlocked={noAdsUnlocked} onGoEnvies={onGoEnvies} onOpenNoAds={onOpenNoAds} />
-
           </ScrollView>
         </SafeAreaView>
       </LinearGradient>
     </Modal>
+  );
+}
+
+function StoreUpgradeOffer({
+  highlight,
+  onPress,
+  popular,
+  price,
+  subtitle,
+  title,
+}: {
+  highlight?: boolean;
+  onPress: () => void;
+  popular?: boolean;
+  price: string;
+  subtitle: string;
+  title: string;
+}) {
+  return (
+    <SpringPressable onPress={onPress} style={[styles.storeUpgradeCard, highlight && styles.storeUpgradeCardHighlight]}>
+      {popular ? (
+        <View style={styles.storePopularBadge}>
+          <Text style={styles.storePopularText}>Populaire</Text>
+        </View>
+      ) : null}
+      <View style={styles.storeUpgradeCopy}>
+        <Text numberOfLines={1} style={styles.storeUpgradeTitle}>{title}</Text>
+        <Text numberOfLines={1} style={styles.storeUpgradeText}>{subtitle}</Text>
+      </View>
+      <View style={[styles.storeUpgradePrice, highlight && styles.storeUpgradePriceDark]}>
+        <Text style={[styles.storeUpgradePriceText, highlight && styles.storeUpgradePriceTextDark]}>{price}</Text>
+      </View>
+    </SpringPressable>
+  );
+}
+
+function StoreFeaturedPackCard({
+  category,
+  couple,
+  height,
+  onGoEnvies,
+  onOpenPack,
+  width,
+}: {
+  category: DesireCategory;
+  couple: CoupleState;
+  height: number;
+  onGoEnvies: () => void;
+  onOpenPack: (category: DesireCategory) => void;
+  width: number;
+}) {
+  const visual = categoryVisual(category);
+  const unlocked = isCategoryUnlocked(couple, category);
+  const hotCard = category === "Hot";
+  const lightText = ["Scénarios", "Kinky Soft", "Jeux & Défis", "BDSM", "Tabous"].includes(category);
+
+  return (
+    <SpringPressable
+      onPress={unlocked ? onGoEnvies : () => onOpenPack(category)}
+      style={[styles.storePackCard, { backgroundColor: visual.accent, height, width }]}
+    >
+      <LinearGradient colors={visual.colors} pointerEvents="none" style={styles.storePackCardFill} />
+      <CategoryPickerPattern category={category} />
+      <View style={styles.storePackCardCopy}>
+        <Text numberOfLines={1} style={[styles.storePackTitle, lightText && styles.storePackTitleLight, hotCard && styles.storePackTitleDark]}>
+          {categoryLabel(category)}
+        </Text>
+        <Text numberOfLines={1} style={[styles.storePackPrice, lightText && styles.storePackPriceLight, hotCard && styles.storePackPriceDark]}>
+          {unlocked ? "Actif" : CATEGORY_PRICES[category] ?? "4,99 €"}
+        </Text>
+      </View>
+    </SpringPressable>
   );
 }
 
@@ -7476,139 +9112,176 @@ function StoreStat({ label, value }: { label: string; value: string }) {
 
 function HomeSurpriseDeck({
   couple,
+  height,
   onGoEnvies,
-  onVote,
+  onOpenCard,
+  scale,
+  verticalScale,
 }: {
   couple: CoupleState;
+  height: number;
   onGoEnvies: () => void;
-  onVote: (cardId: string, level: VoteLevel) => Promise<boolean>;
+  onOpenCard: (card: DesireCard) => void;
+  scale: number;
+  verticalScale: number;
 }) {
   const activeId = couple.activePartnerId;
-  const unansweredCards = useMemo(
-    () => availableDesireCards(couple).filter((card) => couple.votes[activeId][card.id] === undefined),
-    [activeId, couple],
+  const partnerId = otherPartnerId(activeId);
+  const availableCards = useMemo(
+    () => availableDesireCards(couple),
+    [couple],
   );
-  const unansweredKey = useMemo(() => unansweredCards.map((card) => card.id).join("|"), [unansweredCards]);
-  const [deck, setDeck] = useState<DesireCard[]>(() => shuffledCards(unansweredCards));
-  const [transitioningCardId, setTransitioningCardId] = useState<string | null>(null);
-  const [exitingCardId, setExitingCardId] = useState<string | null>(null);
-  const [burstNonce, setBurstNonce] = useState(0);
-  const [burstVoteLevel, setBurstVoteLevel] = useState<VoteLevel>(2);
-  const transitionTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
-  const activeCard = deck[0];
-  const transitioning = Boolean(transitioningCardId);
+  const unansweredCards = useMemo(
+    () => availableCards.filter((card) => couple.votes[activeId][card.id] === undefined),
+    [activeId, availableCards, couple.votes],
+  );
+  const answeredCards = useMemo(
+    () => availableCards.filter((card) => couple.votes[activeId][card.id] !== undefined),
+    [activeId, availableCards, couple.votes],
+  );
+  const activeCard = useMemo(() => {
+    const cardCandidates = unansweredCards.length ? unansweredCards : answeredCards;
 
-  const clearHomeTransitionTimers = () => {
-    transitionTimers.current.forEach((timer) => clearTimeout(timer));
-    transitionTimers.current = [];
-  };
-
-  useEffect(() => {
-    if (transitioning) {
-      return;
+    if (!cardCandidates.length) {
+      return undefined;
     }
 
-    clearHomeTransitionTimers();
-    setDeck(shuffledCards(unansweredCards));
-    setExitingCardId(null);
-    setTransitioningCardId(null);
-  }, [activeId, transitioning, unansweredKey]);
-
-  useEffect(() => () => clearHomeTransitionTimers(), []);
-
-  async function voteSurprise(level: VoteLevel) {
-    if (!activeCard || transitioningCardId) {
-      return;
-    }
-
-    const accepted = await onVote(activeCard.id, level);
-    if (!accepted) {
-      return;
-    }
-
-    const cardId = activeCard.id;
-    setTransitioningCardId(cardId);
-    setBurstVoteLevel(level);
-
-    const exitTimer = setTimeout(() => {
-      setExitingCardId(cardId);
-      setBurstNonce((current) => current + 1);
-    }, GAME_CARD_SETTLE_MS);
-    const nextTimer = setTimeout(() => {
-      setDeck((current) => current.filter((card) => card.id !== cardId));
-      setExitingCardId(null);
-      setTransitioningCardId(null);
-      transitionTimers.current = transitionTimers.current.filter((timer) => timer !== exitTimer && timer !== nextTimer);
-    }, GAME_CARD_TOTAL_TRANSITION_MS);
-
-    transitionTimers.current.push(exitTimer, nextTimer);
-  }
+    const seed = `${dailyDateKey()}-${couple.id}-home-card`;
+    return cardCandidates[hashText(seed) % cardCandidates.length];
+  }, [answeredCards, couple.id, unansweredCards]);
+  const partnerName = couple.profiles[partnerId].displayName.trim() || "Ton/ta partenaire";
+  const statusLabel = activeCard ? homeSurpriseStatusLabel(couple, activeCard) : "Nouveau";
+  const partnerAnswered = activeCard ? couple.votes[partnerId][activeCard.id] !== undefined : false;
+  const partnerHint = activeCard
+    ? statusLabel === "Match"
+      ? "Vous avez matché sur cette carte."
+      : partnerAnswered
+        ? `${partnerName} a répondu.`
+        : `${partnerName} n'a pas encore répondu.`
+    : "";
 
   return (
     <View style={styles.homeSurpriseDeck}>
       {activeCard ? (
-        <GameCardTransition exiting={exitingCardId === activeCard.id} key={activeCard.id}>
-          <HomeSurpriseCard card={activeCard} index={0} onVote={voteSurprise} />
-        </GameCardTransition>
+        <HomeSurpriseCard
+          card={activeCard}
+          height={height}
+          partnerHint={partnerHint}
+          onOpen={() => onOpenCard(activeCard)}
+          scale={scale}
+          statusLabel={statusLabel}
+          verticalScale={verticalScale}
+        />
       ) : (
-        <SpringPressable onPress={onGoEnvies} style={styles.homeEmptySurpriseCard}>
+        <SpringPressable
+          onPress={onGoEnvies}
+          style={[styles.homeEmptySurpriseCard, { borderRadius: 24 * scale, height, minHeight: height, padding: 20 * verticalScale }]}
+        >
           <View style={styles.homeEmptySurpriseIcon}>
             <Text style={styles.homeEmptySurpriseEmoji}>🫧</Text>
           </View>
-          <Text style={styles.homeEmptySurpriseTitle}>Plus de cartes à répondre</Text>
-          <Text style={styles.homeEmptySurpriseText}>
+          <Text style={[styles.homeEmptySurpriseTitle, { fontSize: 23 * scale, lineHeight: 25 * scale }]}>Plus de cartes à répondre</Text>
+          <Text style={[styles.homeEmptySurpriseText, { fontSize: 13.5 * scale, lineHeight: 18 * scale }]}>
             Toutes les envies ouvertes ont déjà ta réponse. Débloque un pack ou ajoute une carte perso pour relancer le tirage.
           </Text>
         </SpringPressable>
       )}
-      <PersistentBurstLayer triggerKey={burstNonce} voteLevel={burstVoteLevel} />
     </View>
   );
 }
 
 function HomeSurpriseCard({
   card,
-  index,
-  onVote,
+  height,
+  partnerHint,
+  onOpen,
+  scale,
+  statusLabel,
+  verticalScale,
 }: {
   card: DesireCard;
-  index: number;
-  onVote: (level: VoteLevel) => void;
+  height: number;
+  partnerHint: string;
+  onOpen: () => void;
+  scale: number;
+  statusLabel: "Nouveau" | "Répondu" | "Match";
+  verticalScale: number;
 }) {
-  const tone = categoryCardTone(card.category);
+  const cardScale = Math.min(scale * 1.07, Math.max(0.84, Math.min(verticalScale * 1.08, height / 210)));
 
   return (
-    <LinearGradient colors={tone.colors} style={styles.homeSurpriseCard}>
-      <CardPattern emoji={tone.patternEmoji} />
-      <EmojiSticker emoji={cardStickerEmoji(card)} size={84} style={styles.homeSurpriseSticker} />
-      <View style={styles.homeSurpriseCopy}>
-        <CardMetaCluster category={card.category} compact status="Non répondu" />
-        <Text numberOfLines={2} style={[styles.homeSurpriseTitle, { color: tone.titleText }]}>{card.title}</Text>
-        <Text numberOfLines={2} style={[styles.homeSurpriseText, { color: tone.bodyText }]}>{card.blurb}</Text>
+    <View
+      style={[
+        styles.homeSurpriseCard,
+        {
+          borderRadius: 24 * cardScale,
+          gap: 10 * cardScale,
+          height,
+          justifyContent: "space-between",
+          minHeight: height,
+          paddingHorizontal: 19 * cardScale,
+          paddingBottom: 23 * cardScale,
+          paddingTop: 17 * cardScale,
+        },
+      ]}
+    >
+      <View style={[styles.homeSurpriseTop, { minHeight: 30 * cardScale }]}>
+        <Text style={[styles.homeSurpriseEyebrow, { fontSize: 13 * cardScale, lineHeight: 16 * cardScale }]}>Carte du jour</Text>
+        <View style={[styles.homeSurpriseBadge, { minHeight: 29 * cardScale, paddingHorizontal: 16 * cardScale }]}>
+          <Text style={[styles.homeSurpriseBadgeText, { fontSize: 13 * cardScale, lineHeight: 16 * cardScale }]}>{statusLabel}</Text>
+        </View>
       </View>
-      <View style={styles.voteRow}>
-        <VoteButton label="Non" onPress={() => onVote(0)} selected={false} testID={`home-random-${card.id}-${index}-0`} />
-        <VoteButton label="Pourquoi pas" onPress={() => onVote(1)} selected={false} testID={`home-random-${card.id}-${index}-1`} />
-        <VoteButton accent={tone.accent} flame onPress={() => onVote(2)} selected={false} testID={`home-random-${card.id}-${index}-2`} />
+      <Text adjustsFontSizeToFit minimumFontScale={0.76} numberOfLines={3} style={[styles.homeSurpriseTitle, { fontSize: 22.5 * cardScale, lineHeight: 25.5 * cardScale }]}>{card.title}</Text>
+      <View style={[styles.homeSurpriseActionStack, { gap: 10 * cardScale }]}>
+        <SpringPressable onPress={onOpen} style={[styles.homeSurpriseButton, { borderRadius: 18 * cardScale, minHeight: 61 * cardScale, paddingHorizontal: 18 * cardScale }]}>
+          <Text adjustsFontSizeToFit minimumFontScale={0.78} numberOfLines={1} style={[styles.homeSurpriseButtonText, { fontSize: 17.5 * cardScale, lineHeight: 22 * cardScale }]}>Jouer maintenant</Text>
+        </SpringPressable>
+        <Text numberOfLines={1} style={[styles.homeSurpriseText, { fontSize: 13.3 * cardScale, lineHeight: 17 * cardScale }]}>{partnerHint}</Text>
       </View>
-    </LinearGradient>
+    </View>
   );
+}
+
+function dailyStoreCategory(couple: CoupleState) {
+  const candidates = PAID_PACK_CATEGORIES.length ? PAID_PACK_CATEGORIES : PACK_CATEGORIES;
+  return candidates[hashText(`${dailyDateKey()}-${couple.id}-store-pack`) % candidates.length] ?? "Hot";
 }
 
 function CoupleScreen({
   couple,
   revealedMatchIds,
   onCopyInvite,
+  onGoEnvies,
   onGoMatch,
   onJoinPartner,
+  onOpenSettings,
+  onRestorePurchases,
+  onUnlockCategory,
+  onUnlockCustomCards,
+  onUnlockNoAds,
+  onUnlockUnlimitedResponses,
 }: {
   couple: CoupleState;
   revealedMatchIds: string[];
   onCopyInvite: () => void;
+  onGoEnvies: () => void;
   onGoMatch: () => void;
   onJoinPartner: () => void;
+  onOpenSettings: () => void;
+  onRestorePurchases: () => void;
+  onUnlockCategory: (category: DesireCategory) => void;
+  onUnlockCustomCards: () => void;
+  onUnlockNoAds: () => void;
+  onUnlockUnlimitedResponses: () => void;
 }) {
-  const { height: viewportHeight } = useWindowDimensions();
+  const safeAreaInsets = useSafeAreaInsets();
+  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
+  const coupleLayout = homeLayoutMetrics(viewportHeight, viewportWidth, safeAreaInsets);
+  const [purchaseCategory, setPurchaseCategory] = useState<DesireCategory | null>(null);
+  const [customPurchaseOpen, setCustomPurchaseOpen] = useState(false);
+  const [noAdsPurchaseOpen, setNoAdsPurchaseOpen] = useState(false);
+  const [storeOpen, setStoreOpen] = useState(false);
+  const [unlimitedPurchaseOpen, setUnlimitedPurchaseOpen] = useState(false);
   const revealedMatchSet = useMemo(() => new Set(revealedMatchIds), [revealedMatchIds]);
   const remoteCouple = isRemoteCoupleId(couple.id);
   const matches = useMemo(() => matchedCards(couple), [couple]);
@@ -7632,95 +9305,140 @@ function CoupleScreen({
   );
   const recentMatches = useMemo(() => revealedMatches.slice(0, 3), [revealedMatches]);
   const activeProfiles = PARTNER_IDS;
-  const soloPanelMinHeight = Math.max(520, viewportHeight - 128);
+  const activeInitial = (activeProfile.displayName.trim()[0] ?? "M").toUpperCase();
+  const unlockedPackCount = useMemo(
+    () => COUPLE_PACK_CATEGORIES.filter((category) => isCategoryUnlocked(couple, category)).length,
+    [couple],
+  );
+  const lockedPackCount = Math.max(0, COUPLE_PACK_CATEGORIES.length - unlockedPackCount);
+  const coupleSurface = fullScreenSurfaceMetrics(viewportWidth);
+  const coupleContentWidth = coupleSurface.contentWidth;
+  const coupleContentMinHeight = Math.max(0, viewportHeight - safeAreaInsets.top - coupleLayout.bottomPadding);
+  const coupleContentGap = Math.round(Math.min(18, Math.max(11, viewportHeight * 0.012)));
+  const soloContentStyle = useMemo<ViewStyle>(() => ({
+    alignSelf: "center",
+    minHeight: coupleLayout.frameHeight,
+    paddingBottom: coupleLayout.bottomPadding,
+    paddingHorizontal: Math.max(10, 14 * coupleLayout.widthScale),
+    paddingTop: Math.max(12, coupleLayout.rhythm),
+    width: coupleContentWidth,
+  }), [coupleContentWidth, coupleLayout.bottomPadding, coupleLayout.frameHeight, coupleLayout.rhythm, coupleLayout.widthScale]);
+  const coupleContentStyle = useMemo<ViewStyle>(() => ({
+    gap: coupleContentGap,
+    minHeight: coupleContentMinHeight,
+    paddingBottom: coupleLayout.bottomPadding + 18,
+    paddingTop: Math.max(10, coupleLayout.rhythm),
+    width: coupleContentWidth,
+  }), [
+    coupleContentGap,
+    coupleContentWidth,
+    coupleContentMinHeight,
+    coupleLayout.bottomPadding,
+    coupleLayout.rhythm,
+  ]);
 
   if (!linked) {
     return (
-      <ScrollView contentContainerStyle={[styles.profileScreen, styles.coupleScreen]} showsVerticalScrollIndicator={false}>
-        <LinearGradient
-          colors={[candy.roseMist, candy.pinkSoft, candy.pink]}
-          style={[styles.couplePanel, styles.coupleSoloPanel, { minHeight: soloPanelMinHeight }]}
-        >
-          <View pointerEvents="none" style={styles.coupleGlow} />
-          <Text style={styles.coupleEyebrow}>En solo pour l'instant</Text>
+      <ScrollView contentContainerStyle={[styles.coupleSoloScreen, soloContentStyle]} showsVerticalScrollIndicator={false}>
+        <Text style={styles.coupleSoloScreenTitle}>Nous</Text>
+        <View style={styles.coupleSoloCenter}>
           <View style={styles.coupleSoloAvatarStage}>
-            <View style={styles.coupleAvatarBubble}>
-              <Text style={styles.coupleAvatarEmoji}>{profileEmoji(activeProfile)}</Text>
+            <View style={styles.coupleSoloAvatar}>
+              <Text style={styles.coupleSoloAvatarInitial}>{activeInitial}</Text>
             </View>
-            <View style={[styles.coupleAvatarBubble, styles.coupleMissingBubble]}>
-              <Users size={42} color={candy.red} />
+            <View style={styles.coupleSoloMissingAvatar}>
+              <Text style={styles.coupleSoloMissingText}>?</Text>
             </View>
           </View>
-          <Text style={styles.coupleTitle}>Il manque ton/ta partenaire</Text>
-          <Text style={styles.coupleSub}>
-            Cette section se remplira quand vous serez deux. Invite avec ton code ou rejoins le code de ton/ta partenaire.
+          <Text style={styles.coupleSoloTitle}>Il manque quelqu'un</Text>
+          <Text style={styles.coupleSoloText}>
+            WeSpice se joue à deux. Invite ton/ta partenaire pour ouvrir le jeu.
           </Text>
 
-          <View style={styles.coupleSoloInviteCard}>
-            <View style={styles.inviteCodeBlock}>
-              <Text style={styles.inviteLabel}>Ton code d'invitation</Text>
-              <Text selectable style={styles.inviteCode}>{couple.inviteCode}</Text>
-            </View>
-            <WsIconButton
-              accessibilityLabel="Copier le code"
-              icon={<Copy size={20} color={candy.white} />}
-              onPress={onCopyInvite}
-              size={42}
-              style={styles.copyButton}
-              variant="hot"
-            />
-          </View>
-
           <View style={styles.coupleSoloActions}>
-            <WsButton
-              label="Inviter"
-              left={<Copy size={18} color={candy.white} />}
-              onPress={onCopyInvite}
-              style={styles.coupleSoloPrimaryAction}
-              variant="hot"
-            />
-            <WsButton
-              label="Rejoindre"
-              left={<Users size={18} color={candy.red} />}
-              onPress={onJoinPartner}
-              style={styles.coupleSoloSecondaryAction}
-              variant="secondary"
-            />
+            <SpringPressable onPress={onCopyInvite} style={styles.coupleSoloInviteButton}>
+              <Text style={styles.coupleSoloInviteText}>Inviter</Text>
+            </SpringPressable>
+            <SpringPressable onPress={onJoinPartner} style={styles.coupleSoloJoinButton}>
+              <Text style={styles.coupleSoloJoinText}>Rejoindre</Text>
+            </SpringPressable>
           </View>
-        </LinearGradient>
+          <Text selectable style={styles.coupleSoloCode}>{couple.inviteCode}</Text>
+        </View>
       </ScrollView>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={[styles.profileScreen, styles.coupleScreen]} showsVerticalScrollIndicator={false}>
-      <LinearGradient colors={[candy.roseMist, candy.pinkSoft, candy.pink]} style={styles.couplePanel}>
-        <EmojiSticker emoji={stickers.heart} size={90} style={styles.coupleSticker} />
-        <View pointerEvents="none" style={styles.coupleGlow} />
-        <Text style={styles.coupleEyebrow}>Nous deux</Text>
-        <View style={styles.coupleAvatarStage}>
+    <>
+      <ScrollView contentContainerStyle={[styles.coupleScreen, coupleContentStyle]} showsVerticalScrollIndicator={false}>
+        <View style={styles.coupleTopBar}>
+          <View>
+            <Text style={styles.coupleScreenTitle}>Nous</Text>
+            <Text numberOfLines={1} style={styles.coupleScreenSubtitle}>{coupleTitle}</Text>
+          </View>
+          <SpringPressable onPress={onOpenSettings} style={styles.coupleSettingsButton}>
+            <Text style={styles.coupleSettingsText}>Réglages</Text>
+          </SpringPressable>
+        </View>
+
+        <View style={styles.coupleProfileGrid}>
           {activeProfiles.map((id, index) => (
-            <View key={id} style={[styles.coupleAvatarBubble, index === 1 && styles.coupleAvatarBubbleSecond]}>
-              <Text style={styles.coupleAvatarEmoji}>{profileEmoji(couple.profiles[id])}</Text>
-            </View>
+            <CoupleProfileCard
+              couple={couple}
+              id={id}
+              key={id}
+              highlighted={index === 1}
+              packCount={unlockedPackCount}
+            />
           ))}
         </View>
-        <Text style={styles.coupleTitle}>{coupleTitle}</Text>
-        <Text style={styles.coupleSub}>
-          {linked
-            ? "Vos profils, vos réponses et les envies que vous avez en commun."
-            : "Votre espace est prêt. Invite ton/ta partenaire pour commencer à croiser vos réponses."}
-        </Text>
-        <View style={styles.coupleNameRow}>
-          {activeProfiles.map((id) => (
-            <Text key={id} numberOfLines={1} style={styles.coupleNamePill}>{couple.profiles[id].displayName}</Text>
-          ))}
+
+        <View style={styles.coupleCodePill}>
+          <Text numberOfLines={1} style={styles.coupleCodeText}>
+            Notre code : <Text selectable style={styles.coupleCodeStrong}>{couple.inviteCode}</Text>
+          </Text>
+          <SpringPressable onPress={onCopyInvite} style={styles.coupleCodeCopyButton}>
+            <Text style={styles.coupleCodeCopyText}>Copier</Text>
+          </SpringPressable>
         </View>
+
         <View style={styles.coupleStats}>
           <CoupleStat value={`${totalMatchCount}`} label="Matchs" />
-          <CoupleStat value={`${crossedResponseCount}`} label="Cartes croisées" />
-          <CoupleStat value={`${customCount}`} label="Perso" />
+          <CoupleStat value={`${crossedResponseCount}`} label="cartes croisées" />
+          <CoupleStat value={`${customCount}`} label="cartes perso" />
         </View>
+
+        <View style={styles.coupleSection}>
+          <View style={styles.coupleSectionHeader}>
+            <Text style={styles.coupleSectionTitle}>Matchs récents</Text>
+          </View>
+          {recentMatches.length ? (
+            <View style={styles.coupleRecentList}>
+              {recentMatches.map((card) => (
+                <CoupleRecentMatchItem card={card} key={card.id} onPress={onGoMatch} />
+              ))}
+            </View>
+          ) : (
+            <SpringPressable onPress={onGoMatch} style={styles.coupleEmptyMatches}>
+              <Text style={styles.coupleEmptyMatchesTitle}>{hiddenMatchCount > 0 ? "Match à révéler" : "Aucun match pour l'instant"}</Text>
+              <Text style={styles.coupleEmptyMatchesText}>
+                {hiddenMatchCount > 0 ? "Ouvre l'onglet Matchs pour le révéler de ton côté." : "Répondez à quelques cartes chacun de votre côté."}
+              </Text>
+            </SpringPressable>
+          )}
+        </View>
+
+        <View style={styles.couplePackSummary}>
+          <View style={styles.couplePackSummaryCopy}>
+            <Text style={styles.couplePackSummaryTitle}>{unlockedPackCount} packs actifs</Text>
+            <Text style={styles.couplePackSummaryText}>{lockedPackCount} univers encore à explorer</Text>
+          </View>
+          <SpringPressable onPress={() => setStoreOpen(true)} style={styles.coupleBoutiqueButton}>
+            <Text style={styles.coupleBoutiqueText}>Boutique</Text>
+          </SpringPressable>
+        </View>
+
         <View style={styles.coupleReconnectCard}>
           <View style={styles.coupleReconnectCopy}>
             <Text style={styles.coupleReconnectLabel}>Code partenaire</Text>
@@ -7736,59 +9454,98 @@ function CoupleScreen({
             variant="hot"
           />
         </View>
-      </LinearGradient>
+      </ScrollView>
 
-      <View style={styles.coupleSection}>
-        <View style={styles.coupleSectionHeader}>
-          <View style={styles.coupleSectionCopy}>
-            <Text style={styles.coupleSectionTitle}>Matchs récents</Text>
-            <Text style={styles.coupleSectionText}>
-              {recentMatches.length
-                ? "Les envies que tu as déjà révélées."
-                : hiddenMatchCount > 0
-                  ? "Révèle d'abord un match dans l'onglet Matchs pour le voir ici."
-                  : "Rien à révéler pour l'instant. Quelques réponses peuvent suffire."}
-            </Text>
-          </View>
-          <SpringPressable onPress={onGoMatch} style={styles.coupleSectionLink}>
-            <Text style={styles.coupleSectionLinkText}>Tout voir</Text>
-          </SpringPressable>
-        </View>
-        {recentMatches.length ? (
-          <View style={styles.coupleRecentList}>
-            {recentMatches.map((card) => (
-              <CoupleRecentMatchItem card={card} key={card.id} onPress={onGoMatch} />
-            ))}
-          </View>
-        ) : (
-          <SpringPressable onPress={onGoMatch} style={styles.coupleEmptyMatches}>
-            <Text style={styles.coupleEmptyMatchesTitle}>{hiddenMatchCount > 0 ? "Match à révéler" : "Aucun match pour l'instant"}</Text>
-            <Text style={styles.coupleEmptyMatchesText}>
-              {hiddenMatchCount > 0 ? "Ouvre l'onglet Matchs pour le révéler de ton côté." : "Répondez à quelques cartes chacun de votre côté."}
-            </Text>
-          </SpringPressable>
-        )}
+      <StoreScreen
+        couple={couple}
+        onClose={() => setStoreOpen(false)}
+        onGoEnvies={() => {
+          setStoreOpen(false);
+          onGoEnvies();
+        }}
+        onOpenCustomPack={() => setCustomPurchaseOpen(true)}
+        onOpenNoAds={() => setNoAdsPurchaseOpen(true)}
+        onOpenUnlimitedResponses={() => setUnlimitedPurchaseOpen(true)}
+        onOpenPack={setPurchaseCategory}
+        onRestorePurchases={onRestorePurchases}
+        visible={storeOpen}
+      />
+      <CategoryPurchaseModal
+        category={purchaseCategory}
+        onClose={() => setPurchaseCategory(null)}
+        onUnlock={(category) => {
+          onUnlockCategory(category);
+          setPurchaseCategory(null);
+          setStoreOpen(false);
+        }}
+      />
+      <CustomCardsPurchaseModal
+        customCount={customCount}
+        onClose={() => setCustomPurchaseOpen(false)}
+        onUnlock={() => {
+          onUnlockCustomCards();
+          setCustomPurchaseOpen(false);
+          setStoreOpen(false);
+        }}
+        visible={customPurchaseOpen}
+      />
+      <NoAdsPurchaseModal
+        onClose={() => setNoAdsPurchaseOpen(false)}
+        onUnlock={() => {
+          onUnlockNoAds();
+          setNoAdsPurchaseOpen(false);
+          setStoreOpen(false);
+        }}
+        visible={noAdsPurchaseOpen}
+      />
+      <UnlimitedResponsesPurchaseModal
+        dailyUsed={dailyResponseCount(couple, couple.activePartnerId)}
+        onClose={() => setUnlimitedPurchaseOpen(false)}
+        onUnlock={() => {
+          onUnlockUnlimitedResponses();
+          setUnlimitedPurchaseOpen(false);
+          setStoreOpen(false);
+        }}
+        visible={unlimitedPurchaseOpen}
+      />
+    </>
+  );
+}
+
+function CoupleProfileCard({
+  couple,
+  highlighted,
+  id,
+  packCount,
+}: {
+  couple: CoupleState;
+  highlighted?: boolean;
+  id: PartnerId;
+  packCount: number;
+}) {
+  const profile = couple.profiles[id];
+  const mood = moodOptions.find((option) => option.level === moodLevel(couple, id)) ?? moodOptions[0];
+  const vibe = profile.vibe && !/invitation en attente/i.test(profile.vibe)
+    ? profile.vibe
+    : id === "me"
+      ? "Flirt"
+      : "Mystère";
+
+  return (
+    <View style={[styles.coupleProfileCard, highlighted && styles.coupleProfileCardHighlight]}>
+      <View style={styles.coupleProfileAvatar}>
+        <Text style={styles.coupleProfileEmoji}>{profileEmoji(profile)}</Text>
       </View>
-
-      <View style={styles.coupleSection}>
-        <View style={styles.coupleSectionHeader}>
-          <View style={styles.coupleSectionCopy}>
-            <Text style={styles.coupleSectionTitle}>Packs disponibles</Text>
-            <Text style={styles.coupleSectionText}>Un aperçu de ce qui est ouvert pour vous deux.</Text>
-          </View>
-        </View>
-        <View style={styles.couplePackCompactGrid}>
-          {COUPLE_PACK_CATEGORIES.map((category) => {
-            const unlocked = isCategoryUnlocked(couple, category);
-            const count = category === PERSONAL_CATEGORY ? customCount : desireCardCount(category);
-
-            return (
-              <CouplePackMini category={category} count={count} key={category} unlocked={unlocked} />
-            );
-          })}
-        </View>
+      <Text numberOfLines={1} style={styles.coupleProfileName}>{profile.displayName}</Text>
+      <Text numberOfLines={1} style={styles.coupleProfileVibe}>{vibe}</Text>
+      <View style={styles.coupleProfileMoodRow}>
+        <View style={[styles.coupleProfileMoodDot, highlighted && styles.coupleProfileMoodDotHot]} />
+        <Text numberOfLines={1} style={styles.coupleProfileMoodText}>Mood : {mood.label.toLowerCase()}</Text>
       </View>
-    </ScrollView>
+      <View style={styles.coupleProfilePackRow}>
+        <Text numberOfLines={1} style={styles.coupleProfilePackText}>{packCount} packs actifs</Text>
+      </View>
+    </View>
   );
 }
 
@@ -7814,31 +9571,8 @@ function CoupleRecentMatchItem({ card, onPress }: { card: DesireCard; onPress: (
         <Text numberOfLines={1} style={styles.coupleRecentTitle}>{card.title}</Text>
         <Text numberOfLines={1} style={styles.coupleRecentText}>{card.blurb}</Text>
       </View>
-      <ChevronRight size={18} color={candy.red} />
+      <Text style={styles.coupleRecentOpenText}>Ouvrir →</Text>
     </SpringPressable>
-  );
-}
-
-function CouplePackMini({
-  category,
-  count,
-  unlocked,
-}: {
-  category: DesireCategory;
-  count: number;
-  unlocked: boolean;
-}) {
-  const tone = categoryCardTone(category);
-
-  return (
-    <View style={styles.couplePackCompact}>
-      <View style={[styles.couplePackDot, { backgroundColor: unlocked ? tone.tagText : "rgba(35,18,36,0.18)" }]} />
-      <Text style={styles.couplePackCompactEmoji}>{tone.sticker}</Text>
-      <View style={styles.couplePackCompactCopy}>
-        <Text style={styles.couplePackCompactTitle}>{categoryLabel(category)}</Text>
-        <Text style={styles.couplePackCompactText}>{unlocked ? `${count} dispo` : "Verrouillé"}</Text>
-      </View>
-    </View>
   );
 }
 
@@ -7910,48 +9644,19 @@ function CategoryPurchaseModal({
   const cardCount = desireCardCount(category);
 
   return (
-    <Modal animationType="fade" transparent visible onRequestClose={onClose}>
-      <View style={styles.purchaseOverlay}>
-        <Pressable style={styles.purchaseBackdrop} onPress={onClose} />
-        <LinearGradient colors={[tone.colors[0], candy.white, candy.pinkSoft]} style={styles.purchaseSheet}>
-          <EmojiSticker emoji={tone.sticker} size={82} style={styles.purchaseSticker} />
-          <Text style={styles.purchaseEyebrow}>Pack pour deux</Text>
-          <Text style={styles.purchaseTitle}>Débloquer {categoryLabel(category)}</Text>
-          <Text style={styles.purchaseText}>
-            Un achat unique ouvre ce pack pour vous deux, avec de nouvelles cartes à découvrir ensemble.
-          </Text>
-
-          <View style={styles.purchaseBenefits}>
-            <View style={styles.purchaseBenefit}>
-              <Text style={styles.purchaseBenefitEmoji}>💌</Text>
-              <Text style={styles.purchaseBenefitText}>{cardCount} cartes à découvrir à deux</Text>
-            </View>
-            <View style={styles.purchaseBenefit}>
-              <Text style={styles.purchaseBenefitEmoji}>🔐</Text>
-              <Text style={styles.purchaseBenefitText}>Votes invisibles jusqu'au match</Text>
-            </View>
-            <View style={styles.purchaseBenefit}>
-              <Text style={styles.purchaseBenefitEmoji}>✨</Text>
-              <Text style={styles.purchaseBenefitText}>Disponible pour les deux profils</Text>
-            </View>
-          </View>
-
-          <View style={styles.purchasePriceRow}>
-            <Text style={styles.purchasePrice}>{price}</Text>
-            <Text style={styles.purchaseFinePrint}>Achat Apple/Google validé côté serveur. En mode test local, aucun paiement réel n'est lancé.</Text>
-          </View>
-
-          <View style={styles.purchaseActions}>
-            <SpringPressable onPress={() => onUnlock(category)} style={styles.purchasePrimary}>
-              <Text style={styles.purchasePrimaryText}>Débloquer le pack</Text>
-            </SpringPressable>
-            <SpringPressable onPress={onClose} style={styles.purchaseSecondary}>
-              <Text style={styles.purchaseSecondaryText}>Pas maintenant</Text>
-            </SpringPressable>
-          </View>
-        </LinearGradient>
-      </View>
-    </Modal>
+    <PurchaseLandingModal
+      category={category}
+      ctaLabel={`Débloquer · ${price}`}
+      legalText="Achat unique · Pour vous deux · Restaurable"
+      onClose={onClose}
+      onUnlock={() => onUnlock(category)}
+      subtitle={`Des envies ${categoryLabel(category).toLowerCase()}, à découvrir sans pression. Pour les soirs où votre curiosité ne demande qu'à jouer.`}
+      title={`Pack ${categoryLabel(category)}`}
+      visible
+      previewLabel={`Contenu masqué jusqu'au déblocage · 18+ · ${cardCount} cartes`}
+      visualLabel={categoryLabel(category)}
+      visualMeta={`${cardCount} cartes`}
+    />
   );
 }
 
@@ -7971,48 +9676,19 @@ function CustomCardsPurchaseModal({
   }
 
   return (
-    <Modal animationType="fade" transparent visible onRequestClose={onClose}>
-      <View style={styles.purchaseOverlay}>
-        <Pressable style={styles.purchaseBackdrop} onPress={onClose} />
-        <LinearGradient colors={[candy.mint, candy.white, candy.pinkSoft]} style={styles.purchaseSheet}>
-          <EmojiSticker emoji={stickers.wand} size={82} style={styles.purchaseSticker} />
-          <Text style={styles.purchaseEyebrow}>Cartes perso</Text>
-          <Text style={styles.purchaseTitle}>Cartes perso sans limite</Text>
-          <Text style={styles.purchaseText}>
-            Vous avez {Math.min(customCount, CUSTOM_CARD_FREE_LIMIT)}/{CUSTOM_CARD_FREE_LIMIT} cartes gratuites. Cette option ouvre la création sans limite pour votre couple.
-          </Text>
-
-          <View style={styles.purchaseBenefits}>
-            <View style={styles.purchaseBenefit}>
-              <Text style={styles.purchaseBenefitEmoji}>💭</Text>
-              <Text style={styles.purchaseBenefitText}>Autant de cartes perso que vous voulez</Text>
-            </View>
-            <View style={styles.purchaseBenefit}>
-              <Text style={styles.purchaseBenefitEmoji}>🪄</Text>
-              <Text style={styles.purchaseBenefitText}>Toujours rangées dans la catégorie Perso</Text>
-            </View>
-            <View style={styles.purchaseBenefit}>
-              <Text style={styles.purchaseBenefitEmoji}>🔐</Text>
-              <Text style={styles.purchaseBenefitText}>Les votes restent secrets jusqu'au match</Text>
-            </View>
-          </View>
-
-          <View style={styles.purchasePriceRow}>
-            <Text style={styles.purchasePrice}>{CUSTOM_CARDS_UNLIMITED_PRICE}</Text>
-            <Text style={styles.purchaseFinePrint}>Achat Apple/Google validé côté serveur. En mode test local, aucun paiement réel n'est lancé.</Text>
-          </View>
-
-          <View style={styles.purchaseActions}>
-            <SpringPressable onPress={onUnlock} style={styles.purchasePrimary}>
-              <Text style={styles.purchasePrimaryText}>Débloquer la création</Text>
-            </SpringPressable>
-            <SpringPressable onPress={onClose} style={styles.purchaseSecondary}>
-              <Text style={styles.purchaseSecondaryText}>Pas maintenant</Text>
-            </SpringPressable>
-          </View>
-        </LinearGradient>
-      </View>
-    </Modal>
+    <PurchaseLandingModal
+      ctaLabel={`Débloquer · ${CUSTOM_CARDS_UNLIMITED_PRICE}`}
+      featureEmoji={stickers.wand}
+      featureKind="custom"
+      legalText="Achat unique · Pour vous deux · Restaurable"
+      onClose={onClose}
+      onUnlock={onUnlock}
+      subtitle={`Vous avez ${Math.min(customCount, CUSTOM_CARD_FREE_LIMIT)}/${CUSTOM_CARD_FREE_LIMIT} cartes gratuites. Passez en illimité pour créer votre propre terrain de jeu.`}
+      title="Cartes perso illimitées"
+      visible
+      visualLabel="Perso"
+      visualMeta="création libre"
+    />
   );
 }
 
@@ -8030,48 +9706,19 @@ function NoAdsPurchaseModal({
   }
 
   return (
-    <Modal animationType="fade" transparent visible onRequestClose={onClose}>
-      <View style={styles.purchaseOverlay}>
-        <Pressable style={styles.purchaseBackdrop} onPress={onClose} />
-        <LinearGradient colors={[candy.white, candy.roseMist, candy.pinkSoft]} style={styles.purchaseSheet}>
-          <Text style={styles.purchaseNoAdsEmoji}>🚫</Text>
-          <Text style={styles.purchaseEyebrow}>Confort</Text>
-          <Text style={styles.purchaseTitle}>Pack No Ads</Text>
-          <Text style={styles.purchaseText}>
-            Retire les écrans sponsorisés de WeSpice pour garder le rythme quand vous jouez ou révélez un match.
-          </Text>
-
-          <View style={styles.purchaseBenefits}>
-            <View style={styles.purchaseBenefit}>
-              <Text style={styles.purchaseBenefitEmoji}>🔥</Text>
-              <Text style={styles.purchaseBenefitText}>Révélations sans interstitiel</Text>
-            </View>
-            <View style={styles.purchaseBenefit}>
-              <Text style={styles.purchaseBenefitEmoji}>🎲</Text>
-              <Text style={styles.purchaseBenefitText}>Moins d'interruptions entre les cartes</Text>
-            </View>
-            <View style={styles.purchaseBenefit}>
-              <Text style={styles.purchaseBenefitEmoji}>💞</Text>
-              <Text style={styles.purchaseBenefitText}>Actif pour votre couple</Text>
-            </View>
-          </View>
-
-          <View style={styles.purchasePriceRow}>
-            <Text style={styles.purchasePrice}>{NO_ADS_PRICE}</Text>
-            <Text style={styles.purchaseFinePrint}>Achat Apple/Google validé côté serveur. En mode test local, aucun paiement réel n'est lancé.</Text>
-          </View>
-
-          <View style={styles.purchaseActions}>
-            <SpringPressable onPress={onUnlock} style={styles.purchasePrimary}>
-              <Text style={styles.purchasePrimaryText}>Débloquer No Ads</Text>
-            </SpringPressable>
-            <SpringPressable onPress={onClose} style={styles.purchaseSecondary}>
-              <Text style={styles.purchaseSecondaryText}>Pas maintenant</Text>
-            </SpringPressable>
-          </View>
-        </LinearGradient>
-      </View>
-    </Modal>
+    <PurchaseLandingModal
+      ctaLabel={`Débloquer · ${NO_ADS_PRICE}`}
+      featureEmoji="🚫"
+      featureKind="comfort"
+      legalText="Achat unique · Pour vous deux · Restaurable"
+      onClose={onClose}
+      onUnlock={onUnlock}
+      subtitle="Retire les écrans sponsorisés pour garder le rythme quand vous jouez ou révélez un match."
+      title="Pack No Ads"
+      visible
+      visualLabel="No Ads"
+      visualMeta="sans interruption"
+    />
   );
 }
 
@@ -8080,12 +9727,14 @@ function UnlimitedResponsesPurchaseModal({
   limitReached,
   onClose,
   onUnlock,
+  partnerName,
   visible,
 }: {
   dailyUsed: number;
   limitReached?: boolean;
   onClose: () => void;
   onUnlock: () => void;
+  partnerName?: string;
   visible: boolean;
 }) {
   if (!visible) {
@@ -8094,150 +9743,438 @@ function UnlimitedResponsesPurchaseModal({
 
   const usedToday = Math.min(dailyUsed, DAILY_FREE_RESPONSE_LIMIT);
 
+  if (limitReached) {
+    return (
+      <DailyLimitReachedModal
+        onClose={onClose}
+        onUnlock={onUnlock}
+        partnerName={partnerName}
+        usedToday={usedToday}
+        visible
+      />
+    );
+  }
+
   return (
-    <Modal animationType="fade" transparent visible onRequestClose={onClose}>
-      <View style={styles.purchaseOverlay}>
-        <Pressable style={styles.purchaseBackdrop} onPress={onClose} />
-        <LinearGradient colors={[candy.white, candy.roseMist, candy.pinkSoft]} style={styles.purchaseSheet}>
-          <Text style={styles.purchaseNoAdsEmoji}>🎟️</Text>
-          <Text style={styles.purchaseEyebrow}>{limitReached ? "Quota du jour" : "Rythme"}</Text>
-          <Text style={styles.purchaseTitle}>
-            {limitReached ? "Tes 5 choix du jour sont utilisés." : "Réponses illimitées"}
+    <PurchaseLandingModal
+      ctaLabel={`Débloquer · ${UNLIMITED_RESPONSES_PRICE}`}
+      featureEmoji="🎟️"
+      featureKind="unlimited"
+      legalText="Achat unique · Pour vous deux · Restaurable"
+      onClose={onClose}
+      onUnlock={onUnlock}
+      subtitle={limitReached
+        ? `${usedToday}/${DAILY_FREE_RESPONSE_LIMIT} choix utilisés aujourd'hui. Débloquez l'illimité pour continuer la session.`
+        : `${DAILY_FREE_RESPONSE_LIMIT} choix gratuits par jour. L'illimité garde la partie ouverte aussi longtemps que vous voulez.`}
+      title={limitReached ? "Continuer ce soir" : "Réponses illimitées"}
+      visible
+      visualLabel="Illimité"
+      visualMeta="choix sans limite"
+    />
+  );
+}
+
+function DailyLimitReachedModal({
+  onClose,
+  onUnlock,
+  partnerName,
+  usedToday,
+  visible,
+}: {
+  onClose: () => void;
+  onUnlock: () => void;
+  partnerName?: string;
+  usedToday: number;
+  visible: boolean;
+}) {
+  const safeAreaInsets = useSafeAreaInsets();
+  const partnerLabel = partnerName?.trim() || "Ton/ta partenaire";
+
+  return (
+    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <View
+        style={[
+          styles.dailyLimitOverlay,
+          {
+            paddingBottom: Math.max(18, safeAreaInsets.bottom + 10),
+            paddingTop: Math.max(18, safeAreaInsets.top + 8),
+          },
+        ]}
+      >
+        <View pointerEvents="none" style={styles.dailyLimitGlow} />
+        <SpringPressable onPress={onClose} style={styles.dailyLimitClose}>
+          <X color={candy.white} size={25} strokeWidth={2.6} />
+        </SpringPressable>
+
+        <View style={styles.dailyLimitContent}>
+          <View style={styles.dailyLimitBadge}>
+            <Text style={styles.dailyLimitBadgeCount}>{usedToday}/{DAILY_FREE_RESPONSE_LIMIT}</Text>
+            <Text style={styles.dailyLimitBadgeLabel}>Aujourd'hui</Text>
+          </View>
+          <Text style={styles.dailyLimitTitle}>C'est tout{`\n`}pour aujourd'hui<Text style={styles.dailyLimitTitleDot}>.</Text></Text>
+          <Text style={styles.dailyLimitText}>
+            Tes {DAILY_FREE_RESPONSE_LIMIT} réponses gratuites sont utilisées. La suite demain - ou tout de suite.
           </Text>
-          <Text style={styles.purchaseText}>
-            {limitReached
-              ? "Reviens demain pour garder le rituel, ou débloque l'illimité si vous voulez jouer plus longtemps aujourd'hui."
-              : `${DAILY_FREE_RESPONSE_LIMIT} choix gratuits par jour. Modifier une carte déjà répondue compte aussi.`}
-          </Text>
+          <Text style={styles.dailyLimitPartnerText}>{partnerLabel} peut continuer à jouer de son côté.</Text>
+        </View>
 
-          <View style={styles.purchaseBenefits}>
-            <View style={styles.purchaseBenefit}>
-              <Text style={styles.purchaseBenefitEmoji}>🗓️</Text>
-              <Text style={styles.purchaseBenefitText}>{usedToday}/{DAILY_FREE_RESPONSE_LIMIT} choix utilisés aujourd'hui</Text>
-            </View>
-            <View style={styles.purchaseBenefit}>
-              <Text style={styles.purchaseBenefitEmoji}>🔥</Text>
-              <Text style={styles.purchaseBenefitText}>Jouez autant de cartes que vous voulez dans la journée</Text>
-            </View>
-            <View style={styles.purchaseBenefit}>
-              <Text style={styles.purchaseBenefitEmoji}>💞</Text>
-              <Text style={styles.purchaseBenefitText}>Actif pour les deux profils du couple</Text>
-            </View>
-          </View>
-
-          <View style={styles.purchasePriceRow}>
-            <Text style={styles.purchasePrice}>{UNLIMITED_RESPONSES_PRICE}</Text>
-            <Text style={styles.purchaseFinePrint}>Achat Apple/Google validé côté serveur. En mode test local, aucun paiement réel n'est lancé.</Text>
-          </View>
-
-          <View style={styles.purchaseActions}>
-            <SpringPressable onPress={onUnlock} style={styles.purchasePrimary}>
-              <Text style={styles.purchasePrimaryText}>Débloquer l'illimité</Text>
-            </SpringPressable>
-            <SpringPressable onPress={onClose} style={styles.purchaseSecondary}>
-              <Text style={styles.purchaseSecondaryText}>{limitReached ? "Revenir demain" : "Pas maintenant"}</Text>
-            </SpringPressable>
-          </View>
-        </LinearGradient>
+        <View style={styles.dailyLimitActions}>
+          <SpringPressable onPress={onUnlock} style={styles.dailyLimitPrimary}>
+            <Text style={styles.dailyLimitPrimaryText}>Réponses illimitées · {UNLIMITED_RESPONSES_PRICE}</Text>
+          </SpringPressable>
+          <SpringPressable onPress={onClose} style={styles.dailyLimitSecondary}>
+            <Text style={styles.dailyLimitSecondaryText}>Revenir demain</Text>
+          </SpringPressable>
+        </View>
       </View>
     </Modal>
   );
 }
 
-function PurchaseSuccessScreen({ purchase, onDiscover }: { purchase: PurchaseSuccess; onDiscover: () => void }) {
+function PurchaseLandingModal({
+  category,
+  ctaLabel,
+  featureEmoji,
+  featureKind = "pack",
+  legalText,
+  onClose,
+  onUnlock,
+  previewLabel = "Contenu masqué jusqu'au déblocage · 18+",
+  subtitle,
+  title,
+  visible,
+  visualLabel,
+  visualMeta,
+}: {
+  category?: DesireCategory;
+  ctaLabel: string;
+  featureEmoji?: string;
+  featureKind?: "pack" | "custom" | "comfort" | "unlimited";
+  legalText: string;
+  onClose: () => void;
+  onUnlock: () => void;
+  previewLabel?: string;
+  subtitle: string;
+  title: string;
+  visible: boolean;
+  visualLabel: string;
+  visualMeta: string;
+}) {
+  const safeAreaInsets = useSafeAreaInsets();
+  const visual = category ? categoryVisual(category) : undefined;
+  const visualColors = visual?.colors ?? (
+    featureKind === "comfort"
+      ? [candy.black, "#4A1F50", candy.red]
+      : featureKind === "unlimited"
+        ? [candy.yellow, "#FFD84D", "#F5286E"]
+        : [candy.cream, candy.roseMist, candy.pinkSoft]
+  );
+
+  return (
+    <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <LinearGradient
+        colors={[candy.red, candy.red]}
+        style={[
+          styles.purchaseOverlay,
+          {
+            paddingBottom: Math.max(18, safeAreaInsets.bottom + 10),
+            paddingTop: Math.max(18, safeAreaInsets.top + 8),
+          },
+        ]}
+      >
+        <SpringPressable onPress={onClose} style={styles.purchaseBackButton}>
+          <ArrowLeft size={18} color={candy.white} />
+        </SpringPressable>
+        <View style={styles.purchaseContent}>
+          <View style={styles.purchaseHero}>
+            <View style={styles.purchasePackShadow} />
+            <LinearGradient colors={visualColors} style={styles.purchasePackVisual}>
+              {category ? <CategoryPickerPattern category={category} /> : <PurchaseFeaturePattern kind={featureKind} />}
+              {featureEmoji ? <Text style={styles.purchaseFeatureEmoji}>{featureEmoji}</Text> : null}
+              <View style={styles.purchaseVisualCopy}>
+                <Text numberOfLines={1} style={styles.purchaseVisualTitle}>{visualLabel}</Text>
+                <Text numberOfLines={1} style={styles.purchaseVisualMeta}>{visualMeta}</Text>
+              </View>
+            </LinearGradient>
+          </View>
+          <Text style={styles.purchaseTitle}>{title}</Text>
+          <Text style={styles.purchaseText}>{subtitle}</Text>
+          <View style={styles.purchasePreviewRow}>
+            {[0, 1, 2].map((index) => (
+              <View key={index} style={[styles.purchasePreviewCard, index === 0 && styles.purchasePreviewCardLeft, index === 2 && styles.purchasePreviewCardRight]}>
+                <Text style={styles.purchasePreviewTag}>{visualLabel}</Text>
+                <View style={styles.purchasePreviewLineWide} />
+                <View style={styles.purchasePreviewLine} />
+                <View style={styles.purchasePreviewLineShort} />
+              </View>
+            ))}
+          </View>
+          <Text style={styles.purchaseFinePrint}>{previewLabel}</Text>
+        </View>
+        <View style={styles.purchaseBottomBar}>
+          <SpringPressable onPress={onUnlock} style={styles.purchasePrimary}>
+            <Text style={styles.purchasePrimaryText}>{ctaLabel}</Text>
+          </SpringPressable>
+          <Text style={styles.purchaseLegalText}>{legalText}</Text>
+        </View>
+      </LinearGradient>
+    </Modal>
+  );
+}
+
+function PurchaseFeaturePattern({ kind }: { kind: "pack" | "custom" | "comfort" | "unlimited" }) {
+  const dotKind = kind === "unlimited";
+
+  return (
+    <View pointerEvents="none" style={styles.purchaseFeaturePatternLayer}>
+      {Array.from({ length: dotKind ? 28 : 8 }).map((_, index) => (
+        <View
+          key={index}
+          style={[
+            dotKind ? styles.purchaseFeatureDot : styles.purchaseFeatureStripe,
+            dotKind
+              ? {
+                left: `${8 + (index % 7) * 14}%`,
+                top: `${9 + Math.floor(index / 7) * 22}%`,
+              }
+              : { left: `${index * 18 - 32}%` },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+function PurchaseSuccessScreen({
+  partnerName,
+  purchase,
+  onDiscover,
+}: {
+  partnerName?: string;
+  purchase: PurchaseSuccess;
+  onDiscover: () => void;
+}) {
   const pulse = useLoop(1700);
   const drift = useLoop(4200);
+  const unlockAnim = useRef(new Animated.Value(0)).current;
   const isCustom = purchase.kind === "custom";
   const isNoAds = purchase.kind === "no_ads";
   const isUnlimitedResponses = purchase.kind === "unlimited_responses";
   const category: DesireCategory = purchase.kind === "category" ? purchase.category : "Perso";
+  const purchaseAnimationKey = purchase.kind === "category" || purchase.kind === "custom"
+    ? `${purchase.kind}:${purchase.category}`
+    : purchase.kind;
+  const featureKind = isUnlimitedResponses ? "unlimited" : "comfort";
   const tone = isNoAds || isUnlimitedResponses
     ? {
-        colors: [candy.white, candy.roseMist, candy.pinkSoft] as const,
-        sticker: isUnlimitedResponses ? "🎟️" : "🚫",
-        tagText: candy.red,
+        colors: isUnlimitedResponses
+          ? [candy.yellow, "#FFD84D", candy.red] as const
+          : [candy.black, "#4A1F50", candy.red] as const,
+        tagText: isUnlimitedResponses ? candy.ink : candy.cream,
+        titleText: isUnlimitedResponses ? candy.ink : candy.cream,
       }
     : categoryCardTone(category);
-  const title = isNoAds
-    ? "No Ads"
+  const visualTitle = isNoAds
+    ? "Zéro pub"
     : isUnlimitedResponses
       ? "Réponses illimitées"
       : isCustom
-        ? "Cartes perso sans limite"
+        ? "Cartes perso"
         : `Pack ${categoryLabel(category)}`;
-  const packText = isNoAds
-    ? "Les écrans sponsorisés sont retirés. Vous gardez les révélations et les cartes sans pause pub."
+  const visualMeta = isNoAds
+    ? "sans interruption"
     : isUnlimitedResponses
-      ? "La limite quotidienne est retirée. Vous pouvez répondre à autant de cartes que vous voulez."
+      ? "tous les soirs"
     : isCustom
-      ? "Vous pouvez créer autant de cartes perso que vous voulez. Elles restent privées jusqu'au match."
-      : `${desireCardCount(category)} nouvelles cartes à explorer. Les réponses restent privées jusqu'au match.`;
-  const successText = isNoAds
-    ? "WeSpice est maintenant plus fluide pour votre couple."
+      ? "illimité"
+      : `${desireCardCount(category)} cartes`;
+  const title = isNoAds
+    ? "Zéro pub\ndébloqué."
     : isUnlimitedResponses
-      ? "Vous pouvez continuer votre session sans attendre demain."
-    : `${title} est maintenant disponible pour votre couple.`;
-  const ctaLabel = isNoAds ? "Continuer sans pub" : isUnlimitedResponses ? "Continuer à jouer" : "Découvrir les cartes";
+      ? "Réponses illimitées\ndébloquées."
+      : isCustom
+        ? "Cartes perso\ndébloquées."
+        : `Pack ${categoryLabel(category)}\ndébloqué.`;
+  const partnerCopy = partnerName ? `${partnerName} vient de recevoir l'info.` : "Votre partenaire vient de recevoir l'info.";
+  const successText = isNoAds
+    ? "Les révélations sont maintenant sans interruption pour vous deux."
+    : isUnlimitedResponses
+      ? "Vous pouvez répondre sans compter, tous les soirs."
+      : isCustom
+        ? `Vos idées peuvent maintenant vivre sans limite. ${partnerCopy}`
+        : `${desireCardCount(category)} nouvelles cartes vous attendent, tous les deux. ${partnerCopy}`;
+  const price = isNoAds
+    ? NO_ADS_PRICE
+    : isUnlimitedResponses
+      ? UNLIMITED_RESPONSES_PRICE
+      : isCustom
+        ? CUSTOM_CARDS_UNLIMITED_PRICE
+        : CATEGORY_PRICES[category] ?? "4,99 €";
   const stickerScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] });
   const floatY = drift.interpolate({ inputRange: [0, 1], outputRange: [0, -14] });
   const shimmerX = pulse.interpolate({ inputRange: [0, 1], outputRange: [-18, 18] });
+  const unlockOpacity = unlockAnim.interpolate({ inputRange: [0, 0.16, 1], outputRange: [0, 1, 1] });
+  const unlockScale = unlockAnim.interpolate({ inputRange: [0, 0.68, 1], outputRange: [0.72, 1.09, 1] });
+  const unlockRotate = unlockAnim.interpolate({ inputRange: [0, 0.68, 1], outputRange: ["-12deg", "6deg", "3deg"] });
+  const unlockY = unlockAnim.interpolate({ inputRange: [0, 0.68, 1], outputRange: [34, -10, 0] });
+  const unlockGlowOpacity = unlockAnim.interpolate({ inputRange: [0, 0.45, 1], outputRange: [0, 0.42, 0.16] });
+  const unlockGlowScale = unlockAnim.interpolate({ inputRange: [0, 0.68, 1], outputRange: [0.5, 1.24, 1.05] });
+  const unlockBadgeOpacity = unlockAnim.interpolate({ inputRange: [0, 0.52, 0.68, 1], outputRange: [0, 0, 1, 1] });
+  const unlockBadgeScale = unlockAnim.interpolate({ inputRange: [0, 0.52, 0.76, 1], outputRange: [0.4, 0.4, 1.18, 1] });
+  const unlockContentOpacity = unlockAnim.interpolate({ inputRange: [0, 0.58, 1], outputRange: [0, 0, 1] });
+  const unlockContentY = unlockAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
+  const unlockCTAOpacity = unlockAnim.interpolate({ inputRange: [0, 0.72, 1], outputRange: [0, 0, 1] });
+  const unlockCTAY = unlockAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
+  const unlockParticleOpacity = unlockAnim.interpolate({ inputRange: [0, 0.28, 0.78, 1], outputRange: [0, 0, 1, 0.72] });
+  const lightVisualText = isNoAds || ["Scénarios", "Kinky Soft", "Jeux & Défis", "BDSM", "Tabous"].includes(category);
+
+  useEffect(() => {
+    unlockAnim.setValue(0);
+    const animation = Animated.sequence([
+      Animated.timing(unlockAnim, {
+        toValue: 0.72,
+        duration: 420,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: useNativeAnimations,
+      }),
+      Animated.spring(unlockAnim, {
+        toValue: 1,
+        friction: 5,
+        tension: 86,
+        useNativeDriver: useNativeAnimations,
+      }),
+    ]);
+
+    animation.start();
+    return () => animation.stop();
+  }, [purchaseAnimationKey, unlockAnim]);
 
   return (
     <View style={styles.purchaseSuccessScreen}>
       <Animated.View pointerEvents="none" style={[styles.purchaseSuccessGlow, { transform: [{ scale: stickerScale }] }]} />
-      <Animated.Text
-        pointerEvents="none"
-        style={[styles.purchaseSuccessConfetti, styles.purchaseSuccessConfettiOne, { transform: [{ translateY: floatY }] }]}
-      >
-        ✦
-      </Animated.Text>
-      <Animated.Text
-        pointerEvents="none"
-        style={[styles.purchaseSuccessConfetti, styles.purchaseSuccessConfettiTwo, { transform: [{ translateY: floatY }] }]}
-      >
-        ●
-      </Animated.Text>
-      <Animated.Text
-        pointerEvents="none"
-        style={[styles.purchaseSuccessConfetti, styles.purchaseSuccessConfettiThree, { transform: [{ translateX: shimmerX }] }]}
-      >
-        ✧
-      </Animated.Text>
+      <Animated.View pointerEvents="none" style={[styles.purchaseSuccessConfettiDot, styles.purchaseSuccessConfettiOne, { transform: [{ translateY: floatY }] }]} />
+      <Animated.View pointerEvents="none" style={[styles.purchaseSuccessConfettiDash, styles.purchaseSuccessConfettiTwo, { transform: [{ translateY: floatY }, { rotate: "28deg" }] }]} />
+      <Animated.View pointerEvents="none" style={[styles.purchaseSuccessConfettiDot, styles.purchaseSuccessConfettiThree, { transform: [{ translateX: shimmerX }] }]} />
+      <Animated.View pointerEvents="none" style={[styles.purchaseSuccessConfettiDash, styles.purchaseSuccessConfettiFour, { transform: [{ translateX: shimmerX }, { rotate: "-22deg" }] }]} />
 
-      <Entrance delay={0}>
-        <Animated.View style={{ transform: [{ scale: stickerScale }] }}>
-          <EmojiSticker emoji={tone.sticker} size={116} style={styles.purchaseSuccessSticker} />
-        </Animated.View>
-      </Entrance>
+      <SpringPressable onPress={onDiscover} style={styles.purchaseSuccessClose}>
+        <X size={26} color={candy.white} />
+      </SpringPressable>
 
-      <Entrance delay={100}>
-        <Text style={styles.purchaseSuccessEyebrow}>Achat validé</Text>
-        <Text style={styles.purchaseSuccessTitle}>C'est débloqué.</Text>
-        <Text style={styles.purchaseSuccessText}>
-          {successText}
-        </Text>
-      </Entrance>
-
-      <Entrance delay={190}>
-        <LinearGradient colors={tone.colors} style={styles.purchaseSuccessPack}>
+      <View style={styles.purchaseSuccessCenter}>
+        <Entrance delay={0} style={styles.purchaseSuccessHero}>
           <Animated.View
             pointerEvents="none"
-            style={[styles.purchaseSuccessShimmer, { transform: [{ translateX: shimmerX }, { rotate: "-8deg" }] }]}
+            style={[
+              styles.purchaseSuccessUnlockGlow,
+              {
+                opacity: unlockGlowOpacity,
+                transform: [{ scale: unlockGlowScale }],
+              },
+            ]}
           />
-          <Text style={[styles.purchaseSuccessPackTag, { color: tone.tagText }]}>
-            {isNoAds || isUnlimitedResponses ? "Confort" : categoryLabel(category)}
-          </Text>
-          <Text style={styles.purchaseSuccessPackTitle}>{title}</Text>
-          <Text style={styles.purchaseSuccessPackText}>{packText}</Text>
-        </LinearGradient>
-      </Entrance>
+          <View style={styles.purchaseSuccessPackShadow} />
+          <Animated.View
+            style={[
+              styles.purchaseSuccessUnlockStage,
+              {
+                opacity: unlockOpacity,
+                transform: [
+                  { translateY: unlockY },
+                  { scale: unlockScale },
+                  { rotate: unlockRotate },
+                ],
+              },
+            ]}
+          >
+            <LinearGradient colors={tone.colors} style={styles.purchaseSuccessPackVisual}>
+              {isNoAds || isUnlimitedResponses ? <PurchaseFeaturePattern kind={featureKind} /> : <CategoryPickerPattern category={category} />}
+              <View style={styles.purchaseSuccessVisualCopy}>
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.purchaseSuccessVisualTitle,
+                    lightVisualText && styles.purchaseSuccessVisualTitleLight,
+                    { color: tone.titleText },
+                  ]}
+                >
+                  {visualTitle}
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.purchaseSuccessVisualMeta,
+                    lightVisualText && styles.purchaseSuccessVisualMetaLight,
+                    { color: tone.titleText },
+                  ]}
+                >
+                  {visualMeta}
+                </Text>
+              </View>
+            </LinearGradient>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.purchaseSuccessUnlockBadge,
+                {
+                  opacity: unlockBadgeOpacity,
+                  transform: [{ scale: unlockBadgeScale }],
+                },
+              ]}
+            >
+              <Check size={34} color={candy.ink} strokeWidth={3.4} />
+            </Animated.View>
+            <View pointerEvents="none" style={styles.purchaseSuccessUnlockParticleLayer}>
+              {purchaseUnlockParticles.map((particle, index) => (
+                <Animated.View
+                  key={`${particle.left}-${particle.top}-${index}`}
+                  style={[
+                    styles.purchaseSuccessUnlockParticle,
+                    {
+                      backgroundColor: particle.color,
+                      borderRadius: particle.radius,
+                      height: particle.height,
+                      left: particle.left,
+                      opacity: unlockParticleOpacity,
+                      top: particle.top,
+                      width: particle.width,
+                      transform: [
+                        {
+                          translateX: unlockAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, particle.x],
+                          }),
+                        },
+                        {
+                          translateY: unlockAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, particle.y],
+                          }),
+                        },
+                        { rotate: particle.rotate },
+                      ],
+                    },
+                  ]}
+                />
+              ))}
+            </View>
+          </Animated.View>
+        </Entrance>
 
-      <Entrance delay={290}>
+        <Entrance delay={190}>
+          <Animated.View style={[styles.purchaseSuccessCopy, { opacity: unlockContentOpacity, transform: [{ translateY: unlockContentY }] }]}>
+            <Text style={styles.purchaseSuccessTitle}>{title}</Text>
+            <Text style={styles.purchaseSuccessText}>{successText}</Text>
+          </Animated.View>
+        </Entrance>
+      </View>
+
+      <Animated.View style={[styles.purchaseSuccessBottom, { opacity: unlockCTAOpacity, transform: [{ translateY: unlockCTAY }] }]}>
         <SpringPressable onPress={onDiscover} style={styles.purchaseSuccessCTA}>
-          <Text style={styles.purchaseSuccessCTAText}>{ctaLabel}</Text>
-          <ChevronRight size={21} color={candy.white} />
+          <Text style={styles.purchaseSuccessCTAText}>Commencer à jouer</Text>
         </SpringPressable>
-      </Entrance>
+        <Text style={styles.purchaseSuccessLegal}>{price} · Reçu vérifié · Restaurable à tout moment</Text>
+      </Animated.View>
     </View>
   );
 }
@@ -8245,6 +10182,7 @@ function PurchaseSuccessScreen({ purchase, onDiscover }: { purchase: PurchaseSuc
 function ProfileScreen({
   authError,
   couple,
+  onBack,
   providerLoading,
   session,
   onLogout,
@@ -8260,6 +10198,7 @@ function ProfileScreen({
 }: {
   authError: string;
   couple: CoupleState;
+  onBack: () => void;
   providerLoading: AuthProvider | null;
   session: Session | null;
   onLogout: () => void;
@@ -8274,10 +10213,23 @@ function ProfileScreen({
   onStatusEmojiChange: (emoji: string) => void;
 }) {
   const activeProfile = couple.profiles[couple.activePartnerId];
-  const profileIcon = profileEmoji(activeProfile);
   const activePartnerId = couple.activePartnerId;
   const settings = notificationSettings(couple);
   const account = authAccountInfo(session);
+  const safeAreaInsets = useSafeAreaInsets();
+  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
+  const profileFrameHeight = Math.max(0, viewportHeight - safeAreaInsets.top - safeAreaInsets.bottom);
+  const profileSurface = fullScreenSurfaceMetrics(viewportWidth);
+  const profileContentWidth = profileSurface.contentWidth;
+  const profileVerticalGap = Math.min(24, Math.max(14, profileFrameHeight * 0.014));
+  const profileScreenStyle = useMemo<ViewStyle>(() => ({
+    gap: profileVerticalGap,
+    paddingBottom: Math.max(126, safeAreaInsets.bottom + TAB_DOCK_VISIBLE_HEIGHT + profileVerticalGap * 2),
+    paddingTop: Math.max(14, safeAreaInsets.top + 10),
+  }), [profileVerticalGap, safeAreaInsets.bottom, safeAreaInsets.top]);
+  const profileContentFrameStyle = useMemo<ViewStyle>(() => ({
+    width: profileContentWidth,
+  }), [profileContentWidth]);
   const notificationRows: Array<{
     emoji: string;
     key: NotificationToggleKey;
@@ -8343,17 +10295,14 @@ function ProfileScreen({
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.profileScreen} showsVerticalScrollIndicator={false}>
-      <View style={styles.profileMainArea}>
-      <LinearGradient colors={[candy.red, "#FF4F9D", candy.pink]} style={styles.profilePanel}>
-        <View style={styles.profileAvatar}>
-          <Text style={styles.profileAvatarEmoji}>{profileIcon}</Text>
-        </View>
-        <Text style={styles.profileTitle}>{activeProfile.displayName}</Text>
-        <Text numberOfLines={1} selectable style={styles.profileMeta}>
-          {account.connected ? `${account.providerLabel} · ${account.email || account.displayName}` : "Mode test local"}
-        </Text>
-      </LinearGradient>
+    <ScrollView contentContainerStyle={[styles.profileScreen, profileScreenStyle]} showsVerticalScrollIndicator={false}>
+      <View style={[styles.profileHeader, profileContentFrameStyle]}>
+        <SpringPressable onPress={onBack} style={styles.profileBackButton}>
+          <ArrowLeft size={24} color={candy.white} strokeWidth={3} />
+        </SpringPressable>
+        <Text style={styles.profileHeaderTitle}>Profil</Text>
+      </View>
+      <View style={[styles.profileMainArea, profileContentFrameStyle]}>
         <View style={styles.profileSettingsSection}>
           <Text style={styles.profileSectionTitle}>Compte</Text>
           <ProfileAccountPanel
@@ -8364,7 +10313,7 @@ function ProfileScreen({
           />
         </View>
         <View style={styles.profileSettingsSection}>
-          <Text style={styles.profileSectionTitle}>Statut</Text>
+          <Text style={styles.profileSectionTitle}>Avatar</Text>
           <StatusEmojiEditor profile={activeProfile} onChange={onStatusEmojiChange} />
         </View>
         <View style={styles.profileSettingsSection}>
@@ -8391,28 +10340,34 @@ function ProfileScreen({
           <Text style={styles.profileSectionTitle}>Application</Text>
           <View style={styles.profileUtilityGrid}>
             <SpringPressable onPress={confirmReset} style={styles.profileAction}>
-              <RefreshCcw size={18} color={candy.red} />
-              <Text numberOfLines={2} style={styles.profileActionText}>Réinitialiser le test</Text>
+              <RefreshCcw size={21} color={candy.red} />
+              <Text numberOfLines={1} style={styles.profileActionText}>Réinitialiser le test</Text>
+              <ChevronRight size={18} color="rgba(43,23,53,0.34)" />
             </SpringPressable>
             <SpringPressable onPress={onReplayTutorial} style={styles.profileAction}>
-              <Sparkles size={18} color={candy.red} />
-              <Text numberOfLines={2} style={styles.profileActionText}>Revoir l'intro</Text>
+              <Sparkles size={21} color={candy.red} />
+              <Text numberOfLines={1} style={styles.profileActionText}>Revoir l'intro</Text>
+              <ChevronRight size={18} color="rgba(43,23,53,0.34)" />
             </SpringPressable>
             <SpringPressable onPress={onRestorePurchases} style={styles.profileAction}>
-              <RefreshCcw size={18} color={candy.red} />
-              <Text numberOfLines={2} style={styles.profileActionText}>Restaurer les achats</Text>
+              <RefreshCcw size={21} color={candy.red} />
+              <Text numberOfLines={1} style={styles.profileActionText}>Restaurer les achats</Text>
+              <ChevronRight size={18} color="rgba(43,23,53,0.34)" />
             </SpringPressable>
             <SpringPressable onPress={onRequestLeaveCouple} style={[styles.profileAction, styles.profileActionDanger]}>
-              <Users size={18} color={candy.red} />
-              <Text numberOfLines={2} style={[styles.profileActionText, styles.profileActionDangerText]}>Quitter le couple</Text>
+              <Users size={21} color={candy.red} />
+              <Text numberOfLines={1} style={[styles.profileActionText, styles.profileActionDangerText]}>Quitter le couple</Text>
+              <ChevronRight size={18} color="rgba(255,249,240,0.62)" />
             </SpringPressable>
             <SpringPressable onPress={confirmDeleteAccount} style={[styles.profileAction, styles.profileActionDangerSolid]}>
-              <Trash2 size={18} color={candy.white} />
-              <Text numberOfLines={2} style={[styles.profileActionText, styles.profileActionDangerSolidText]}>Supprimer mon compte</Text>
+              <Trash2 size={21} color={candy.white} />
+              <Text numberOfLines={1} style={[styles.profileActionText, styles.profileActionDangerSolidText]}>Supprimer mon compte</Text>
+              <ChevronRight size={18} color="rgba(255,249,240,0.62)" />
             </SpringPressable>
             <SpringPressable onPress={onLogout} style={[styles.profileAction, styles.profileActionDark]}>
-              <LogOut size={18} color={candy.white} />
-              <Text numberOfLines={2} style={[styles.profileActionText, styles.profileActionDarkText]}>Se déconnecter</Text>
+              <LogOut size={21} color={candy.white} />
+              <Text numberOfLines={1} style={[styles.profileActionText, styles.profileActionDarkText]}>Se déconnecter</Text>
+              <ChevronRight size={18} color="rgba(255,249,240,0.62)" />
             </SpringPressable>
           </View>
         </View>
@@ -8457,13 +10412,27 @@ function StatusEmojiEditor({
           <Text style={styles.statusEditorPreviewEmoji}>{currentEmoji}</Text>
         </View>
         <View style={styles.statusEditorCopy}>
-          <Text style={styles.statusEditorTitle}>Ton signal du moment</Text>
-          <Text style={styles.statusEditorText}>Visible dans Notre couple. Parfait pour teaser sans écrire un message.</Text>
+          <Text style={styles.statusEditorTitle}>{profile.displayName}</Text>
+          <Text style={styles.statusEditorText}>Choisis l'emoji affiché sur ton profil.</Text>
         </View>
       </View>
-      <View style={styles.statusEditorSectionHeader}>
-        <Text style={styles.statusEditorSectionTitle}>Suggestions rapides</Text>
-        <Text style={styles.statusEditorSectionHint}>Appuie pour changer</Text>
+      <View style={styles.statusCustomRow}>
+        <View style={styles.statusCustomInputBox}>
+          <TextInput
+            maxLength={8}
+            onChangeText={setCustomEmoji}
+            onSubmitEditing={submitCustomEmoji}
+            placeholder="🙂"
+            placeholderTextColor="rgba(35,18,36,0.34)"
+            returnKeyType="done"
+            selectTextOnFocus
+            style={[styles.statusCustomInput, Platform.OS === "web" ? ({ outlineStyle: "none" } as never) : null]}
+            value={customEmoji}
+          />
+        </View>
+        <SpringPressable onPress={submitCustomEmoji} style={styles.statusCustomButton}>
+          <Text style={styles.statusCustomButtonText}>Utiliser</Text>
+        </SpringPressable>
       </View>
       <View style={styles.statusPresetGrid}>
         {statusEmojiPresets.map((emoji) => (
@@ -8475,31 +10444,6 @@ function StatusEmojiEditor({
             <Text style={styles.statusPresetEmoji}>{emoji}</Text>
           </SpringPressable>
         ))}
-      </View>
-      <View style={styles.statusCustomPanel}>
-        <View style={styles.statusCustomCopy}>
-          <Text style={styles.statusCustomTitle}>Emoji perso</Text>
-          <Text style={styles.statusCustomHint}>Écris ou colle ton propre emoji.</Text>
-        </View>
-        <View style={styles.statusCustomRow}>
-          <View style={styles.statusCustomInputBox}>
-            <Text style={styles.statusCustomInputLabel}>Ton emoji</Text>
-            <TextInput
-              maxLength={6}
-              onChangeText={setCustomEmoji}
-              onSubmitEditing={submitCustomEmoji}
-              placeholder="ex: 🌶️"
-              placeholderTextColor="rgba(35,18,36,0.34)"
-              returnKeyType="done"
-              selectTextOnFocus
-              style={[styles.statusCustomInput, Platform.OS === "web" ? ({ outlineStyle: "none" } as never) : null]}
-              value={customEmoji}
-            />
-          </View>
-          <SpringPressable onPress={submitCustomEmoji} style={styles.statusCustomButton}>
-            <Text style={styles.statusCustomButtonText}>Utiliser</Text>
-          </SpringPressable>
-        </View>
       </View>
     </View>
   );
@@ -8545,6 +10489,9 @@ function DebugScreen({
   onActorChange,
   onApplyPreset,
   onDebugFakeAd,
+  onDebugUnlockAllPurchases,
+  onDebugUnlockCategory,
+  onDebugUnlockFeature,
   onDisableDebugProfiles,
   onReplayTutorial,
   onReset,
@@ -8556,6 +10503,9 @@ function DebugScreen({
   onActorChange: (id: PartnerId) => void;
   onApplyPreset: (preset: DebugPresetId) => void;
   onDebugFakeAd: () => void;
+  onDebugUnlockAllPurchases: () => void;
+  onDebugUnlockCategory: (category: DesireCategory) => void;
+  onDebugUnlockFeature: (feature: UnlockedFeature) => void;
   onDisableDebugProfiles: () => void;
   onReplayTutorial: () => void;
   onReset: () => void;
@@ -8593,6 +10543,35 @@ function DebugScreen({
     },
   ];
   const loadedPreset = presets.find((preset) => couple.id.startsWith(`debug-${preset.id}-`));
+  const debugFeaturePurchases: Array<{
+    feature: UnlockedFeature;
+    title: string;
+    text: string;
+    price: string;
+  }> = [
+    {
+      feature: UNLIMITED_RESPONSES_FEATURE,
+      title: "Réponses illimitées",
+      text: "Bypass la limite gratuite du jour.",
+      price: UNLIMITED_RESPONSES_PRICE,
+    },
+    {
+      feature: CUSTOM_CARDS_UNLIMITED_FEATURE,
+      title: "Cartes perso illimitées",
+      text: "Création libre au-delà des 3 cartes gratuites.",
+      price: CUSTOM_CARDS_UNLIMITED_PRICE,
+    },
+    {
+      feature: NO_ADS_FEATURE,
+      title: "Zéro pub",
+      text: "Désactive les interstitiels de test.",
+      price: NO_ADS_PRICE,
+    },
+  ];
+  const unlockedPaidPacksCount = PAID_PACK_CATEGORIES.filter((category) => isCategoryUnlocked(couple, category)).length;
+  const unlockedFeaturesCount = PAID_FEATURES.filter((feature) => isFeatureUnlocked(couple, feature)).length;
+  const allDebugPurchasesUnlocked =
+    unlockedPaidPacksCount === PAID_PACK_CATEGORIES.length && unlockedFeaturesCount === PAID_FEATURES.length;
 
   function confirmReset() {
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -8747,6 +10726,89 @@ function DebugScreen({
       </View>
 
       <View style={styles.debugSectionHeader}>
+        <Text style={styles.debugSectionTitle}>Boutique debug</Text>
+        <Text style={styles.debugSectionText}>Simule les achats localement sans RevenueCat.</Text>
+      </View>
+
+      <View style={styles.debugPurchasePanel}>
+        <SpringPressable
+          disabled={allDebugPurchasesUnlocked}
+          onPress={onDebugUnlockAllPurchases}
+          style={[styles.debugPurchaseAll, allDebugPurchasesUnlocked && styles.debugPurchaseAllDone]}
+        >
+          <View style={styles.debugPurchaseAllIcon}>
+            {allDebugPurchasesUnlocked ? (
+              <Check size={22} color={candy.black} strokeWidth={3} />
+            ) : (
+              <Sparkles size={22} color={candy.black} strokeWidth={3} />
+            )}
+          </View>
+          <View style={styles.debugActionCopy}>
+            <Text style={styles.debugPurchaseAllTitle}>
+              {allDebugPurchasesUnlocked ? "Tout est acheté" : "Tout acheter"}
+            </Text>
+            <Text style={styles.debugPurchaseAllText}>
+              {unlockedPaidPacksCount}/{PAID_PACK_CATEGORIES.length} packs · {unlockedFeaturesCount}/{PAID_FEATURES.length} options
+            </Text>
+          </View>
+          <Text style={styles.debugPurchaseAllCta}>
+            {allDebugPurchasesUnlocked ? "Complet" : "Débloquer"}
+          </Text>
+        </SpringPressable>
+
+        <View style={styles.debugPurchaseGrid}>
+          {PAID_PACK_CATEGORIES.map((category) => {
+            const unlocked = isCategoryUnlocked(couple, category);
+            const visual = categoryVisual(category);
+
+            return (
+              <SpringPressable
+                disabled={unlocked}
+                key={category}
+                onPress={() => onDebugUnlockCategory(category)}
+                style={[styles.debugPurchaseCard, unlocked && styles.debugPurchaseCardDone]}
+              >
+                <View style={[styles.debugPurchaseDot, { backgroundColor: visual.accent }]} />
+                <View style={styles.debugPurchaseCopy}>
+                  <Text numberOfLines={1} style={styles.debugPurchaseTitle}>Pack {categoryLabel(category)}</Text>
+                  <Text numberOfLines={1} style={styles.debugPurchaseText}>
+                    {desireCardCount(category)} cartes · {CATEGORY_PRICES[category] ?? "4,99 €"}
+                  </Text>
+                </View>
+                <Text style={[styles.debugPurchaseStatus, unlocked && styles.debugPurchaseStatusDone]}>
+                  {unlocked ? "Déjà actif" : "Acheter"}
+                </Text>
+              </SpringPressable>
+            );
+          })}
+        </View>
+
+        <View style={styles.debugPurchaseFeatureList}>
+          {debugFeaturePurchases.map((item) => {
+            const unlocked = isFeatureUnlocked(couple, item.feature);
+
+            return (
+              <SpringPressable
+                disabled={unlocked}
+                key={item.feature}
+                onPress={() => onDebugUnlockFeature(item.feature)}
+                style={[styles.debugPurchaseFeature, unlocked && styles.debugPurchaseFeatureDone]}
+              >
+                <View style={[styles.debugPurchaseFeatureIcon, unlocked && styles.debugPurchaseFeatureIconDone]}>
+                  {unlocked ? <Check size={16} color={candy.black} /> : <LockKeyhole size={16} color={candy.white} />}
+                </View>
+                <View style={styles.debugActionCopy}>
+                  <Text style={[styles.debugPurchaseFeatureTitle, unlocked && styles.debugPurchaseFeatureTitleDone]}>{item.title}</Text>
+                  <Text style={[styles.debugPurchaseFeatureText, unlocked && styles.debugPurchaseFeatureTextDone]}>{item.text}</Text>
+                </View>
+                <Text style={styles.debugPurchaseFeaturePrice}>{unlocked ? "Actif" : item.price}</Text>
+              </SpringPressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.debugSectionHeader}>
         <Text style={styles.debugSectionTitle}>Profils de test</Text>
         <Text style={styles.debugSectionText}>Un appui, un état propre pour QA.</Text>
       </View>
@@ -8841,7 +10903,7 @@ function WelcomeTutorialScreen({
     {
       eyebrow: "",
       title: "Rien ne fuite sans match.",
-      text: "Un Non ne se montre jamais. Une envie se révèle seulement quand vous êtes tous les deux partants.",
+      text: "Un refus ne s’affiche jamais. Une carte se révèle seulement quand l’envie ou la curiosité est partagée des deux côtés.",
       emoji: stickers.lock,
       tone: "soft",
       kind: "rule",
@@ -9332,7 +11394,7 @@ function WelcomeTutorialScreen({
                         <>
                           <View style={[styles.welcomePracticeCard, demoLayout.card]}>
                             <View style={[styles.welcomePracticeCorner, demoLayout.corner]} />
-                            <Text style={[styles.welcomePracticeEyebrow, demoLayout.practiceEyebrow]}>Vanille</Text>
+                            <Text style={[styles.welcomePracticeEyebrow, demoLayout.practiceEyebrow]}>Carte de démo</Text>
                             <Text style={[styles.welcomePracticePrompt, demoLayout.prompt]}>Un bain à deux, lumière tamisée, téléphones interdits.</Text>
                             <Text style={[styles.welcomePracticeCaption, demoLayout.caption]}>Réponse privée.</Text>
                           </View>
@@ -9347,16 +11409,16 @@ function WelcomeTutorialScreen({
                             <SpringPressable
                               disabled={demoTransitioning}
                               onPress={() => chooseDemoVote(1)}
-                              style={[styles.welcomeVotePill, demoLayout.votePill, styles.welcomeVotePillYellow, demoVote === 1 && styles.welcomeVotePillSelectedYellow]}
+                              style={[styles.welcomeVotePill, demoLayout.votePill, styles.welcomeVoteFire, demoVote === 1 && styles.welcomeVoteFireSelected]}
                             >
-                              <Text style={[styles.welcomeVoteText, demoLayout.voteText, styles.welcomeVoteTextDark, demoVote === 1 && styles.welcomeVoteTextSelectedDark]}>Pourquoi pas</Text>
+                              <Text style={[styles.welcomeVoteFireText, demoLayout.voteText, demoVote === 1 && styles.welcomeVoteTextSelected]}>Pourquoi pas</Text>
                             </SpringPressable>
                             <SpringPressable
                               disabled={demoTransitioning}
                               onPress={() => chooseDemoVote(2)}
-                              style={[styles.welcomeVotePill, demoLayout.votePill, styles.welcomeVoteFire, demoVote === 2 && styles.welcomeVoteFireSelected]}
+                              style={[styles.welcomeVotePill, demoLayout.votePill, styles.welcomeVotePillYellow, demoVote === 2 && styles.welcomeVotePillSelectedYellow]}
                             >
-                              <Text style={[styles.welcomeVoteFireText, demoLayout.voteText, demoVote === 2 && styles.welcomeVoteTextSelected]}>Chaud</Text>
+                              <Text style={[styles.welcomeVoteText, demoLayout.voteText, styles.welcomeVoteTextDark, demoVote === 2 && styles.welcomeVoteTextSelectedDark]}>Chaud</Text>
                             </SpringPressable>
                           </View>
                         </>
@@ -9930,39 +11992,179 @@ function LeaveCoupleConfirmScreen({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const [confirmationInput, setConfirmationInput] = useState("");
+  const safeAreaInsets = useSafeAreaInsets();
+  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
   const partner = couple.profiles[otherPartnerId(couple.activePartnerId)];
+  const partnerName = partner.displayName.trim() || "ton/ta partenaire";
+  const expectedConfirmation = `Aurevoir ${partnerName}`;
+  const canConfirm =
+    confirmationInput.trim().toLocaleLowerCase("fr-FR") === expectedConfirmation.toLocaleLowerCase("fr-FR");
+  const leavingItems = [
+    "Ton profil et ta vibe dans ce couple",
+    "Toutes tes réponses aux cartes",
+    "Vos messages et photos privées",
+    `Le lien avec ${partnerName} — la personne sera prévenue`,
+  ];
+
+  const handleConfirm = () => {
+    if (canConfirm) {
+      onConfirm();
+    }
+  };
+  const leaveFrameHeight = Math.max(0, viewportHeight - safeAreaInsets.top - safeAreaInsets.bottom);
+  const leaveScale = Math.min(1.22, Math.max(0.9, Math.min(viewportWidth / 390, leaveFrameHeight / 812)));
+  const leaveSideInset = viewportWidth >= 700 ? 32 : viewportWidth >= 520 ? 24 : 18;
+  const leaveContentWidth = Math.min(620, Math.max(0, viewportWidth - leaveSideInset * 2));
+  const leaveRhythm = Math.round(Math.min(32, Math.max(14, leaveFrameHeight * 0.026)));
+  const leaveTopPadding = Math.max(12, safeAreaInsets.top + leaveRhythm * 0.45);
+  const leaveBottomPadding = Math.max(14, safeAreaInsets.bottom + leaveRhythm * 0.42);
+  const leaveLayout = useMemo(() => ({
+    actions: {
+      gap: 10 * leaveScale,
+    },
+    backButton: {
+      height: 40 * leaveScale,
+      width: 40 * leaveScale,
+    },
+    bodyText: {
+      fontSize: 14 * leaveScale,
+      lineHeight: 19 * leaveScale,
+      marginTop: 12 * leaveScale,
+      maxWidth: Math.min(500, leaveContentWidth),
+    },
+    checklist: {
+      gap: 10 * leaveScale,
+      marginTop: leaveRhythm * 0.72,
+    },
+    checklistRow: {
+      borderRadius: 15 * leaveScale,
+      minHeight: 40 * leaveScale,
+      paddingHorizontal: 14 * leaveScale,
+      paddingVertical: 10 * leaveScale,
+    },
+    checklistText: {
+      fontSize: 13 * leaveScale,
+      lineHeight: 16 * leaveScale,
+    },
+    confirmBlock: {
+      marginTop: leaveRhythm * 0.86,
+    },
+    confirmInput: {
+      borderRadius: 17 * leaveScale,
+      fontSize: 14 * leaveScale,
+      minHeight: 52 * leaveScale,
+      paddingHorizontal: 18 * leaveScale,
+      paddingVertical: 14 * leaveScale,
+    },
+    contentStage: {
+      justifyContent: "center" as const,
+      paddingBottom: leaveRhythm * 0.9,
+      paddingTop: leaveRhythm * 0.35,
+    },
+    emoji: {
+      fontSize: 35 * leaveScale,
+      lineHeight: 42 * leaveScale,
+      marginBottom: 14 * leaveScale,
+    },
+    inner: {
+      maxWidth: leaveContentWidth,
+      minHeight: Math.max(0, viewportHeight - leaveTopPadding - leaveBottomPadding),
+    },
+    primaryButton: {
+      borderRadius: 20 * leaveScale,
+      minHeight: 64 * leaveScale,
+    },
+    primaryText: {
+      fontSize: 16 * leaveScale,
+      lineHeight: 20 * leaveScale,
+    },
+    scroll: {
+      paddingBottom: leaveBottomPadding,
+      paddingHorizontal: leaveSideInset,
+      paddingTop: leaveTopPadding,
+    },
+    title: {
+      fontSize: 34 * leaveScale,
+      lineHeight: 36 * leaveScale,
+      maxWidth: Math.min(520, leaveContentWidth),
+    },
+  }), [
+    leaveBottomPadding,
+    leaveContentWidth,
+    leaveRhythm,
+    leaveScale,
+    leaveSideInset,
+    leaveTopPadding,
+    viewportHeight,
+  ]);
 
   return (
-    <View style={styles.leaveScreen}>
-      <Entrance delay={0} style={styles.leaveContent}>
-        <View style={styles.leaveEmojiHalo}>
-          <Text style={styles.leaveEmoji}>😭</Text>
-        </View>
-      </Entrance>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.leaveScreen}>
+      <ScrollView
+        bounces={false}
+        contentContainerStyle={[styles.leaveScrollContent, leaveLayout.scroll]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.leaveInner, leaveLayout.inner]}>
+          <View style={styles.leaveTopBar}>
+            <Entrance delay={0}>
+              <Pressable accessibilityLabel="Annuler et revenir" onPress={onCancel} style={[styles.leaveBackButton, leaveLayout.backButton]}>
+                <ArrowLeft color={candy.cream} size={18} strokeWidth={3} />
+              </Pressable>
+            </Entrance>
+          </View>
 
-      <Entrance delay={90} style={styles.leaveContent}>
-        <Text style={styles.leaveEyebrow}>Quitter le couple</Text>
-        <Text style={styles.leaveTitle}>Tu veux vraiment quitter ce couple ?</Text>
-        <Text style={styles.leaveText}>
-          Vous allez délier votre profil de {partner.displayName}. Vos envies, matchs et messages de couple ne seront plus
-          affichés ici.
-        </Text>
-      </Entrance>
+          <View style={[styles.leaveContentStage, leaveLayout.contentStage]}>
+            <Entrance delay={80} style={styles.leaveCopyBlock}>
+              <Text style={[styles.leaveEmoji, leaveLayout.emoji]}>😭</Text>
+              <Text style={[styles.leaveTitle, leaveLayout.title]}>Tout quitter. Vraiment tout.</Text>
+              <Text style={[styles.leaveText, leaveLayout.bodyText]}>
+                La séparation avec {partnerName} est immédiate. Voici ce qui disparaît :
+              </Text>
+            </Entrance>
 
-      <Entrance delay={170} style={styles.leaveContent}>
-        <View style={styles.leavePromise}>
-          <Text style={styles.leavePromiseEmoji}>🔗</Text>
-          <Text style={styles.leavePromiseText}>Vous pourrez vous relier à nouveau plus tard.</Text>
-        </View>
-      </Entrance>
+            <Entrance delay={150} style={[styles.leaveChecklist, leaveLayout.checklist]}>
+              {leavingItems.map((item) => (
+                <View key={item} style={[styles.leaveChecklistRow, leaveLayout.checklistRow]}>
+                  <View style={styles.leaveChecklistDot} />
+                  <Text style={[styles.leaveChecklistText, leaveLayout.checklistText]}>{item}</Text>
+                </View>
+              ))}
+            </Entrance>
 
-      <Entrance delay={250} style={styles.leaveContent}>
-        <View style={styles.leaveActions}>
-          <WsButton label="Oui, quitter le couple" onPress={onConfirm} style={styles.leavePrimary} variant="danger" />
-          <WsButton label="Annuler" onPress={onCancel} style={styles.leaveSecondary} variant="secondary" />
+            <Entrance delay={220} style={[styles.leaveConfirmBlock, leaveLayout.confirmBlock]}>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                cursorColor={candy.red}
+                onChangeText={setConfirmationInput}
+                placeholder={`Écris « ${expectedConfirmation} » pour confirmer`}
+                placeholderTextColor="rgba(255,244,232,0.45)"
+                selectionColor={Platform.OS === "web" ? undefined : candy.red}
+                style={[styles.leaveConfirmInput, leaveLayout.confirmInput, canConfirm && styles.leaveConfirmInputValid]}
+                value={confirmationInput}
+              />
+            </Entrance>
+          </View>
+
+          <Entrance delay={300} style={[styles.leaveActions, leaveLayout.actions]}>
+            <Pressable
+              accessibilityRole="button"
+              disabled={!canConfirm}
+              onPress={handleConfirm}
+              style={[styles.leavePrimaryButton, leaveLayout.primaryButton, !canConfirm && styles.leavePrimaryButtonDisabled]}
+            >
+              <Text style={[styles.leavePrimaryText, leaveLayout.primaryText]}>Quitter le couple</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={onCancel} style={styles.leaveCancelButton}>
+              <Text style={styles.leaveCancelText}>Annuler</Text>
+            </Pressable>
+          </Entrance>
         </View>
-      </Entrance>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -9977,34 +12179,186 @@ function StatPill({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   flex: {
+    alignSelf: "stretch",
     flex: 1,
+    width: "100%",
   },
   fontLoadingScreen: {
     backgroundColor: candy.red,
     flex: 1,
   },
   frame: {
+    alignSelf: "stretch",
     flex: 1,
     overflow: "hidden",
+    width: "100%",
+  },
+  frameDark: {
+    backgroundColor: candy.darkColor,
   },
   safeArea: {
+    alignSelf: "stretch",
     flex: 1,
+    width: "100%",
+  },
+  safeAreaDark: {
+    backgroundColor: candy.darkColor,
   },
   loadingScreen: {
-    alignItems: "center",
+    backgroundColor: candy.red,
     flex: 1,
-    gap: 14,
-    justifyContent: "center",
-    padding: 24,
+    overflow: "hidden",
+    paddingBottom: 74,
+    paddingHorizontal: 7,
+    paddingTop: 17,
   },
-  loadingText: {
+  loadingSkeletonStage: {
+    flex: 1,
+  },
+  loadingSkeletonBlock: {
+    backgroundColor: "rgba(255,144,187,0.58)",
+  },
+  loadingSkeletonTopRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  loadingSkeletonBrand: {
+    borderRadius: 14,
+    height: 31,
+    width: 84,
+  },
+  loadingSkeletonProfile: {
+    borderRadius: 16,
+    height: 31,
+    width: 57,
+  },
+  loadingSkeletonTitleWide: {
+    borderRadius: 8,
+    height: 35,
+    width: "72%",
+  },
+  loadingSkeletonTitleWideEnvies: {
+    width: "62%",
+  },
+  loadingSkeletonTitleWideStore: {
+    width: "48%",
+  },
+  loadingSkeletonTitleShort: {
+    borderRadius: 11,
+    height: 34,
+    marginTop: 10,
+    width: "49%",
+  },
+  loadingSkeletonTitleShortEnvies: {
+    width: "35%",
+  },
+  loadingSkeletonChips: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 20,
+  },
+  loadingSkeletonChip: {
+    borderRadius: 999,
+    height: 32,
+    width: 68,
+  },
+  loadingSkeletonChipWide: {
+    width: 96,
+  },
+  loadingSkeletonHeroCard: {
+    borderRadius: 24,
+    flex: 1,
+    marginTop: 18,
+    minHeight: 160,
+    width: "100%",
+  },
+  loadingSkeletonAdvice: {
+    borderRadius: 18,
+    height: 60,
+    marginTop: 10,
+    width: "100%",
+  },
+  loadingSkeletonStoreRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+  },
+  loadingSkeletonStoreCard: {
+    borderRadius: 16,
+    flex: 1,
+    height: 64,
+  },
+  loadingSkeletonList: {
+    gap: 10,
+    marginTop: 18,
+  },
+  loadingSkeletonListRow: {
+    borderRadius: 18,
+    height: 70,
+    width: "100%",
+  },
+  loadingSkeletonListRowSoft: {
+    backgroundColor: "rgba(255,173,205,0.5)",
+  },
+  loadingSkeletonOffers: {
+    gap: 10,
+    marginTop: 18,
+  },
+  loadingSkeletonOfferRow: {
+    borderRadius: 22,
+    height: 72,
+    width: "100%",
+  },
+  loadingSkeletonOfferRowHot: {
+    backgroundColor: "rgba(255,207,58,0.76)",
+  },
+  loadingSkeletonPackGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 16,
+  },
+  loadingSkeletonPackTile: {
+    borderRadius: 18,
+    height: 132,
+    width: "31%",
+  },
+  loadingSkeletonPackTileDark: {
+    backgroundColor: "rgba(38,18,46,0.66)",
+  },
+  loadingSkeletonPackTileHot: {
+    backgroundColor: "rgba(255,207,58,0.76)",
+  },
+  loadingSyncPill: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "rgba(178,32,94,0.88)",
+    borderColor: "rgba(255,249,240,0.1)",
+    borderRadius: 999,
+    borderWidth: 1,
+    bottom: 16,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 34,
+    paddingHorizontal: 15,
+    position: "absolute",
+  },
+  loadingSyncSpinner: {
+    borderColor: candy.yellow,
+    borderRadius: 999,
+    borderRightColor: "transparent",
+    borderWidth: 2,
+    height: 15,
+    width: 15,
+  },
+  loadingSyncText: {
     color: candy.white,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "900",
-    textAlign: "center",
-    textShadowColor: "rgba(32,16,31,0.35)",
-    textShadowOffset: { width: 1, height: 1.5 },
-    textShadowRadius: 0,
+    lineHeight: 14,
   },
   debugPreviewShell: {
     flex: 1,
@@ -10125,62 +12479,41 @@ const styles = StyleSheet.create({
   },
   serverNoticeHost: {
     left: 0,
-    paddingHorizontal: 14,
+    paddingHorizontal: 8,
     position: "absolute",
     right: 0,
-    top: 12,
+    top: 8,
     zIndex: 110,
   },
   serverNoticeCard: {
     alignItems: "center",
     alignSelf: "center",
-    backgroundColor: candy.cream,
-    borderColor: "rgba(255,249,240,0.98)",
-    borderRadius: 22,
-    borderWidth: 1.5,
+    backgroundColor: candy.yellow,
+    borderRadius: 14,
     flexDirection: "row",
-    gap: 10,
-    maxWidth: 520,
-    minHeight: 58,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    width: "100%",
-    shadowColor: "rgba(38,18,46,0.24)",
-    shadowOffset: { width: 0, height: 12 },
+    gap: 9,
+    maxWidth: 360,
+    minHeight: 48,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    shadowColor: "rgba(38,18,46,0.14)",
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 1,
-    shadowRadius: 28,
+    shadowRadius: 18,
   },
   serverNoticeIcon: {
     alignItems: "center",
-    backgroundColor: candy.red,
     borderRadius: 999,
-    height: 34,
+    height: 22,
     justifyContent: "center",
-    width: 34,
-  },
-  serverNoticeCopy: {
-    flex: 1,
-    gap: 2,
-    minWidth: 0,
-  },
-  serverNoticeTitle: {
-    color: candy.ink,
-    fontSize: 12,
-    fontWeight: "900",
+    width: 22,
   },
   serverNoticeText: {
-    color: "rgba(58,37,65,0.72)",
+    color: candy.black,
+    flexShrink: 1,
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "900",
     lineHeight: 14,
-  },
-  serverNoticeClose: {
-    alignItems: "center",
-    backgroundColor: "rgba(247,232,215,0.88)",
-    borderRadius: 999,
-    height: 30,
-    justifyContent: "center",
-    width: 30,
   },
   secretToast: {
     alignItems: "center",
@@ -10391,22 +12724,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 0,
   },
-  bgCherry: {
-    height: 120,
-    left: -26,
-    opacity: 0.13,
-    position: "absolute",
-    top: 96,
-    width: 120,
-  },
-  bgFlame: {
-    height: 160,
-    opacity: 0.14,
-    position: "absolute",
-    right: -34,
-    top: 118,
-    width: 130,
-  },
   doodleOne: {
     backgroundColor: "rgba(255,249,240,0.08)",
     borderRadius: 999,
@@ -10425,35 +12742,30 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: 220,
   },
-  doodleThree: {
-    backgroundColor: candy.yellow,
-    borderRadius: 999,
-    height: 8,
-    left: 118,
-    position: "absolute",
-    top: 64,
-    width: 8,
-  },
-  centered: {
-    alignItems: "center",
-    flex: 1,
-    gap: 18,
-    justifyContent: "center",
-  },
   app: {
+    alignSelf: "stretch",
     flex: 1,
+    width: "100%",
+  },
+  appDark: {
+    backgroundColor: candy.darkColor,
   },
   content: {
+    alignSelf: "stretch",
     flex: 1,
+    width: "100%",
   },
   tabDock: {
     bottom: 0,
     left: 0,
-    paddingBottom: 10,
-    paddingHorizontal: 10,
-    paddingTop: 34,
+    paddingBottom: 14,
+    paddingHorizontal: 18,
+    paddingTop: 32,
     position: "absolute",
     right: 0,
+  },
+  tabDockDark: {
+    backgroundColor: candy.darkColor,
   },
   tabDockFade: {
     bottom: 0,
@@ -10525,37 +12837,30 @@ const styles = StyleSheet.create({
   tabs: {
     backgroundColor: candy.cream,
     borderColor: "rgba(255,249,240,0.92)",
-    borderRadius: 30,
-    borderWidth: 1.5,
+    borderRadius: 32,
+    borderWidth: 1,
     flexDirection: "row",
-    gap: 1,
-    padding: 6,
-    shadowColor: "rgba(38,18,46,0.28)",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 1,
-    shadowRadius: 22,
+    gap: 3,
+    padding: 9,
+    boxShadow: "0 12px 24px rgba(38,18,46,0.22)",
   },
   tab: {
     alignItems: "center",
-    borderRadius: 22,
+    borderRadius: 24,
     flex: 1,
-    gap: 1,
-    minHeight: 48,
+    gap: 3,
+    minHeight: 58,
     minWidth: 0,
     justifyContent: "center",
   },
   tabActive: {
-    backgroundColor: "rgba(245,40,110,0.08)",
-    shadowColor: "rgba(38,18,46,0.12)",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 12,
+    backgroundColor: "transparent",
   },
   tabIconWrap: {
     alignItems: "center",
-    height: 20,
+    height: 24,
     justifyContent: "center",
-    width: 24,
+    width: 28,
   },
   tabNotificationBadge: {
     alignItems: "center",
@@ -10579,10 +12884,10 @@ const styles = StyleSheet.create({
     borderColor: candy.white,
   },
   tabText: {
-    color: candy.ink,
-    fontSize: 8,
-    fontWeight: "800",
-    lineHeight: 10,
+    color: "rgba(155,130,117,0.92)",
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 12,
     textAlign: "center",
   },
   tabTextActive: {
@@ -10590,7 +12895,7 @@ const styles = StyleSheet.create({
   },
   screen: {
     gap: 13,
-    paddingBottom: 118,
+    paddingBottom: 138,
     paddingHorizontal: 14,
     paddingTop: 10,
   },
@@ -10610,9 +12915,9 @@ const styles = StyleSheet.create({
   enviesStickyHeader: {
     marginHorizontal: -14,
     overflow: "visible",
-    paddingBottom: 24,
+    paddingBottom: 10,
     paddingHorizontal: 16,
-    paddingTop: APP_HEADER_TOP_SPACE,
+    paddingTop: 0,
     position: "relative",
     zIndex: 20,
   },
@@ -10901,11 +13206,8 @@ const styles = StyleSheet.create({
     top: 4,
   },
   categoryPickerOverlay: {
-    alignItems: "center",
-    backgroundColor: "rgba(35,18,36,0.24)",
+    backgroundColor: candy.red,
     flex: 1,
-    justifyContent: "center",
-    padding: 14,
   },
   categoryPickerBackdrop: {
     bottom: 0,
@@ -10915,51 +13217,42 @@ const styles = StyleSheet.create({
     top: 0,
   },
   categoryPickerSheetWrap: {
-    maxHeight: "88%",
-    maxWidth: 620,
+    flex: 1,
     width: "100%",
   },
   categoryPickerSheet: {
-    backgroundColor: "rgba(255,246,251,0.98)",
-    borderColor: "rgba(255,255,255,0.98)",
-    borderRadius: 28,
-    borderWidth: 2,
-    overflow: "hidden",
-    padding: 14,
+    backgroundColor: candy.red,
+    flex: 1,
+    paddingHorizontal: 18,
+    paddingTop: 18,
   },
   categoryPickerHeader: {
-    alignItems: "center",
+    alignItems: "flex-start",
     flexDirection: "row",
-    gap: 12,
-    paddingBottom: 12,
+    gap: 14,
+    paddingBottom: 20,
   },
   categoryPickerHeaderCopy: {
     flex: 1,
     minWidth: 0,
   },
-  categoryPickerEyebrow: {
-    color: candy.red,
-    fontSize: 11,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
   categoryPickerTitle: {
-    color: candy.ink,
+    color: candy.white,
     fontFamily: displayFont,
-    fontSize: 26,
+    fontSize: 38,
     fontWeight: "900",
-    lineHeight: 28,
+    lineHeight: 39,
   },
   categoryPickerText: {
-    color: candy.text,
-    fontSize: 12,
+    color: "rgba(255,249,240,0.82)",
+    fontSize: 14,
     fontWeight: "800",
-    lineHeight: 16,
+    lineHeight: 18,
     marginTop: 4,
   },
   categoryPickerClose: {
     alignItems: "center",
-    backgroundColor: "rgba(255,225,241,0.86)",
+    backgroundColor: "rgba(255,249,240,0.22)",
     borderRadius: 999,
     height: 40,
     justifyContent: "center",
@@ -10968,207 +13261,434 @@ const styles = StyleSheet.create({
   categoryPickerGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
-    paddingBottom: 4,
+    gap: 14,
+    paddingBottom: 72,
   },
   categoryPickerCard: {
-    borderColor: "rgba(255,255,255,0.96)",
-    borderRadius: 20,
-    borderWidth: 2,
-    minHeight: 126,
-    padding: 10,
+    aspectRatio: 1,
+    backgroundColor: candy.cream,
+    borderColor: "rgba(255,255,255,0.3)",
+    borderRadius: 28,
+    borderWidth: 0,
+    boxShadow: "0 12px 22px rgba(38,18,46,0.12)",
+    justifyContent: "flex-end",
+    overflow: "hidden",
+    padding: 18,
     position: "relative",
-    width: "48.5%",
+    width: "47.2%",
+  },
+  categoryPickerCardCream: {
+    backgroundColor: candy.cream,
+  },
+  categoryPickerCardPersonal: {
+    borderColor: "rgba(38,18,46,0.28)",
+    borderStyle: "dashed",
+    borderWidth: 2.4,
   },
   categoryPickerCardSelected: {
-    borderColor: candy.red,
+    borderColor: candy.white,
+    borderWidth: 2,
   },
   categoryPickerCardLocked: {
-    opacity: 0.88,
+    opacity: 0.96,
   },
-  categoryPickerIcon: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.7)",
-    borderRadius: 18,
-    height: 38,
-    justifyContent: "center",
-    marginBottom: 8,
-    width: 38,
+  categoryPickerCardFill: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
   },
-  categoryPickerEmoji: {
-    fontFamily: emojiFont,
-    fontSize: 21,
+  categoryPickerPatternLayer: {
+    bottom: 0,
+    left: 0,
+    overflow: "hidden",
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  categoryPickerDot: {
+    backgroundColor: candy.white,
+    borderRadius: 999,
+    height: 9,
+    position: "absolute",
+    width: 9,
+  },
+  categoryPickerStripe: {
+    backgroundColor: candy.white,
+    height: "160%",
+    position: "absolute",
+    top: "-30%",
+    transform: [{ rotate: "42deg" }],
+    width: 18,
+  },
+  categoryPickerCardCopy: {
+    position: "relative",
+    zIndex: 2,
   },
   categoryPickerCardTitle: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 21,
+    fontWeight: "900",
+    lineHeight: 23,
+  },
+  categoryPickerCardTitleLight: {
+    color: candy.cream,
+  },
+  categoryPickerCardTitleDark: {
+    color: candy.ink,
+  },
+  categoryPickerCardText: {
+    color: candy.text,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 16,
+    marginTop: 3,
+  },
+  categoryPickerCardTextLight: {
+    color: "rgba(255,249,240,0.86)",
+  },
+  categoryPickerCardTextDark: {
+    color: candy.ink,
+  },
+  categoryPickerLock: {
+    alignSelf: "flex-start",
+    backgroundColor: candy.black,
+    borderRadius: 999,
+    marginTop: 10,
+    minHeight: 32,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+  },
+  categoryPickerBadgeActive: {
+    backgroundColor: candy.white,
+  },
+  categoryPickerBadgeCreate: {
+    backgroundColor: candy.red,
+  },
+  categoryPickerBadgeText: {
+    color: candy.white,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  categoryPickerBadgeTextActive: {
+    color: candy.red,
+  },
+  categoryPickerBadgeTextCreate: {
+    color: candy.white,
+  },
+  categoryPickerBadgeTextHot: {
+    color: candy.yellow,
+  },
+  categoryPickerLockIcon: {
+    alignItems: "center",
+    height: 28,
+    justifyContent: "center",
+    position: "absolute",
+    right: 14,
+    top: 14,
+    width: 28,
+  },
+  desireFilterRow: {
+    flexGrow: 1,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    marginTop: 22,
+    paddingHorizontal: 6,
+    paddingRight: 12,
+  },
+  desireFilterScroll: {
+    width: "100%",
+  },
+  desireFilterChip: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255,249,240,0.7)",
+    borderRadius: 999,
+    borderWidth: 1.2,
+    flexDirection: "row",
+    justifyContent: "center",
+    minHeight: 42,
+    minWidth: 0,
+    paddingHorizontal: 18,
+  },
+  desireFilterChipActive: {
+    backgroundColor: candy.cream,
+    borderColor: candy.cream,
+  },
+  desireFilterText: {
+    color: candy.white,
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  desireFilterTextActive: {
+    color: candy.red,
+  },
+  cardStack: {
+    gap: 10,
+    paddingRight: 0,
+    paddingTop: 0,
+  },
+  desireGalleryRow: {
+    alignItems: "center",
+    backgroundColor: candy.cream,
+    borderColor: "rgba(255,255,255,0.84)",
+    borderRadius: 18,
+    borderWidth: 1.5,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 78,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  desireGalleryRowAnswered: {
+    backgroundColor: "#FFC4DA",
+    borderColor: "rgba(255,196,218,0.96)",
+  },
+  desireGalleryRowMatch: {
+    backgroundColor: candy.black,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+  desireGalleryCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  desireGalleryCardTitle: {
     color: candy.ink,
     fontFamily: displayFont,
     fontSize: 17,
     fontWeight: "900",
     lineHeight: 19,
   },
-  categoryPickerCardText: {
-    color: candy.text,
-    fontSize: 11,
-    fontWeight: "800",
-    marginTop: 2,
-  },
-  categoryPickerSelectedText: {
-    alignSelf: "flex-start",
-    backgroundColor: candy.red,
-    borderRadius: 999,
+  desireGalleryCardTitleMatch: {
     color: candy.white,
-    fontSize: 9,
+  },
+  desireGalleryCategory: {
+    color: candy.red,
+    fontSize: 11,
     fontWeight: "900",
-    marginTop: 8,
-    overflow: "hidden",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    letterSpacing: 0,
+    lineHeight: 13,
     textTransform: "uppercase",
   },
-  categoryPickerLock: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.86)",
-    borderRadius: 999,
-    height: 26,
-    justifyContent: "center",
-    position: "absolute",
-    right: 8,
-    top: 8,
-    width: 26,
+  desireGalleryCategoryMatch: {
+    color: candy.yellow,
   },
-  desireFilterRow: {
-    flexDirection: "row",
-    gap: 7,
-    marginTop: 8,
-    paddingHorizontal: 4,
-  },
-  desireFilterChip: {
+  desireGalleryMetaRow: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.68)",
-    borderColor: "rgba(255,255,255,0.92)",
-    borderRadius: 999,
-    borderWidth: 1.5,
-    flex: 1,
     flexDirection: "row",
-    gap: 5,
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 7,
+  },
+  desireGalleryAnswerPill: {
+    alignItems: "center",
+    backgroundColor: "rgba(43,23,53,0.08)",
+    borderColor: "rgba(43,23,53,0.1)",
+    borderRadius: 999,
+    borderWidth: 1,
     justifyContent: "center",
-    minHeight: 36,
-    minWidth: 0,
+    minHeight: 21,
     paddingHorizontal: 8,
   },
-  desireFilterChipActive: {
-    backgroundColor: candy.black,
-    borderColor: candy.white,
+  desireGalleryAnswerPillNo: {
+    backgroundColor: "rgba(43,23,53,0.1)",
+    borderColor: "rgba(43,23,53,0.12)",
   },
-  desireFilterText: {
+  desireGalleryAnswerPillCurious: {
+    backgroundColor: "rgba(255,249,240,0.72)",
+    borderColor: "rgba(255,249,240,0.86)",
+  },
+  desireGalleryAnswerPillHot: {
+    backgroundColor: candy.yellow,
+    borderColor: candy.yellow,
+  },
+  desireGalleryAnswerPillMatch: {
+    backgroundColor: "rgba(255,249,240,0.14)",
+    borderColor: "rgba(255,249,240,0.18)",
+  },
+  desireGalleryAnswerText: {
     color: candy.ink,
-    flexShrink: 1,
     fontSize: 10,
     fontWeight: "900",
+    lineHeight: 12,
   },
-  desireFilterTextActive: {
+  desireGalleryAnswerTextHot: {
+    color: candy.black,
+  },
+  desireGalleryAnswerTextMatch: {
     color: candy.white,
   },
-  desireFilterCount: {
-    color: candy.red,
-    fontSize: 10,
+  desireGalleryStatus: {
+    alignItems: "center",
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 28,
+    minWidth: 74,
+    paddingHorizontal: 10,
+  },
+  desireGalleryStatusTodo: {
+    backgroundColor: candy.yellow,
+  },
+  desireGalleryStatusAnswered: {
+    backgroundColor: "transparent",
+    borderColor: "rgba(38,18,46,0.72)",
+    borderWidth: 1.2,
+  },
+  desireGalleryStatusMatch: {
+    backgroundColor: candy.red,
+  },
+  desireGalleryStatusText: {
+    color: candy.ink,
+    fontSize: 11,
     fontWeight: "900",
+    lineHeight: 13,
   },
-  desireFilterCountActive: {
-    color: candy.pinkSoft,
+  desireGalleryStatusTextTodo: {
+    color: candy.black,
   },
-  cardStack: {
-    gap: 12,
-    paddingRight: 6,
-    paddingTop: 14,
+  desireGalleryStatusTextMatch: {
+    color: candy.white,
   },
   enviesGamePanel: {
-    backgroundColor: "rgba(255,255,255,0.62)",
-    borderColor: "rgba(255,255,255,0.92)",
-    borderRadius: 28,
-    borderWidth: 1.5,
+    backgroundColor: "transparent",
+    borderColor: "transparent",
+    borderRadius: 0,
+    borderWidth: 0,
     gap: 12,
-    padding: 10,
-    shadowColor: "rgba(87,8,58,0.16)",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
+    padding: 0,
+  },
+  enviesGalleryHero: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 14,
+    justifyContent: "space-between",
+    minHeight: 50,
+    position: "relative",
+  },
+  enviesGalleryPackCenter: {
+    alignItems: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 2,
+  },
+  enviesGalleryPackPill: {
+    alignSelf: "center",
+    minHeight: 50,
+    paddingHorizontal: 18,
+  },
+  enviesGalleryTitle: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 38,
+    fontWeight: "900",
+    lineHeight: 40,
+    zIndex: 3,
+  },
+  enviesModeButton: {
+    alignItems: "center",
+    backgroundColor: candy.cream,
+    borderRadius: 999,
+    flexDirection: "row",
+    gap: 2,
+    justifyContent: "center",
+    minHeight: 50,
+    paddingLeft: 20,
+    paddingRight: 15,
+    zIndex: 3,
+  },
+  enviesModeButtonText: {
+    color: candy.red,
+    fontSize: 14,
+    fontWeight: "900",
   },
   enviesTopGameBar: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 10,
-    minHeight: 70,
-    paddingHorizontal: 4,
-    paddingTop: 2,
+    justifyContent: "center",
+    minHeight: 50,
+    position: "relative",
   },
-  enviesTopGameCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  enviesTopGameLabelRow: {
+  enviesPackPill: {
     alignItems: "center",
-    flexDirection: "row",
-    gap: 7,
-    marginBottom: 3,
-  },
-  enviesTopGameHint: {
-    color: candy.text,
-    flex: 1,
-    fontSize: 10,
-    fontWeight: "900",
-    opacity: 0.78,
-  },
-  enviesGameEyebrow: {
     alignSelf: "flex-start",
-    backgroundColor: candy.white,
-    borderColor: candy.white,
+    backgroundColor: candy.cream,
     borderRadius: 999,
-    borderWidth: 2,
-    color: candy.red,
-    fontSize: 10,
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 42,
+    paddingHorizontal: 16,
+  },
+  enviesGamePackPill: {
+    alignSelf: "center",
+  },
+  enviesPackPillDot: {
+    backgroundColor: candy.red,
+    borderRadius: 999,
+    height: 8,
+    width: 8,
+  },
+  enviesPackPillText: {
+    color: candy.black,
+    fontSize: 14,
     fontWeight: "900",
+  },
+  enviesPackPillChevron: {
+    transform: [{ rotate: "90deg" }],
+  },
+  enviesGameProgress: {
+    backgroundColor: "rgba(255,36,110,0.2)",
+    borderColor: "rgba(255,249,240,0.42)",
+    borderRadius: 999,
+    borderWidth: 1.2,
+    color: candy.white,
+    fontSize: 14,
+    fontWeight: "900",
+    minWidth: 74,
     overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    textTransform: "uppercase",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    position: "absolute",
+    right: 0,
+    textAlign: "center",
+    top: 5,
   },
-  enviesGameTitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 25,
-    fontWeight: "900",
-    lineHeight: 27,
-  },
-  enviesGameSubtitle: {
-    color: candy.text,
-    fontSize: 11,
-    fontWeight: "800",
-    lineHeight: 15,
-    marginTop: 2,
-  },
-  enviesLibraryButton: {
+  enviesGalleryBackButton: {
     alignItems: "center",
-    backgroundColor: candy.white,
-    borderColor: candy.white,
-    borderRadius: 18,
-    borderWidth: 2,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,249,240,0.92)",
+    borderRadius: 999,
     flexDirection: "row",
     gap: 5,
     justifyContent: "center",
-    minHeight: 42,
-    paddingHorizontal: 12,
+    minHeight: 40,
+    paddingHorizontal: 15,
   },
-  enviesLibraryButtonText: {
+  enviesGameBackButton: {
+    left: 0,
+    position: "absolute",
+    top: 5,
+    zIndex: 3,
+  },
+  enviesGalleryBackText: {
     color: candy.red,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "900",
   },
   gameCardTransitionHost: {
     elevation: 12,
+    flexGrow: 1,
     overflow: "visible",
     position: "relative",
     zIndex: 12,
+  },
+  gameCardTransitionBody: {
+    flexGrow: 1,
   },
   gameCardTransitionHostEntering: {
     elevation: 12,
@@ -11179,6 +13699,8 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   gameCardBurstHost: {
+    flexGrow: 1,
+    justifyContent: "center",
     overflow: "visible",
     position: "relative",
   },
@@ -11213,157 +13735,245 @@ const styles = StyleSheet.create({
     textShadowRadius: 14,
     top: "50%",
   },
+  desireGameStage: {
+    alignItems: "center",
+    flexGrow: 1,
+    gap: 0,
+    justifyContent: "flex-start",
+    overflow: "visible",
+    paddingBottom: 0,
+    paddingTop: 10,
+    width: "100%",
+  },
+  desireGameStageRoomy: {
+    paddingTop: 16,
+  },
+  desireGameDeck: {
+    alignSelf: "center",
+    maxWidth: 430,
+    minHeight: 410,
+    overflow: "visible",
+    position: "relative",
+    width: "100%",
+  },
+  desireGameDeckRoomy: {
+    maxWidth: 520,
+    minHeight: 500,
+  },
+  desireGameBackCard: {
+    backgroundColor: "rgba(247,232,215,0.9)",
+    borderRadius: 34,
+    bottom: 6,
+    boxShadow: "0 12px 22px rgba(38,18,46,0.12)",
+    position: "absolute",
+    top: 36,
+    width: "86%",
+  },
+  desireGameBackCardLeft: {
+    left: 0,
+    transform: [{ rotate: "-6deg" }],
+  },
+  desireGameBackCardRight: {
+    right: 0,
+    transform: [{ rotate: "6deg" }],
+  },
   desireGameCard: {
-    borderColor: candy.white,
+    alignSelf: "center",
+    backgroundColor: candy.cream,
+    borderColor: "rgba(255,249,240,0.92)",
     borderRadius: 34,
     borderWidth: 2,
+    boxShadow: "0 18px 28px rgba(38,18,46,0.18)",
     justifyContent: "space-between",
-    minHeight: 430,
-    overflow: "visible",
-    padding: 20,
-    shadowColor: "rgba(255,36,95,0.28)",
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 1,
-    shadowRadius: 24,
+    minHeight: 390,
+    overflow: "hidden",
+    paddingHorizontal: 28,
+    paddingVertical: 28,
+    position: "relative",
+    width: "88%",
   },
   desireGameCardRoomy: {
-    minHeight: 500,
-    padding: 24,
-  },
-  desireGameSticker: {
-    height: 138,
-    position: "absolute",
-    right: 12,
-    top: 12,
-    transform: [{ rotate: "11deg" }],
-    width: 138,
-    zIndex: 1,
-  },
-  desireGameStickerRoomy: {
-    height: 148,
-    right: 14,
-    top: 18,
-    width: 148,
+    minHeight: 470,
+    paddingHorizontal: 34,
+    paddingVertical: 34,
+    width: "84%",
   },
   desireGameTopRow: {
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 94,
+    flexDirection: "row",
+    justifyContent: "space-between",
     zIndex: 2,
   },
+  desireGameCategoryLabel: {
+    color: candy.red,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase",
+  },
+  desireGameCornerRing: {
+    borderColor: candy.yellow,
+    borderRadius: 999,
+    borderWidth: 3,
+    height: 32,
+    width: 32,
+  },
   desireGameCopy: {
-    alignItems: "center",
-    marginTop: 38,
-    paddingHorizontal: 78,
+    justifyContent: "center",
+    minHeight: 190,
+    paddingTop: 24,
   },
   desireGameCopyRoomy: {
-    marginTop: 52,
+    minHeight: 250,
+    paddingTop: 32,
   },
   desireGameTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 36,
+    fontSize: 28,
     fontWeight: "900",
-    lineHeight: 39,
-    textAlign: "center",
-    textShadowColor: "rgba(255,255,255,0.58)",
-    textShadowOffset: { width: 1.2, height: 1.2 },
-    textShadowRadius: 0,
+    lineHeight: 31,
+    textAlign: "left",
   },
   desireGameText: {
-    color: candy.text,
-    fontSize: 16,
-    fontWeight: "800",
-    lineHeight: 22,
-    marginTop: 12,
-    maxWidth: 480,
-    textAlign: "center",
+    color: candy.muted,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
+    maxWidth: 300,
+  },
+  desireGameValidationVeil: {
+    alignItems: "center",
+    bottom: 0,
+    justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 5,
+  },
+  desireGameValidationBadge: {
+    alignItems: "center",
+    borderColor: candy.white,
+    borderRadius: 999,
+    borderWidth: 3,
+    boxShadow: "0 18px 34px rgba(38,18,46,0.22)",
+    height: 78,
+    justifyContent: "center",
+    width: 78,
   },
   desireGameVoteRow: {
-    backgroundColor: "rgba(255,255,255,0.34)",
-    borderColor: "rgba(255,255,255,0.68)",
-    borderRadius: 36,
-    borderWidth: 1.5,
+    alignItems: "center",
+    alignSelf: "center",
     flexDirection: "row",
-    gap: 12,
-    marginTop: 34,
-    padding: 8,
-    shadowColor: "rgba(32,16,31,0.18)",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
+    gap: 6,
+    justifyContent: "center",
+    maxWidth: 430,
+    overflow: "visible",
+    width: "100%",
   },
   desireGameVoteRowRoomy: {
-    marginTop: 42,
+    maxWidth: 460,
+  },
+  desireGameVoteDock: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    flexGrow: 1,
+    justifyContent: "center",
+    minHeight: 190,
+    overflow: "visible",
+    paddingBottom: 10,
+    paddingTop: 18,
+  },
+  desireGameVoteDockRoomy: {
+    minHeight: 230,
+    paddingBottom: 14,
+    paddingTop: 24,
   },
   enviesGameEmpty: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.52)",
-    borderColor: candy.white,
-    borderRadius: 34,
-    borderStyle: "dashed",
-    borderWidth: 2,
     justifyContent: "center",
-    minHeight: 390,
-    padding: 24,
+    minHeight: 430,
+    paddingHorizontal: 24,
+    paddingVertical: 34,
   },
-  enviesGameEmptyEmoji: {
-    fontFamily: emojiFont,
-    fontSize: 54,
-    lineHeight: 62,
+  enviesGameEmptyDeck: {
+    height: 170,
+    marginBottom: 30,
+    position: "relative",
+    width: 176,
+  },
+  enviesGameEmptyCard: {
+    backgroundColor: candy.cream,
+    borderRadius: 22,
+    height: 132,
+    position: "absolute",
+    width: 100,
+  },
+  enviesGameEmptyBackCard: {
+    bottom: 8,
+    left: 23,
+    opacity: 0.88,
+    transform: [{ rotate: "-10deg" }],
+  },
+  enviesGameEmptyFrontCard: {
+    alignItems: "center",
+    justifyContent: "center",
+    right: 22,
+    top: 6,
+    transform: [{ rotate: "7deg" }],
   },
   enviesGameEmptyTitle: {
-    color: candy.ink,
+    color: candy.white,
     fontFamily: displayFont,
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: "900",
     lineHeight: 32,
-    marginTop: 10,
     textAlign: "center",
   },
   enviesGameEmptyText: {
-    color: candy.text,
-    fontSize: 14,
-    fontWeight: "800",
-    lineHeight: 20,
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 22,
     marginTop: 8,
-    maxWidth: 360,
+    maxWidth: 330,
     textAlign: "center",
   },
   enviesGameEmptyActions: {
-    flexDirection: "row",
-    gap: 9,
-    marginTop: 18,
+    alignItems: "center",
+    gap: 12,
+    marginTop: 26,
+    maxWidth: 320,
+    width: "100%",
   },
   enviesGameEmptyPrimary: {
     alignItems: "center",
-    backgroundColor: candy.red,
-    borderColor: candy.white,
-    borderRadius: 18,
-    borderWidth: 2,
+    backgroundColor: candy.black,
+    borderRadius: 999,
     justifyContent: "center",
-    minHeight: 46,
-    paddingHorizontal: 14,
+    minHeight: 56,
+    paddingHorizontal: 28,
+    width: "100%",
   },
   enviesGameEmptyPrimaryText: {
     color: candy.white,
-    fontSize: 13,
+    fontFamily: displayFont,
+    fontSize: 16,
     fontWeight: "900",
+    textAlign: "center",
   },
   enviesGameEmptySecondary: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.74)",
-    borderColor: candy.white,
-    borderRadius: 18,
-    borderWidth: 2,
     justifyContent: "center",
-    minHeight: 46,
-    paddingHorizontal: 14,
+    minHeight: 28,
+    paddingHorizontal: 12,
   },
   enviesGameEmptySecondaryText: {
-    color: candy.red,
+    color: "rgba(255,255,255,0.84)",
     fontSize: 13,
     fontWeight: "900",
+    textAlign: "center",
   },
   addDesireFloatingDock: {
     alignItems: "center",
@@ -11384,19 +13994,16 @@ const styles = StyleSheet.create({
   },
   addDesireButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderColor: candy.red,
-    borderRadius: 24,
-    borderStyle: "dashed",
-    borderWidth: 1.5,
+    backgroundColor: candy.yellow,
+    borderColor: candy.yellow,
+    borderRadius: 999,
+    borderWidth: 0,
     elevation: 14,
     flexDirection: "row",
-    gap: 9,
     justifyContent: "center",
-    maxWidth: 330,
-    minHeight: 54,
-    paddingLeft: 18,
-    paddingRight: 52,
+    maxWidth: 260,
+    minHeight: 50,
+    paddingHorizontal: 18,
     shadowColor: "rgba(176, 10, 92, 0.34)",
     shadowOffset: { width: 0, height: 20 },
     shadowOpacity: 1,
@@ -11404,320 +14011,294 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   addDesireButtonLocked: {
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderColor: candy.black,
+    backgroundColor: candy.yellow,
+    opacity: 0.72,
   },
   addDesireText: {
-    color: candy.red,
+    color: candy.black,
     flexShrink: 1,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "900",
-  },
-  addDesireLimitText: {
-    color: candy.text,
-    flexShrink: 0,
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  addDesireIcon: {
-    alignItems: "center",
-    backgroundColor: candy.red,
-    borderColor: candy.white,
-    borderRadius: 999,
-    borderWidth: 2,
-    height: 40,
-    justifyContent: "center",
-    position: "absolute",
-    right: 8,
-    width: 40,
-  },
-  addDesireIconText: {
-    color: candy.white,
-    fontSize: 20,
-    fontWeight: "900",
-    lineHeight: 24,
   },
   editorOverlay: {
     flex: 1,
-    justifyContent: "flex-end",
   },
-  editorBackdrop: {
-    backgroundColor: "rgba(32,16,31,0.44)",
-    bottom: 0,
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: 0,
-  },
-  editorSheet: {
-    backgroundColor: "rgba(255,244,250,0.94)",
-    borderColor: candy.white,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    borderWidth: 2,
-    gap: 13,
-    padding: 18,
-    paddingBottom: 24,
-    shadowColor: "rgba(32,16,31,0.34)",
-    shadowOffset: { width: 0, height: -12 },
-    shadowOpacity: 1,
-    shadowRadius: 24,
-  },
-  editorHandle: {
-    alignSelf: "center",
-    backgroundColor: "rgba(59,23,55,0.2)",
-    borderRadius: 999,
-    height: 5,
-    marginBottom: 2,
-    width: 46,
-  },
-  editorHeader: {
-    alignItems: "flex-start",
-    flexDirection: "row",
-    gap: 10,
-    justifyContent: "space-between",
-  },
-  editorHeaderCopy: {
+  editorScreen: {
     flex: 1,
   },
-  editorEyebrow: {
-    alignSelf: "flex-start",
-    backgroundColor: candy.roseMist,
-    borderRadius: 999,
-    color: candy.red,
-    fontSize: 10,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    textTransform: "uppercase",
+  editorSafe: {
+    flex: 1,
+    width: "100%",
   },
-  editorTitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 27,
-    fontWeight: "900",
-    lineHeight: 29,
-    marginTop: 8,
-  },
-  editorIntro: {
-    color: candy.text,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 16,
-    marginTop: 4,
-  },
-  editorQuota: {
-    alignSelf: "flex-start",
-    backgroundColor: candy.white,
-    borderColor: "rgba(255,36,95,0.22)",
-    borderRadius: 999,
-    borderWidth: 1.5,
-    color: candy.red,
-    fontSize: 10,
-    fontWeight: "900",
-    marginTop: 8,
-    overflow: "hidden",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  editorCloseButton: {
+  editorScrollContent: {
     alignItems: "center",
-    backgroundColor: candy.white,
-    borderRadius: 999,
-    height: 38,
+    flexGrow: 1,
+    paddingTop: 14,
+    width: "100%",
+  },
+  editorContent: {
+    alignSelf: "center",
+    flexGrow: 1,
+    gap: 18,
+    justifyContent: "space-between",
+    maxWidth: "100%",
+    width: "100%",
+  },
+  editorMainArea: {
+    flex: 1,
+    gap: 21,
     justifyContent: "center",
-    width: 38,
+    paddingBottom: 8,
   },
-  editorField: {
-    gap: 6,
+  editorTopBar: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 42,
   },
-  editorLabel: {
-    color: candy.ink,
+  editorBackButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,249,240,0.17)",
+    borderRadius: 999,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  editorPreviewCard: {
+    backgroundColor: candy.cream,
+    borderRadius: 28,
+    minHeight: 218,
+    overflow: "hidden",
+    padding: 24,
+    width: "100%",
+  },
+  editorPreviewHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  editorEyebrow: {
+    color: candy.red,
     fontSize: 11,
     fontWeight: "900",
+    letterSpacing: 0.8,
     textTransform: "uppercase",
   },
-  editorIconField: {
-    alignItems: "stretch",
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderColor: "rgba(255,36,95,0.2)",
-    borderRadius: 24,
-    borderWidth: 1.5,
+  editorPreviewRing: {
+    borderColor: candy.yellow,
+    borderRadius: 999,
+    borderWidth: 3,
+    height: 30,
+    width: 30,
+  },
+  editorTitle: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 34,
+    fontWeight: "900",
+    lineHeight: 37,
+  },
+  editorTitleDot: {
+    color: candy.yellow,
+  },
+  editorQuota: {
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    color: candy.black,
+    fontSize: 13,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+  },
+  editorPreviewBody: {
+    alignItems: "flex-start",
     flexDirection: "row",
-    gap: 12,
-    padding: 12,
+    gap: 15,
+    marginTop: 24,
+  },
+  editorLabel: {
+    color: "rgba(255,249,240,0.72)",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+    textTransform: "uppercase",
   },
   editorIconPreview: {
     alignItems: "center",
     alignSelf: "flex-start",
-    backgroundColor: candy.white,
-    borderColor: candy.roseSoft,
-    borderRadius: 22,
-    borderWidth: 2,
-    height: 78,
+    backgroundColor: "rgba(245,40,110,0.07)",
+    borderColor: "rgba(59,23,55,0.12)",
+    borderRadius: 18,
+    borderWidth: 1.5,
+    height: 54,
     justifyContent: "center",
-    shadowColor: "rgba(255,36,95,0.22)",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 14,
-    width: 78,
+    marginTop: 1,
+    width: 54,
   },
   editorIconPreviewEmoji: {
     fontFamily: emojiFont,
-    fontSize: 42,
-    lineHeight: 48,
+    fontSize: 30,
+    lineHeight: 36,
   },
-  editorIconCopy: {
+  editorPreviewCopy: {
     flex: 1,
-    gap: 7,
+    gap: 12,
+    minWidth: 0,
   },
-  editorEmojiInput: {
-    backgroundColor: candy.white,
-    borderColor: "rgba(255,36,95,0.26)",
-    borderRadius: 16,
+  editorEditableField: {
+    backgroundColor: "rgba(255,255,255,0.34)",
+    borderColor: "rgba(59,23,55,0.14)",
+    borderRadius: 18,
     borderWidth: 1.5,
+    justifyContent: "center",
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    width: "100%",
+  },
+  editorTitleField: {
+    minHeight: 78,
+  },
+  editorBlurbField: {
+    minHeight: 72,
+  },
+  editorFieldLabel: {
+    color: candy.red,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.9,
+    marginBottom: 5,
+    textTransform: "uppercase",
+  },
+  editorTitleInput: {
     color: candy.ink,
-    fontFamily: emojiFont,
+    fontFamily: displayFont,
     fontSize: 22,
     fontWeight: "900",
-    minHeight: 46,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    textAlign: "center",
+    lineHeight: 25,
+    minHeight: 38,
+    padding: 0,
+    textAlignVertical: "top",
+  },
+  editorBlurbInput: {
+    color: candy.text,
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 19,
+    minHeight: 34,
+    padding: 0,
+    textAlignVertical: "top",
+  },
+  editorControls: {
+    gap: 19,
+    width: "100%",
+  },
+  editorSection: {
+    gap: 10,
+    width: "100%",
   },
   editorEmojiPresetRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 7,
+    flexGrow: 1,
+    gap: 8,
+    width: "100%",
+  },
+  editorAmbianceRow: {
+    flexDirection: "row",
+    gap: 8,
+    width: "100%",
   },
   editorEmojiPreset: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.86)",
-    borderColor: "rgba(255,36,95,0.18)",
-    borderRadius: 14,
-    borderWidth: 1.5,
-    height: 36,
+    backgroundColor: "rgba(255,249,240,0.15)",
+    borderColor: "rgba(255,249,240,0.16)",
+    borderRadius: 15,
+    borderWidth: 1,
+    flexBasis: 0,
+    flexGrow: 1,
+    height: 52,
     justifyContent: "center",
-    minWidth: 36,
-    paddingHorizontal: 7,
+    minWidth: 0,
+    paddingHorizontal: 4,
   },
   editorEmojiPresetActive: {
-    backgroundColor: candy.red,
-    borderColor: candy.white,
-    shadowColor: "rgba(255,36,95,0.22)",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
+    backgroundColor: candy.cream,
+    borderColor: candy.yellow,
+    borderWidth: 3,
   },
   editorEmojiPresetText: {
     fontFamily: emojiFont,
-    fontSize: 19,
-    lineHeight: 23,
+    fontSize: 21,
+    lineHeight: 25,
   },
-  editorInput: {
-    backgroundColor: candy.white,
-    borderColor: "rgba(255,36,95,0.28)",
-    borderRadius: 18,
-    borderWidth: 1.5,
-    color: candy.ink,
-    fontSize: 14,
-    fontWeight: "800",
-    minHeight: 48,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
+  editorMoreText: {
+    color: candy.cream,
+    fontSize: 15,
+    fontWeight: "900",
   },
-  editorTextArea: {
-    minHeight: 82,
-    textAlignVertical: "top",
-  },
-  editorCategoryRow: {
-    flexDirection: "row",
-    gap: 7,
-  },
-  editorCategoryChip: {
+  editorAmbianceChip: {
     alignItems: "center",
-    borderColor: candy.white,
-    borderRadius: 18,
-    borderWidth: 2,
-    flex: 1,
-    minHeight: 42,
+    borderColor: "rgba(255,249,240,0.62)",
+    borderRadius: 999,
+    borderWidth: 1.5,
+    flexBasis: 0,
+    flexGrow: 1,
     justifyContent: "center",
+    minHeight: 42,
+    minWidth: 0,
     paddingHorizontal: 8,
   },
-  editorCategoryChipActive: {
-    shadowColor: "rgba(255,36,95,0.18)",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 9,
+  editorAmbianceChipActive: {
+    backgroundColor: candy.cream,
+    borderColor: candy.cream,
   },
-  editorCategoryText: {
+  editorAmbianceText: {
+    color: candy.white,
+    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  editorAmbianceTextActive: {
     color: candy.ink,
+  },
+  editorBottomBar: {
+    alignItems: "center",
+    backgroundColor: candy.red,
+    bottom: 0,
+    left: 0,
+    paddingTop: 12,
+    position: "absolute",
+    right: 0,
+    width: "100%",
+  },
+  editorBottomContent: {
+    alignSelf: "center",
+    gap: 9,
+    maxWidth: "100%",
+    width: "100%",
+  },
+  editorSubmitButton: {
+    alignItems: "center",
+    backgroundColor: candy.black,
+    borderRadius: 25,
+    justifyContent: "center",
+    minHeight: 55,
+    width: "100%",
+  },
+  editorSubmitButtonDisabled: {
+    opacity: 0.62,
+  },
+  editorSubmitText: {
+    color: candy.cream,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  editorFooterText: {
+    color: "rgba(255,249,240,0.75)",
     fontSize: 12,
     fontWeight: "900",
-  },
-  editorCategoryTextActive: {
-    color: candy.white,
-  },
-  editorPersonalCategory: {
-    alignItems: "center",
-    backgroundColor: "rgba(157,255,215,0.38)",
-    borderColor: candy.green,
-    borderRadius: 20,
-    borderStyle: "dashed",
-    borderWidth: 1.5,
-    flexDirection: "row",
-    gap: 10,
-    minHeight: 66,
-    padding: 12,
-  },
-  editorPersonalEmoji: {
-    fontFamily: emojiFont,
-    fontSize: 26,
-    lineHeight: 30,
-  },
-  editorPersonalCopy: {
-    flex: 1,
-  },
-  editorPersonalTitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 17,
-    fontWeight: "900",
-  },
-  editorPersonalText: {
-    color: candy.text,
-    fontSize: 11,
-    fontWeight: "800",
     lineHeight: 15,
-    marginTop: 2,
-  },
-  editorStorageHint: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.66)",
-    borderRadius: 16,
-    flexDirection: "row",
-    gap: 7,
-    padding: 10,
-  },
-  editorStorageHintText: {
-    color: candy.text,
-    flex: 1,
-    fontSize: 11,
-    fontWeight: "800",
-    lineHeight: 15,
-  },
-  editorActions: {
-    flexDirection: "row",
-    gap: 9,
-  },
-  editorSecondaryButton: {
-    flex: 1,
-    minHeight: 50,
-  },
-  editorPrimaryButton: {
-    flex: 1.35,
-    minHeight: 50,
+    textAlign: "center",
   },
   desireCard: {
     borderColor: candy.white,
@@ -11760,13 +14341,6 @@ const styles = StyleSheet.create({
     minHeight: 112,
     paddingHorizontal: 72,
     paddingTop: 8,
-  },
-  cardMetaRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 6,
   },
   cardTag: {
     backgroundColor: "rgba(255,255,255,0.62)",
@@ -11839,19 +14413,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     textTransform: "uppercase",
   },
-  cardStatus: {
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderColor: "rgba(255,255,255,0.88)",
-    borderRadius: 999,
-    borderWidth: 1,
-    color: candy.ink,
-    fontSize: 9,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    textTransform: "uppercase",
-  },
   cardTitle: {
     color: candy.ink,
     fontFamily: displayFont,
@@ -11897,23 +14458,31 @@ const styles = StyleSheet.create({
     backgroundColor: candy.red,
   },
   voteButtonProminent: {
-    backgroundColor: "rgba(255,255,255,0.94)",
-    borderColor: "rgba(32,16,31,0.9)",
-    borderRadius: 28,
-    borderWidth: 2.2,
-    height: 76,
-    shadowColor: "rgba(32,16,31,0.22)",
-    shadowOffset: { width: 0, height: 11 },
-    shadowOpacity: 1,
-    shadowRadius: 17,
+    alignItems: "center",
+    backgroundColor: candy.cream,
+    borderColor: "transparent",
+    borderRadius: 999,
+    borderWidth: 0,
+    boxShadow: "0 12px 18px rgba(32,16,31,0.18)",
+    flexGrow: 0,
+    flexShrink: 0,
+    height: 106,
+    justifyContent: "center",
+    minHeight: 106,
+    minWidth: 106,
+    width: 106,
+  },
+  voteButtonFeatured: {
+    backgroundColor: candy.yellow,
+    height: 130,
+    minHeight: 130,
+    minWidth: 130,
+    width: 130,
   },
   voteButtonFireProminent: {
-    backgroundColor: candy.red,
-    borderColor: "rgba(255,255,255,0.88)",
-    shadowColor: "rgba(245,40,110,0.44)",
-    shadowOffset: { width: 0, height: 13 },
-    shadowOpacity: 1,
-    shadowRadius: 21,
+    backgroundColor: candy.black,
+    borderColor: candy.black,
+    boxShadow: "0 14px 22px rgba(38,18,46,0.28)",
   },
   voteButtonSelected: {
     backgroundColor: candy.cream,
@@ -11934,14 +14503,19 @@ const styles = StyleSheet.create({
   },
   voteButtonProminentSelected: {
     backgroundColor: candy.white,
-    shadowColor: "rgba(245,40,110,0.24)",
-    shadowOffset: { width: 0, height: 12 },
-    shadowRadius: 18,
+    borderColor: candy.red,
+    borderWidth: 3,
+    boxShadow: "0 12px 20px rgba(245,40,110,0.24)",
+  },
+  voteButtonFeaturedSelected: {
+    borderColor: candy.white,
+    borderWidth: 3,
+    boxShadow: "0 14px 24px rgba(255,205,50,0.3)",
   },
   voteButtonFireProminentSelected: {
-    shadowColor: "rgba(255, 36, 95, 0.48)",
-    shadowOffset: { width: 0, height: 14 },
-    shadowRadius: 24,
+    borderColor: candy.yellow,
+    borderWidth: 3,
+    boxShadow: "0 16px 26px rgba(38,18,46,0.36)",
   },
   voteButtonContent: {
     alignItems: "center",
@@ -11970,12 +14544,16 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   voteButtonTextProminent: {
-    fontSize: 14,
-    lineHeight: 17,
+    fontSize: 16,
+    lineHeight: 18,
+    paddingHorizontal: 8,
   },
   voteButtonTextSelected: {
     color: candy.pinkHot,
     fontWeight: "900",
+  },
+  voteButtonTextFireProminent: {
+    color: candy.white,
   },
   voteButtonEmoji: {
     fontFamily: emojiFont,
@@ -11988,117 +14566,441 @@ const styles = StyleSheet.create({
     lineHeight: 40,
   },
   matchScreen: {
-    gap: 14,
-    paddingBottom: 118,
-    paddingHorizontal: 14,
-    paddingTop: APP_HEADER_TOP_SPACE,
+    flexGrow: 1,
   },
   matchScreenEmptyMode: {
+    justifyContent: "flex-start",
+  },
+  matchScreenHeader: {
+    gap: 2,
+  },
+  matchScreenTitle: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 34,
+    fontWeight: "900",
+    lineHeight: 38,
+  },
+  matchScreenSubtitle: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 19,
+  },
+  matchPrimaryStage: {
+    width: "100%",
+  },
+  matchPrimaryStageEmpty: {
     flexGrow: 1,
     justifyContent: "center",
-    paddingBottom: 132,
-    paddingTop: APP_HEADER_TOP_SPACE,
   },
-  matchStage: {
-    borderColor: candy.white,
-    borderRadius: 30,
-    borderWidth: 2,
-    minHeight: 286,
+  matchPrimaryStageCentered: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingBottom: 8,
+  },
+  hiddenRevealPanel: {
+    alignItems: "center",
+    gap: 15,
+    paddingBottom: 12,
+    paddingTop: 2,
+  },
+  hiddenRevealCardStack: {
+    alignItems: "center",
+    height: 352,
+    justifyContent: "center",
+    maxWidth: 340,
+    width: "100%",
+  },
+  hiddenRevealBackPlate: {
+    backgroundColor: "#24112F",
+    borderRadius: 38,
+    height: 306,
+    opacity: 0.7,
+    position: "absolute",
+    top: 34,
+    width: "76%",
+  },
+  hiddenRevealBackPlateLeft: {
+    left: 17,
+    transform: [{ rotate: "-5deg" }],
+  },
+  hiddenRevealBackPlateRight: {
+    right: 17,
+    transform: [{ rotate: "5deg" }],
+  },
+  hiddenRevealMysteryCard: {
+    alignItems: "center",
+    backgroundColor: candy.black,
+    borderRadius: 34,
+    height: 338,
+    justifyContent: "center",
+    maxWidth: 306,
     overflow: "hidden",
-    padding: 16,
-    shadowColor: "rgba(255,36,95,0.34)",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 1,
-    shadowRadius: 22,
+    width: "84%",
   },
-  matchStageFx: {
+  hiddenRevealPattern: {
+    bottom: 18,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 16,
+    left: 17,
+    opacity: 0.9,
+    position: "absolute",
+    right: 17,
+    top: 16,
+  },
+  hiddenRevealPatternDot: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 999,
+    height: 10,
+    width: 10,
+  },
+  hiddenRevealShine: {
+    backgroundColor: "rgba(255,255,255,0.16)",
+    bottom: -52,
+    position: "absolute",
+    top: -52,
+    width: 76,
+  },
+  hiddenRevealQuestionBadge: {
+    alignItems: "center",
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    height: 82,
+    justifyContent: "center",
+    width: 82,
+  },
+  hiddenRevealQuestionText: {
+    color: candy.black,
+    fontFamily: displayFont,
+    fontSize: 40,
+    fontWeight: "900",
+    lineHeight: 43,
+  },
+  hiddenRevealCardLabel: {
+    color: candy.yellow,
+    fontSize: 12,
+    fontWeight: "900",
+    marginTop: 16,
+    textTransform: "uppercase",
+  },
+  hiddenRevealCopy: {
+    alignItems: "center",
+    gap: 8,
+    maxWidth: 310,
+  },
+  hiddenRevealTitle: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 27,
+    fontWeight: "900",
+    lineHeight: 30,
+    textAlign: "center",
+  },
+  hiddenRevealText: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 19,
+    textAlign: "center",
+  },
+  hiddenRevealButton: {
+    alignItems: "center",
+    backgroundColor: candy.cream,
+    borderRadius: 999,
+    justifyContent: "center",
+    marginTop: 4,
+    minHeight: 56,
+    paddingHorizontal: 34,
+    width: "76%",
+  },
+  hiddenRevealButtonDisabled: {
+    opacity: 0.78,
+  },
+  hiddenRevealButtonText: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  hiddenRevealAdText: {
+    color: "rgba(255,255,255,0.58)",
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
+    textAlign: "center",
+  },
+  hiddenRevealAdLink: {
+    color: candy.cream,
+    textDecorationLine: "underline",
+  },
+  hiddenRevealPendingLine: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    maxWidth: 320,
+  },
+  hiddenRevealPendingDot: {
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    height: 8,
+    width: 8,
+  },
+  hiddenRevealPendingText: {
+    color: candy.white,
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 17,
+    textAlign: "center",
+  },
+  matchRevealedPanel: {
+    flexGrow: 1,
+    gap: 22,
+    justifyContent: "space-between",
+    minHeight: 704,
+    overflow: "hidden",
+    paddingBottom: 18,
+    paddingHorizontal: 30,
+    paddingTop: 86,
+    position: "relative",
+  },
+  matchRevealedDecor: {
     bottom: 0,
     left: 0,
     position: "absolute",
     right: 0,
     top: 0,
   },
-  matchStageFlameLeft: {
-    bottom: -24,
-    height: 138,
-    left: -20,
-    position: "absolute",
-    width: 112,
-  },
-  matchStageFlameRight: {
-    height: 166,
-    position: "absolute",
-    right: -42,
-    top: 74,
-    width: 132,
-  },
-  matchStageHeart: {
-    height: 78,
-    left: 10,
-    position: "absolute",
-    top: 18,
-    width: 78,
-  },
-  matchStageTop: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 10,
-    justifyContent: "space-between",
-  },
-  matchCounterPill: {
-    alignItems: "center",
-    backgroundColor: candy.white,
+  matchRevealedAura: {
+    backgroundColor: "rgba(245,40,110,0.14)",
     borderRadius: 999,
-    flexDirection: "row",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    height: 360,
+    left: "50%",
+    marginLeft: -180,
+    position: "absolute",
+    top: 126,
+    width: 360,
   },
-  matchCounterText: {
-    color: candy.red,
-    fontSize: 12,
+  matchRevealedSparkDot: {
+    borderRadius: 999,
+    height: 8,
+    position: "absolute",
+    width: 8,
+  },
+  matchRevealedSparkDotOne: {
+    backgroundColor: candy.yellow,
+    left: 50,
+    top: 146,
+  },
+  matchRevealedSparkDotTwo: {
+    backgroundColor: candy.red,
+    right: 58,
+    top: 196,
+  },
+  matchRevealedSparkDash: {
+    borderRadius: 999,
+    height: 7,
+    position: "absolute",
+    width: 28,
+  },
+  matchRevealedSparkDashOne: {
+    backgroundColor: candy.red,
+    bottom: 156,
+    left: 66,
+    transform: [{ rotate: "-48deg" }],
+  },
+  matchRevealedSparkDashTwo: {
+    backgroundColor: candy.yellow,
+    right: -5,
+    top: 292,
+    transform: [{ rotate: "-20deg" }],
+  },
+  matchRevealedHeroCopy: {
+    alignSelf: "center",
+    maxWidth: 334,
+    width: "100%",
+  },
+  matchRevealedHeadline: {
+    color: candy.cream,
+    fontFamily: displayFont,
+    fontSize: 41,
     fontWeight: "900",
+    lineHeight: 44,
   },
-  matchStageStatusPill: {
+  matchRevealedHeadlineDot: {
+    color: candy.yellow,
+  },
+  matchRevealedSubRow: {
     alignItems: "center",
-    backgroundColor: "rgba(32,16,31,0.18)",
-    borderColor: "rgba(255,255,255,0.32)",
-    borderRadius: 999,
-    borderWidth: 1,
     flexDirection: "row",
     gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    marginTop: 4,
   },
-  matchStageStatusText: {
-    color: candy.white,
+  matchRevealedSubDot: {
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    height: 10,
+    width: 10,
+  },
+  matchRevealedSubtitle: {
+    color: "rgba(255,249,240,0.76)",
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 17,
+  },
+  matchRevealedCardShell: {
+    alignSelf: "center",
+    maxWidth: 326,
+    position: "relative",
+    transform: [{ rotate: "-2.8deg" }],
+    width: "100%",
+  },
+  matchRevealedCardGlow: {
+    backgroundColor: "rgba(255,210,63,0.14)",
+    borderRadius: 34,
+    bottom: -7,
+    left: 13,
+    position: "absolute",
+    right: -13,
+    top: 15,
+    transform: [{ rotate: "4deg" }],
+  },
+  matchRevealedSidePeek: {
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    height: 18,
+    position: "absolute",
+    right: -8,
+    top: 154,
+    width: 18,
+  },
+  matchRevealedTopDot: {
+    backgroundColor: candy.red,
+    borderRadius: 999,
+    height: 8,
+    position: "absolute",
+    right: 28,
+    top: -18,
+    width: 8,
+  },
+  matchRevealedBigCard: {
+    backgroundColor: candy.cream,
+    borderRadius: 31,
+    minHeight: 400,
+    overflow: "hidden",
+    paddingBottom: 26,
+    paddingHorizontal: 25,
+    paddingTop: 31,
+    position: "relative",
+    shadowColor: "rgba(0,0,0,0.28)",
+    shadowOffset: { width: 0, height: 22 },
+    shadowOpacity: 1,
+    shadowRadius: 30,
+  },
+  matchRevealedCategory: {
+    color: candy.red,
     fontSize: 11,
     fontWeight: "900",
+    letterSpacing: 2.2,
+    textTransform: "uppercase",
   },
-  matchStageKicker: {
-    color: candy.white,
-    fontSize: 11,
+  matchRevealedCornerDot: {
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    height: 28,
+    position: "absolute",
+    right: 24,
+    top: 23,
+    width: 28,
+  },
+  matchRevealedCardTitle: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 27,
+    fontWeight: "900",
+    lineHeight: 30,
+    marginTop: 94,
+  },
+  matchRevealedAnswerRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: "auto",
+  },
+  matchAnswerPill: {
+    borderRadius: 14,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 70,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+  },
+  matchAnswerPillMine: {
+    backgroundColor: candy.black,
+    transform: [{ rotate: "-0.8deg" }],
+  },
+  matchAnswerPillPartner: {
+    backgroundColor: candy.yellow,
+  },
+  matchAnswerLabel: {
+    color: "#8A6312",
+    fontSize: 10,
     fontWeight: "900",
     textTransform: "uppercase",
   },
-  matchStageTitle: {
-    color: candy.white,
-    fontFamily: displayFont,
-    fontSize: 34,
-    fontWeight: "900",
-    lineHeight: 37,
-    marginTop: 18,
-    textShadowColor: "rgba(32,16,31,0.34)",
-    textShadowOffset: { width: 2, height: 2.5 },
-    textShadowRadius: 0,
+  matchAnswerLabelMine: {
+    color: candy.yellow,
   },
-  matchStageCopy: {
-    color: "rgba(255,255,255,0.92)",
-    fontSize: 13,
+  matchAnswerValue: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 15,
     fontWeight: "900",
     lineHeight: 18,
-    marginTop: 8,
-    maxWidth: 520,
+    marginTop: 2,
+  },
+  matchAnswerValueMine: {
+    color: candy.cream,
+  },
+  matchRevealedActionBlock: {
+    alignSelf: "center",
+    gap: 10,
+    maxWidth: 334,
+    width: "100%",
+  },
+  matchRevealedChatButton: {
+    alignItems: "center",
+    backgroundColor: candy.red,
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 58,
+    paddingHorizontal: 24,
+    shadowColor: "rgba(245,40,110,0.38)",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+  },
+  matchRevealedChatText: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 17,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  matchRevealedLaterButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 26,
+  },
+  matchRevealedLaterText: {
+    color: "rgba(255,249,240,0.48)",
+    fontSize: 14,
+    fontWeight: "900",
+    textAlign: "center",
   },
   matchRevealCard: {
     backgroundColor: "transparent",
@@ -12151,7 +15053,7 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   matchVoteComparisonDetail: {
-    backgroundColor: "rgba(255,255,255,0.84)",
+    backgroundColor: "rgba(255,214,230,0.9)",
     borderColor: candy.white,
     borderWidth: 2,
     shadowColor: "rgba(32,16,31,0.14)",
@@ -12314,103 +15216,6 @@ const styles = StyleSheet.create({
     minHeight: 42,
     paddingHorizontal: 14,
   },
-  matchRevealSuspenseHint: {
-    color: candy.white,
-    fontSize: 12,
-    fontWeight: "900",
-    lineHeight: 16,
-    marginTop: 12,
-    textAlign: "center",
-  },
-  matchActions: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 16,
-  },
-  matchActionLight: {
-    alignItems: "center",
-    backgroundColor: candy.white,
-    borderRadius: 18,
-    flex: 1,
-    gap: 4,
-    justifyContent: "center",
-    minHeight: 54,
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-  },
-  matchActionLightText: {
-    color: candy.red,
-    fontSize: 11,
-    fontWeight: "900",
-    lineHeight: 14,
-    textAlign: "center",
-  },
-  matchActionDark: {
-    alignItems: "center",
-    backgroundColor: candy.black,
-    borderRadius: 18,
-    flex: 1,
-    gap: 4,
-    justifyContent: "center",
-    minHeight: 54,
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-  },
-  matchActionDarkText: {
-    color: candy.white,
-    fontSize: 11,
-    fontWeight: "900",
-    lineHeight: 14,
-    textAlign: "center",
-  },
-  matchNoResultActions: {
-    gap: 8,
-    marginTop: 16,
-  },
-  matchSimpleEmpty: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 28,
-  },
-  matchSimpleEmptyTitle: {
-    color: candy.white,
-    fontFamily: displayFont,
-    fontSize: 32,
-    fontWeight: "900",
-    lineHeight: 36,
-    marginBottom: 18,
-    textAlign: "center",
-    textShadowColor: "rgba(32,16,31,0.32)",
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 0,
-  },
-  matchNoResultCTA: {
-    alignItems: "center",
-    backgroundColor: candy.white,
-    borderColor: "rgba(255,255,255,0.86)",
-    borderRadius: 20,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    minHeight: 52,
-    paddingHorizontal: 12,
-  },
-  matchNoResultCTAText: {
-    color: candy.red,
-    fontFamily: displayFont,
-    fontSize: 16,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  matchNoResultHint: {
-    color: candy.ink,
-    fontSize: 12,
-    fontWeight: "900",
-    lineHeight: 16,
-    textAlign: "center",
-  },
   matchListHeader: {
     alignItems: "center",
     flexDirection: "row",
@@ -12418,18 +15223,75 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   matchListTitle: {
-    color: candy.ink,
+    color: candy.white,
     fontFamily: displayFont,
     fontSize: 25,
     fontWeight: "900",
   },
   matchListCount: {
-    color: candy.red,
+    color: "rgba(255,255,255,0.78)",
     fontSize: 12,
     fontWeight: "900",
   },
   matchList: {
     gap: 10,
+  },
+  matchPendingRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderColor: "rgba(255,249,240,0.46)",
+    borderRadius: 22,
+    borderWidth: 2,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 78,
+    overflow: "hidden",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  matchPendingRowOpening: {
+    opacity: 0.78,
+  },
+  matchPendingQuestion: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,181,214,0.72)",
+    borderRadius: 999,
+    height: 48,
+    justifyContent: "center",
+    width: 48,
+  },
+  matchPendingQuestionText: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 24,
+    fontWeight: "900",
+    lineHeight: 27,
+  },
+  matchPendingCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  matchPendingBlurWide: {
+    backgroundColor: "rgba(255,255,255,0.32)",
+    borderRadius: 999,
+    height: 12,
+    maxWidth: 190,
+    width: "70%",
+  },
+  matchPendingBlurShort: {
+    backgroundColor: "rgba(255,255,255,0.22)",
+    borderRadius: 999,
+    height: 10,
+    marginTop: 6,
+    maxWidth: 130,
+    width: "48%",
+  },
+  matchPendingText: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
+    marginTop: 5,
   },
   hiddenMatchTeaser: {
     alignItems: "center",
@@ -12532,633 +15394,366 @@ const styles = StyleSheet.create({
     position: "absolute",
   },
   matchDetailGlowTop: {
-    backgroundColor: "rgba(255,255,255,0.16)",
-    height: 260,
-    right: -104,
-    top: 76,
-    width: 260,
+    backgroundColor: "rgba(245,40,110,0.08)",
+    height: 340,
+    right: -148,
+    top: 120,
+    width: 340,
   },
   matchDetailGlowBottom: {
-    backgroundColor: "rgba(255,249,240,0.12)",
-    bottom: 108,
-    height: 330,
-    left: -132,
-    width: 330,
-  },
-  matchDetailSpark: {
-    color: "rgba(255,255,255,0.78)",
-    fontSize: 34,
-    fontWeight: "900",
-    position: "absolute",
-    textShadowColor: "rgba(32,16,31,0.16)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 0,
-  },
-  matchDetailSparkOne: {
-    right: 42,
-    top: 118,
-    transform: [{ rotate: "14deg" }],
-  },
-  matchDetailSparkTwo: {
-    left: 28,
-    top: 226,
-    transform: [{ rotate: "-18deg" }],
-  },
-  matchDetailSparkThree: {
-    bottom: 186,
-    color: "rgba(255,212,232,0.78)",
-    fontSize: 56,
-    right: 28,
-  },
-  matchDetailFlameBig: {
-    opacity: 0.72,
-    position: "absolute",
-    right: -22,
-    top: 52,
-  },
-  matchDetailCherry: {
-    bottom: 18,
-    left: -18,
-    opacity: 0.84,
-    position: "absolute",
-  },
-  matchDetailConfetti: {
-    color: candy.roseSoft,
-    fontSize: 24,
-    fontWeight: "900",
-    position: "absolute",
-    textShadowColor: candy.white,
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 0,
-  },
-  matchDetailConfettiOne: {
-    left: 42,
-    top: 86,
-    transform: [{ rotate: "-18deg" }],
-  },
-  matchDetailConfettiTwo: {
-    color: candy.white,
-    right: 54,
-    top: 152,
-  },
-  matchDetailConfettiThree: {
-    color: candy.black,
-    right: 28,
-    top: 238,
-    transform: [{ rotate: "18deg" }],
-  },
-  matchDetailConfettiFour: {
-    bottom: 96,
-    color: candy.white,
-    right: 40,
-  },
-  matchDetailTopBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    left: 0,
-    paddingHorizontal: 18,
-    paddingTop: 8,
-    position: "absolute",
-    right: 0,
-    top: 0,
-    zIndex: 4,
-  },
-  matchDetailRoundButton: {
-    alignItems: "center",
-    backgroundColor: "transparent",
-    borderRadius: 999,
-    height: 52,
-    justifyContent: "center",
-    shadowColor: "rgba(32,16,31,0.24)",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
-    width: 52,
-  },
-  matchDetailRoundButtonFill: {
-    alignItems: "center",
-    borderColor: "rgba(255,255,255,0.86)",
-    borderRadius: 999,
-    borderWidth: 2,
-    height: 52,
-    justifyContent: "center",
-    overflow: "hidden",
-    width: 52,
-  },
-  matchDetailRoundButtonFillDark: {
-    borderColor: "rgba(255,255,255,0.62)",
+    backgroundColor: "rgba(245,40,110,0.08)",
+    bottom: -118,
+    height: 360,
+    left: -176,
+    width: 360,
   },
   matchDetailContent: {
+    alignItems: "center",
     flexGrow: 1,
-    justifyContent: "center",
-    paddingBottom: 72,
-    paddingHorizontal: 18,
-    paddingTop: 88,
+    gap: 0,
+    justifyContent: "flex-start",
   },
   matchDetailStage: {
     alignSelf: "center",
-    gap: 14,
-    maxWidth: 560,
+    gap: 32,
+    maxWidth: 334,
     width: "100%",
   },
-  matchDetailLogoBlock: {
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 0,
-  },
-  matchDetailRevealPill: {
-    alignItems: "center",
-    alignSelf: "center",
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderColor: candy.white,
-    borderRadius: 999,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 6,
-    minHeight: 34,
-    paddingHorizontal: 12,
-  },
-  matchDetailRevealText: {
-    color: candy.red,
-    fontSize: 11,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  matchDetailKicker: {
-    color: candy.white,
-    fontFamily: displayFont,
-    fontSize: 54,
-    fontWeight: "900",
-    letterSpacing: 0,
-    lineHeight: 58,
-    textShadowColor: candy.black,
-    textShadowOffset: { width: 4, height: 5 },
-    textShadowRadius: 0,
-  },
-  matchDetailTitle: {
-    color: candy.white,
-    fontFamily: displayFont,
-    fontSize: 34,
-    fontWeight: "900",
-    lineHeight: 37,
-    marginTop: 12,
-    maxWidth: 560,
-    textAlign: "center",
-    textShadowColor: "rgba(32,16,31,0.28)",
-    textShadowOffset: { width: 2, height: 2.5 },
-    textShadowRadius: 0,
-  },
-  matchDetailSub: {
-    color: candy.white,
-    fontSize: 13,
-    fontWeight: "900",
-    lineHeight: 18,
-    marginTop: 6,
-    maxWidth: 430,
-    textAlign: "center",
-    textShadowColor: "rgba(32,16,31,0.2)",
-    textShadowOffset: { width: 1, height: 1.5 },
-    textShadowRadius: 0,
-  },
-  matchDetailCard: {
-    borderColor: "rgba(255,255,255,0.94)",
-    borderRadius: 32,
-    borderWidth: 2,
-    minHeight: 248,
-    overflow: "visible",
-    padding: 18,
-    paddingTop: 64,
-    shadowColor: "rgba(32,16,31,0.34)",
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 1,
-    shadowRadius: 24,
-  },
-  matchDetailCardSticker: {
-    height: 106,
-    position: "absolute",
-    right: -12,
-    top: -22,
-    transform: [{ rotate: "12deg" }],
-    width: 106,
-  },
-  matchDetailHeartBubble: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,36,95,0.9)",
-    borderColor: candy.white,
-    borderRadius: 999,
-    borderWidth: 2,
-    height: 46,
-    justifyContent: "center",
-    left: 16,
-    position: "absolute",
-    top: 16,
-    width: 46,
-  },
-  matchDetailTag: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.82)",
-    borderRadius: 999,
-    fontSize: 10,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    textTransform: "uppercase",
-  },
-  matchDetailCardTitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 32,
-    fontWeight: "900",
-    lineHeight: 35,
-    marginTop: 10,
-    maxWidth: "86%",
-  },
-  matchDetailCardText: {
-    color: candy.ink,
-    fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 18,
-    marginTop: 8,
-    maxWidth: "92%",
-  },
-  matchDetailCardFooter: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.62)",
-    borderColor: "rgba(255,255,255,0.86)",
-    borderRadius: 999,
-    borderWidth: 1,
-    marginTop: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  matchDetailCardFooterText: {
-    color: candy.text,
-    fontSize: 11,
-    fontWeight: "900",
-  },
   matchDetailActions: {
-    gap: 9,
+    alignSelf: "center",
+    gap: 8,
+    width: "100%",
   },
   matchDetailPrimaryAction: {
     alignItems: "center",
-    backgroundColor: candy.black,
-    borderColor: candy.white,
-    borderRadius: 24,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 10,
+    backgroundColor: candy.red,
+    borderRadius: 999,
     justifyContent: "center",
     minHeight: 58,
-    shadowColor: "rgba(32,16,31,0.28)",
-    shadowOffset: { width: 0, height: 12 },
+    paddingHorizontal: 24,
+    shadowColor: "rgba(245,40,110,0.38)",
+    shadowOffset: { width: 0, height: 14 },
     shadowOpacity: 1,
-    shadowRadius: 20,
+    shadowRadius: 24,
   },
   matchDetailPrimaryText: {
     color: candy.white,
     fontFamily: displayFont,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "900",
+    textAlign: "center",
   },
   matchDetailSecondaryAction: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.86)",
-    borderColor: "rgba(255,255,255,0.9)",
-    borderRadius: 22,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 10,
+    backgroundColor: "transparent",
     justifyContent: "center",
-    minHeight: 50,
-  },
-  matchDetailHourglass: {
-    color: candy.red,
-    fontSize: 18,
+    minHeight: 28,
   },
   matchDetailSecondaryText: {
-    color: candy.red,
-    fontSize: 15,
+    color: "rgba(255,249,240,0.48)",
+    fontSize: 14,
     fontWeight: "900",
+    textAlign: "center",
   },
-  matchDetailPrivacy: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 7,
-    justifyContent: "center",
-    marginTop: 0,
-    paddingHorizontal: 16,
-  },
-  matchDetailPrivacyText: {
-    color: candy.white,
-    flexShrink: 1,
-    fontSize: 12,
-    fontWeight: "900",
-    lineHeight: 16,
+  matchEmptyEntrance: {
+    flex: 1,
+    width: "100%",
   },
   matchEmpty: {
-    backgroundColor: "rgba(255,255,255,0.78)",
-    borderColor: candy.white,
-    borderRadius: 28,
-    borderWidth: 2,
-    gap: 14,
-    overflow: "hidden",
-    padding: 16,
-  },
-  matchEmptyGlow: {
-    backgroundColor: "#FF8BC8",
-    borderRadius: 999,
-    height: 130,
-    position: "absolute",
-    right: -38,
-    top: -54,
-    width: 130,
-  },
-  matchEmptyTop: {
     alignItems: "center",
-    flexDirection: "row",
-    gap: 12,
-  },
-  matchEmptySticker: {
-    height: 68,
-    width: 68,
-  },
-  matchEmptyCopy: {
     flex: 1,
+    justifyContent: "center",
+    paddingBottom: 0,
+    paddingHorizontal: 28,
   },
-  matchEmptyEyebrow: {
-    alignSelf: "flex-start",
-    backgroundColor: candy.roseMist,
-    borderColor: candy.white,
+  matchEmptySymbol: {
+    height: 104,
+    marginBottom: 38,
+    position: "relative",
+    width: 142,
+  },
+  matchEmptyCircle: {
     borderRadius: 999,
-    borderWidth: 1.5,
-    color: candy.red,
-    fontSize: 9,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    textTransform: "uppercase",
+    height: 88,
+    position: "absolute",
+    top: 8,
+    width: 88,
+  },
+  matchEmptyCircleSoft: {
+    backgroundColor: "rgba(255,249,240,0.84)",
+    left: 12,
+  },
+  matchEmptyCircleHot: {
+    backgroundColor: candy.yellow,
+    right: 12,
   },
   matchEmptyTitle: {
-    color: candy.ink,
+    color: candy.white,
     fontFamily: displayFont,
-    fontSize: 20,
+    fontSize: 27,
     fontWeight: "900",
-    lineHeight: 23,
-    marginTop: 5,
+    lineHeight: 31,
+    textAlign: "center",
   },
   matchEmptyText: {
-    color: candy.text,
-    fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 18,
-    marginTop: 5,
-  },
-  matchEmptyProgressBlock: {
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderRadius: 20,
-    padding: 12,
-  },
-  matchEmptyProgressHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  matchEmptyProgressLabel: {
-    color: candy.ink,
-    fontSize: 12,
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 15,
     fontWeight: "900",
-  },
-  matchEmptyProgressCount: {
-    color: candy.red,
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  matchEmptyTrack: {
-    backgroundColor: "rgba(255,36,95,0.16)",
-    borderRadius: 999,
-    height: 8,
-    marginTop: 9,
-    overflow: "hidden",
-  },
-  matchEmptyFill: {
-    backgroundColor: candy.red,
-    borderRadius: 999,
-    height: "100%",
-  },
-  matchEmptyMicrocopy: {
-    color: candy.text,
-    fontSize: 11,
-    fontWeight: "800",
-    lineHeight: 15,
-    marginTop: 8,
-  },
-  matchEmptyPrompts: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  matchEmptyPrompt: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.7)",
-    borderColor: candy.white,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    flex: 1,
-    gap: 4,
-    minHeight: 92,
-    padding: 10,
-  },
-  matchEmptyPromptIcon: {
-    height: 38,
-    width: 38,
-  },
-  matchEmptyPromptText: {
-    color: candy.ink,
-    fontSize: 11,
-    fontWeight: "900",
-    lineHeight: 14,
+    lineHeight: 22,
+    marginTop: 10,
+    maxWidth: 300,
     textAlign: "center",
   },
   matchEmptyCTA: {
     alignItems: "center",
-    backgroundColor: candy.red,
-    borderColor: candy.white,
-    borderRadius: 20,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 6,
+    backgroundColor: candy.black,
+    borderRadius: 999,
     justifyContent: "center",
-    minHeight: 52,
+    marginTop: 25,
+    minHeight: 56,
+    minWidth: 184,
+    paddingHorizontal: 28,
   },
   matchEmptyCTAText: {
     color: candy.white,
     fontFamily: displayFont,
-    fontSize: 16,
+    fontSize: 17,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  chatUnavailableScreen: {
+    alignSelf: "stretch",
+    backgroundColor: candy.darkColor,
+    flex: 1,
+    paddingHorizontal: 22,
+    width: "100%",
+  },
+  chatUnavailableBack: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,249,240,0.13)",
+    borderRadius: 999,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  chatUnavailableCenter: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    paddingBottom: 36,
+  },
+  chatUnavailableIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,249,240,0.1)",
+    borderColor: "rgba(255,249,240,0.16)",
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 122,
+    justifyContent: "center",
+    marginBottom: 28,
+    position: "relative",
+    width: 122,
+  },
+  chatUnavailableLock: {
+    alignItems: "center",
+    backgroundColor: candy.yellow,
+    borderColor: candy.darkColor,
+    borderRadius: 999,
+    borderWidth: 3,
+    bottom: 10,
+    height: 38,
+    justifyContent: "center",
+    position: "absolute",
+    right: 9,
+    width: 38,
+  },
+  chatUnavailableTitle: {
+    color: candy.cream,
+    fontFamily: displayFont,
+    fontSize: 29,
+    fontWeight: "900",
+    lineHeight: 32,
+    maxWidth: 330,
+    textAlign: "center",
+  },
+  chatUnavailableText: {
+    color: "rgba(255,249,240,0.72)",
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 22,
+    marginTop: 12,
+    maxWidth: 320,
+    textAlign: "center",
+  },
+  chatUnavailablePrimary: {
+    alignItems: "center",
+    backgroundColor: candy.cream,
+    borderRadius: 999,
+    justifyContent: "center",
+    marginTop: 26,
+    minHeight: 58,
+    minWidth: 230,
+    paddingHorizontal: 30,
+  },
+  chatUnavailablePrimaryText: {
+    color: candy.black,
+    fontFamily: displayFont,
+    fontSize: 17,
     fontWeight: "900",
     textAlign: "center",
   },
   chatScreen: {
-    gap: 10,
-    paddingBottom: 238,
-    paddingHorizontal: 12,
-    paddingTop: APP_HEADER_TOP_SPACE,
+    flexGrow: 1,
+    gap: 13,
+    paddingHorizontal: 10,
   },
   chatFrame: {
+    alignSelf: "stretch",
+    backgroundColor: candy.darkColor,
     flex: 1,
+    width: "100%",
+  },
+  chatScroller: {
+    flex: 1,
+    width: "100%",
   },
   chatHero: {
-    borderColor: "rgba(255,255,255,0.72)",
-    borderRadius: 24,
-    borderWidth: 1.5,
-    minHeight: 82,
-    overflow: "hidden",
-    padding: 10,
-    shadowColor: "rgba(87, 8, 58, 0.24)",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 16,
+    gap: 14,
   },
   chatHeaderIdentity: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 11,
-    minHeight: 58,
+    gap: 10,
+    minHeight: 54,
   },
-  chatHeaderAvatar: {
+  chatBackButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.95)",
-    borderColor: "rgba(255,255,255,0.86)",
+    backgroundColor: "rgba(255,249,240,0.13)",
     borderRadius: 999,
-    borderWidth: 1.5,
-    height: 48,
+    height: 42,
     justifyContent: "center",
-    width: 48,
+    width: 42,
   },
-  chatHeaderAvatarEmoji: {
-    fontSize: 25,
-    lineHeight: 31,
-    textAlign: "center",
+  chatHeaderAvatarStack: {
+    alignItems: "center",
+    flexDirection: "row",
+    width: 72,
   },
-  chatHeaderStatusDot: {
-    backgroundColor: "#41E071",
-    borderColor: candy.white,
+  chatHeaderMiniAvatar: {
+    alignItems: "center",
     borderRadius: 999,
+    height: 39,
+    justifyContent: "center",
+    width: 39,
+  },
+  chatHeaderMiniAvatarMine: {
+    backgroundColor: candy.red,
+    borderColor: candy.darkColor,
     borderWidth: 2,
-    bottom: 1,
-    height: 13,
-    position: "absolute",
-    right: 1,
-    width: 13,
+    zIndex: 2,
+  },
+  chatHeaderMiniAvatarPartner: {
+    backgroundColor: candy.yellow,
+    borderColor: candy.darkColor,
+    borderWidth: 2,
+    marginLeft: -9,
+  },
+  chatHeaderMiniAvatarText: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  chatHeaderMiniAvatarTextDark: {
+    color: candy.black,
   },
   chatHeaderCopy: {
     flex: 1,
     minWidth: 0,
   },
   chatHeaderName: {
-    color: candy.white,
+    color: candy.cream,
     fontFamily: displayFont,
-    fontSize: 22,
+    fontSize: 19,
     fontWeight: "900",
-    lineHeight: 25,
+    lineHeight: 22,
   },
   chatHeaderMetaRow: {
     flexDirection: "row",
-    marginTop: 4,
+    marginTop: 2,
   },
   chatHeaderMetaPill: {
-    alignItems: "center",
     alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.18)",
-    borderRadius: 999,
-    color: candy.white,
-    fontSize: 10,
+    color: candy.yellow,
+    flexShrink: 1,
+    fontSize: 11,
     fontWeight: "900",
     letterSpacing: 0,
-    lineHeight: 13,
-    minHeight: 18,
-    overflow: "hidden",
-    paddingHorizontal: 9,
-    paddingVertical: 2,
-    textTransform: "uppercase",
-  },
-  chatHeaderLock: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.18)",
-    borderColor: "rgba(255,255,255,0.42)",
-    borderRadius: 999,
-    borderWidth: 1,
-    height: 38,
-    justifyContent: "center",
-    width: 38,
+    lineHeight: 14,
   },
   chatContext: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderColor: "rgba(255,255,255,0.86)",
-    borderRadius: 16,
+    backgroundColor: "rgba(255,249,240,0.08)",
+    borderColor: "rgba(255,249,240,0.18)",
+    borderRadius: 18,
     borderWidth: 1,
     flexDirection: "row",
-    gap: 9,
-    marginTop: 9,
-    padding: 8,
+    gap: 12,
+    minHeight: 70,
+    padding: 11,
   },
   chatContextSticker: {
-    height: 44,
-    marginBottom: -4,
-    marginTop: -4,
-    width: 44,
+    alignItems: "center",
+    backgroundColor: candy.cream,
+    borderRadius: 8,
+    height: 45,
+    justifyContent: "center",
+    width: 45,
+  },
+  chatContextDiamond: {
+    backgroundColor: candy.red,
+    borderRadius: 3,
+    height: 18,
+    transform: [{ rotate: "45deg" }],
+    width: 18,
   },
   chatContextCopy: {
     flex: 1,
   },
   chatContextLabel: {
-    color: candy.red,
-    fontSize: 9,
+    color: candy.yellow,
+    fontSize: 10,
     fontWeight: "900",
+    letterSpacing: 0,
     textTransform: "uppercase",
   },
   chatContextTitle: {
-    color: candy.ink,
+    color: candy.cream,
     fontFamily: displayFont,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "900",
-    marginTop: 1,
+    lineHeight: 19,
+    marginTop: 3,
   },
   chatDateDivider: {
     alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
     justifyContent: "center",
-    paddingHorizontal: 22,
-    paddingVertical: 2,
-  },
-  chatDividerLine: {
-    backgroundColor: "rgba(255,255,255,0.44)",
-    borderRadius: 999,
-    flex: 1,
-    height: 1,
+    paddingTop: 106,
   },
   chatDateText: {
-    backgroundColor: "rgba(255,255,255,0.56)",
-    borderColor: "rgba(255,255,255,0.78)",
-    borderRadius: 999,
-    borderWidth: 1,
-    color: "rgba(35,18,36,0.72)",
-    fontSize: 10,
+    color: "rgba(255,249,240,0.42)",
+    fontSize: 12,
     fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
   },
   chatMessages: {
-    gap: 7,
+    gap: 10,
     minHeight: 220,
   },
   chatEmpty: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.7)",
-    borderColor: candy.white,
+    backgroundColor: "rgba(255,249,240,0.08)",
+    borderColor: "rgba(255,249,240,0.18)",
     borderRadius: 28,
     borderStyle: "dashed",
     borderWidth: 1.5,
@@ -13170,7 +15765,7 @@ const styles = StyleSheet.create({
     width: 76,
   },
   chatEmptyTitle: {
-    color: candy.ink,
+    color: candy.cream,
     fontFamily: displayFont,
     fontSize: 26,
     fontWeight: "900",
@@ -13178,7 +15773,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   chatEmptyText: {
-    color: candy.text,
+    color: "rgba(255,249,240,0.68)",
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 18,
@@ -13193,24 +15788,25 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   chatBubble: {
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderColor: "rgba(255,255,255,0.7)",
-    borderRadius: 18,
-    borderBottomLeftRadius: 5,
+    backgroundColor: candy.cream,
+    borderColor: "rgba(255,249,240,0.42)",
+    borderRadius: 20,
+    borderBottomLeftRadius: 6,
     borderWidth: 1,
-    maxWidth: "84%",
+    maxWidth: "82%",
     overflow: "visible",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
   },
   chatBubbleMine: {
     backgroundColor: candy.red,
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 5,
-    borderColor: "rgba(255,255,255,0.72)",
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 6,
+    borderColor: "rgba(255,83,139,0.7)",
   },
   chatBubbleName: {
-    color: candy.red,
+    color: "rgba(245,40,110,0.78)",
+    display: "none",
     fontSize: 9,
     fontWeight: "900",
     textTransform: "uppercase",
@@ -13220,23 +15816,24 @@ const styles = StyleSheet.create({
   },
   chatBubbleText: {
     color: candy.ink,
-    fontSize: 14.5,
-    fontWeight: "800",
-    lineHeight: 20,
+    fontFamily: displayFont,
+    fontSize: 16,
+    fontWeight: "900",
+    lineHeight: 22,
     marginTop: 2,
   },
   chatBubbleTextMine: {
     color: candy.white,
   },
   chatBubbleMeta: {
-    color: "rgba(124,75,105,0.76)",
-    fontSize: 9,
-    fontWeight: "800",
-    marginTop: 4,
+    color: "rgba(255,249,240,0.42)",
+    fontSize: 10,
+    fontWeight: "900",
+    marginTop: 7,
     textAlign: "right",
   },
   chatBubbleMetaMine: {
-    color: "rgba(255,255,255,0.82)",
+    color: "rgba(255,249,240,0.58)",
   },
   chatBubbleMetaPending: {
     fontWeight: "900",
@@ -13247,24 +15844,26 @@ const styles = StyleSheet.create({
   chatBubblePhotos: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 5,
-    marginTop: 6,
+    gap: 7,
+    marginTop: 2,
   },
   chatBubblePhoto: {
-    borderColor: "rgba(255,255,255,0.76)",
+    backgroundColor: "#EEDDC9",
+    borderColor: "rgba(255,249,240,0.82)",
     borderRadius: 15,
     borderWidth: 1,
-    height: 128,
-    width: 128,
+    height: 168,
+    width: 190,
   },
   chatPhotoRevealButton: {
-    borderColor: "rgba(255,255,255,0.76)",
-    borderRadius: 15,
+    backgroundColor: candy.cream,
+    borderColor: "rgba(255,249,240,0.82)",
+    borderRadius: 18,
     borderWidth: 1,
-    height: 128,
+    height: 170,
     overflow: "hidden",
     position: "relative",
-    width: 128,
+    width: 196,
   },
   chatPhotoRevealImage: {
     height: "100%",
@@ -13272,7 +15871,7 @@ const styles = StyleSheet.create({
   },
   chatPhotoBlurOverlay: {
     alignItems: "center",
-    backgroundColor: "rgba(30,10,28,0.18)",
+    backgroundColor: "rgba(255,249,240,0.34)",
     bottom: 0,
     gap: 6,
     justifyContent: "center",
@@ -13281,18 +15880,27 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
   },
+  chatPhotoEye: {
+    alignItems: "center",
+    backgroundColor: candy.darkColor,
+    borderRadius: 999,
+    height: 54,
+    justifyContent: "center",
+    width: 54,
+  },
   chatPhotoRevealLabel: {
-    color: candy.white,
-    fontSize: 12,
+    bottom: 9,
+    color: candy.red,
+    fontSize: 11,
     fontWeight: "900",
+    left: 10,
+    position: "absolute",
+    right: 10,
     textAlign: "center",
-    textShadowColor: "rgba(32,16,31,0.52)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 0,
   },
   chatPhotoGone: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.34)",
+    backgroundColor: "rgba(255,249,240,0.16)",
     borderStyle: "dashed",
     gap: 7,
     justifyContent: "center",
@@ -13300,14 +15908,14 @@ const styles = StyleSheet.create({
   },
   chatPhotoUnavailable: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.24)",
+    backgroundColor: "rgba(255,249,240,0.14)",
     borderStyle: "dashed",
     gap: 7,
     justifyContent: "center",
     paddingHorizontal: 10,
   },
   chatPhotoGoneText: {
-    color: candy.ink,
+    color: candy.cream,
     fontSize: 12,
     fontWeight: "900",
     lineHeight: 15,
@@ -13377,18 +15985,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   chatComposerDock: {
-    bottom: 94,
-    backgroundColor: "#FFEAF5",
-    borderColor: "rgba(255,255,255,0.76)",
-    borderRadius: 24,
-    borderWidth: 1,
-    gap: 6,
-    left: 9,
-    padding: 6,
-    position: "absolute",
-    right: 9,
+    backgroundColor: candy.darkColor,
+    flexShrink: 0,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    width: "100%",
   },
   chatSuggestionPanel: {
+    backgroundColor: "rgba(55,31,62,0.94)",
+    borderColor: "rgba(255,249,240,0.12)",
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 7,
     paddingHorizontal: 2,
     width: "100%",
   },
@@ -13402,8 +16011,8 @@ const styles = StyleSheet.create({
   },
   chatQuickPill: {
     alignItems: "center",
-    backgroundColor: "#FFF7FB",
-    borderColor: "rgba(255,255,255,0.9)",
+    backgroundColor: "rgba(255,249,240,0.1)",
+    borderColor: "rgba(255,249,240,0.18)",
     borderRadius: 15,
     borderWidth: 1,
     flex: 1,
@@ -13413,15 +16022,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   chatQuickText: {
-    color: candy.ink,
+    color: candy.cream,
     fontSize: 11,
     fontWeight: "900",
     lineHeight: 14,
     textAlign: "center",
   },
   chatPendingPhotos: {
-    backgroundColor: "rgba(255,255,255,0.56)",
-    borderColor: "rgba(255,255,255,0.78)",
+    backgroundColor: "rgba(255,249,240,0.1)",
+    borderColor: "rgba(255,249,240,0.16)",
     borderRadius: 20,
     borderWidth: 1,
     flexDirection: "row",
@@ -13430,7 +16039,7 @@ const styles = StyleSheet.create({
     padding: 7,
   },
   chatPendingPhotoWrap: {
-    borderColor: candy.white,
+    borderColor: "rgba(255,249,240,0.52)",
     borderRadius: 16,
     borderWidth: 2,
     height: 74,
@@ -13454,50 +16063,52 @@ const styles = StyleSheet.create({
   },
   chatComposer: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.96)",
-    borderColor: "rgba(255,255,255,0.84)",
-    borderRadius: 24,
-    borderWidth: 1,
+    backgroundColor: "transparent",
     flexDirection: "row",
-    gap: 8,
-    minHeight: 56,
-    paddingHorizontal: 7,
-    paddingVertical: 6,
+    gap: 9,
+    minHeight: 58,
+    overflow: "visible",
+    width: "100%",
   },
   chatComposerActive: {
-    borderColor: "rgba(255,36,95,0.42)",
+    borderColor: "transparent",
   },
   chatIconButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255,225,241,0.88)",
-    borderRadius: 20,
-    height: 42,
+    backgroundColor: "rgba(255,249,240,0.12)",
+    borderRadius: 999,
+    flexShrink: 0,
+    height: 52,
     justifyContent: "center",
-    width: 42,
+    width: 52,
   },
   chatIconButtonDisabled: {
     opacity: 0.55,
   },
   chatInput: {
+    backgroundColor: candy.cream,
+    borderRadius: 999,
     color: candy.ink,
     flex: 1,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "800",
     includeFontPadding: false,
-    lineHeight: 20,
+    lineHeight: 21,
     maxHeight: 90,
-    minHeight: 42,
-    paddingHorizontal: 2,
-    paddingVertical: 10,
+    minHeight: 52,
+    minWidth: 0,
+    paddingHorizontal: 18,
+    paddingVertical: 15,
     textAlignVertical: "top",
   },
   chatSendButton: {
     alignItems: "center",
     backgroundColor: candy.red,
-    borderRadius: 20,
-    height: 42,
+    borderRadius: 999,
+    flexShrink: 0,
+    height: 56,
     justifyContent: "center",
-    width: 42,
+    width: 56,
   },
   chatSendButtonDisabled: {
     opacity: 0.42,
@@ -13543,14 +16154,6 @@ const styles = StyleSheet.create({
     top: -4,
     transform: [{ rotate: "-23deg" }],
     width: 70,
-  },
-  rulesHeroCherries: {
-    height: 92,
-    position: "absolute",
-    right: 6,
-    top: 18,
-    transform: [{ rotate: "10deg" }],
-    width: 92,
   },
   rulesEyebrow: {
     alignSelf: "flex-start",
@@ -13634,36 +16237,16 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 18,
   },
-  homeDeck: {
-    borderColor: candy.white,
-    borderRadius: 28,
-    borderWidth: 2,
-    gap: 12,
-    overflow: "hidden",
-    padding: 14,
-    shadowColor: "rgba(255,36,95,0.2)",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
-  },
   homeSurpriseDeck: {
     overflow: "visible",
-    paddingRight: 8,
-    paddingTop: 16,
     position: "relative",
-  },
-  homeSurpriseAnimatedWrap: {
-    overflow: "visible",
   },
   homeEmptySurpriseCard: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.34)",
-    borderColor: candy.white,
-    borderRadius: 28,
-    borderStyle: "dashed",
-    borderWidth: 2,
+    backgroundColor: candy.cream,
+    borderRadius: 24,
     justifyContent: "center",
-    minHeight: 214,
+    minHeight: 178,
     padding: 22,
   },
   homeEmptySurpriseIcon: {
@@ -13699,281 +16282,132 @@ const styles = StyleSheet.create({
     maxWidth: 330,
     textAlign: "center",
   },
-  homeDeckHeader: {
-    alignItems: "flex-start",
+  homeSurpriseCard: {
+    backgroundColor: candy.cream,
+    borderRadius: 24,
+    gap: 12,
+    minHeight: 190,
+    overflow: "hidden",
+    padding: 20,
+    boxShadow: "0 12px 22px rgba(38,18,46,0.14)",
+  },
+  homeSurpriseTop: {
+    alignItems: "center",
     flexDirection: "row",
-    gap: 10,
     justifyContent: "space-between",
   },
-  homeDeckHeaderCopy: {
-    flex: 1,
-  },
-  homeDeckEyebrow: {
-    alignSelf: "flex-start",
-    backgroundColor: candy.red,
-    borderRadius: 999,
-    color: candy.white,
+  homeSurpriseEyebrow: {
+    color: candy.red,
     fontSize: 10,
     fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
     textTransform: "uppercase",
   },
-  homeDeckTitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 27,
-    fontWeight: "900",
-    lineHeight: 29,
-    marginTop: 7,
-  },
-  homeDeckSubtitle: {
-    color: candy.text,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 16,
-    marginTop: 3,
-  },
-  homeDeckHeaderSticker: {
-    height: 54,
-    width: 54,
-  },
-  homeDeckCount: {
-    backgroundColor: candy.white,
-    borderColor: candy.red,
-    borderRadius: 999,
-    borderWidth: 2,
-    color: candy.red,
-    fontSize: 12,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  homeSurpriseCard: {
-    borderColor: candy.white,
-    borderRadius: 26,
-    borderWidth: 2,
-    justifyContent: "space-between",
-    minHeight: 214,
-    overflow: "visible",
-    padding: 14,
-    shadowColor: "rgba(255,36,95,0.22)",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
-  },
-  homeSurpriseSticker: {
-    height: 84,
-    position: "absolute",
-    right: 12,
-    top: 12,
-    transform: [{ rotate: "12deg" }],
-    width: 84,
-    zIndex: 1,
-  },
-  homeSurpriseCopy: {
+  homeSurpriseBadge: {
     alignItems: "center",
-    minHeight: 116,
-    paddingHorizontal: 74,
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 24,
+    paddingHorizontal: 12,
+  },
+  homeSurpriseBadgeText: {
+    color: candy.ink,
+    fontSize: 10,
+    fontWeight: "900",
   },
   homeSurpriseTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 25,
+    fontSize: 20,
     fontWeight: "900",
-    lineHeight: 27,
-    marginTop: 12,
+    lineHeight: 23,
     textAlign: "center",
-    textShadowColor: "rgba(255,255,255,0.52)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 0,
+  },
+  homeSurpriseActionStack: {
+    width: "100%",
+  },
+  homeSurpriseButton: {
+    alignItems: "center",
+    backgroundColor: candy.red,
+    borderRadius: 18,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 18,
+  },
+  homeSurpriseButtonText: {
+    color: candy.white,
+    fontSize: 14,
+    fontWeight: "900",
   },
   homeSurpriseText: {
-    color: candy.text,
-    fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 18,
-    marginTop: 6,
-    textAlign: "center",
-  },
-  homeDeckFooter: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "space-between",
-  },
-  homeDeckFooterText: {
-    color: candy.ink,
-    flex: 1,
+    color: "rgba(155,130,117,0.72)",
     fontSize: 11,
     fontWeight: "900",
-  },
-  homeDeckEmptyButton: {
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: candy.red,
-    borderColor: candy.white,
-    borderRadius: 18,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 6,
-    minHeight: 44,
-    paddingHorizontal: 14,
-  },
-  homeDeckEmptyButtonText: {
-    color: candy.white,
-    fontSize: 13,
-    fontWeight: "900",
+    lineHeight: 14,
+    textAlign: "center",
   },
   homeStore: {
-    borderColor: candy.white,
-    borderRadius: 28,
-    borderWidth: 2,
-    gap: 12,
-    overflow: "hidden",
-    padding: 16,
-    shadowColor: "rgba(255,36,95,0.28)",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
-  },
-  homeStoreSparkle: {
-    height: 72,
-    opacity: 0.42,
-    position: "absolute",
-    right: 8,
-    top: 6,
-    transform: [{ rotate: "11deg" }],
-    width: 72,
-  },
-  homeStoreFlame: {
-    bottom: -18,
-    height: 86,
-    opacity: 0.38,
-    position: "absolute",
-    right: 34,
-    transform: [{ rotate: "-8deg" }],
-    width: 86,
+    gap: 9,
   },
   homeStoreTop: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  homeStoreEyebrow: {
-    alignSelf: "flex-start",
-    backgroundColor: candy.roseMist,
-    borderColor: candy.white,
-    borderRadius: 999,
-    borderWidth: 2,
-    color: candy.red,
-    fontSize: 10,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    textTransform: "uppercase",
-  },
-  homeStoreBadge: {
-    backgroundColor: "rgba(255,255,255,0.16)",
-    borderColor: "rgba(255,255,255,0.42)",
-    borderRadius: 999,
-    borderWidth: 1,
-    color: candy.white,
-    fontSize: 10,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
   homeStoreTitle: {
     color: candy.white,
     fontFamily: displayFont,
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: "900",
-    lineHeight: 30,
-    maxWidth: "86%",
+    lineHeight: 24,
   },
-  homeStoreText: {
-    color: candy.white,
+  homeStoreLink: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 1,
+  },
+  homeStoreLinkText: {
+    color: candy.yellow,
     fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 18,
-    maxWidth: "92%",
+    fontWeight: "900",
   },
   homeStorePackRow: {
     flexDirection: "row",
     gap: 9,
   },
   homeStorePack: {
-    backgroundColor: "rgba(255,255,255,0.88)",
-    borderColor: candy.white,
-    borderRadius: 20,
-    borderWidth: 2,
+    borderRadius: 16,
     flex: 1,
-    minHeight: 78,
+    justifyContent: "center",
+    minHeight: 64,
     overflow: "hidden",
-    padding: 10,
+    padding: 12,
   },
-  homeStorePackOpen: {
-    backgroundColor: "rgba(255,212,232,0.88)",
+  homeStorePackFeatured: {
+    backgroundColor: candy.yellow,
   },
-  homeStoreCustomPack: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 10,
-    minHeight: 68,
-  },
-  homeStoreCustomEmoji: {
-    fontFamily: emojiFont,
-    fontSize: 28,
-    lineHeight: 32,
-  },
-  homeStoreCustomCopy: {
-    flex: 1,
-  },
-  homeStorePackEmoji: {
-    height: 38,
-    position: "absolute",
-    right: 4,
-    top: 4,
-    transform: [{ rotate: "9deg" }],
-    width: 38,
-  },
-  homeStorePackCopy: {
-    paddingRight: 34,
+  homeStorePackSoon: {
+    backgroundColor: candy.black,
   },
   homeStorePackTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "900",
+    lineHeight: 18,
+  },
+  homeStorePackTitleSoon: {
+    color: candy.white,
   },
   homeStorePackMeta: {
     color: candy.text,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
     lineHeight: 14,
-    marginTop: 4,
+    marginTop: 2,
   },
-  homeStoreAction: {
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: candy.white,
-    borderColor: candy.white,
-    borderRadius: 18,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 6,
-    minHeight: 44,
-    paddingHorizontal: 14,
-  },
-  homeStoreActionText: {
-    color: candy.red,
-    fontSize: 13,
-    fontWeight: "900",
+  homeStorePackMetaSoon: {
+    color: candy.yellow,
   },
   storeScreen: {
     flex: 1,
@@ -13982,94 +16416,43 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   storeContent: {
+    alignSelf: "center",
+    flexGrow: 1,
     gap: 14,
-    padding: 14,
-    paddingBottom: 28,
+    paddingTop: 10,
+    width: "100%",
   },
-  storeTopBar: {
+  storeHeader: {
     alignItems: "center",
     flexDirection: "row",
-    justifyContent: "space-between",
-    minHeight: 44,
+    gap: 13,
+    minHeight: 54,
+  },
+  storeHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   storeCloseButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.86)",
-    borderColor: candy.white,
+    backgroundColor: "rgba(255,249,240,0.17)",
     borderRadius: 999,
-    borderWidth: 2,
-    height: 44,
+    height: 42,
     justifyContent: "center",
-    width: 44,
-  },
-  storeHero: {
-    borderColor: candy.white,
-    borderRadius: 30,
-    borderWidth: 2,
-    minHeight: 270,
-    overflow: "hidden",
-    padding: 18,
-    shadowColor: "rgba(32,16,31,0.28)",
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 1,
-    shadowRadius: 24,
-  },
-  storeHeroSparkle: {
-    height: 86,
-    opacity: 0.38,
-    position: "absolute",
-    right: 10,
-    top: 10,
-    transform: [{ rotate: "10deg" }],
-    width: 86,
-  },
-  storeHeroCherry: {
-    bottom: -22,
-    height: 100,
-    opacity: 0.72,
-    position: "absolute",
-    right: 16,
-    transform: [{ rotate: "-8deg" }],
-    width: 100,
-  },
-  storeEyebrow: {
-    alignSelf: "flex-start",
-    backgroundColor: candy.roseMist,
-    borderColor: candy.white,
-    borderRadius: 999,
-    borderWidth: 2,
-    color: candy.red,
-    fontSize: 10,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    textTransform: "uppercase",
+    width: 42,
   },
   storeTitle: {
     color: candy.white,
     fontFamily: displayFont,
-    fontSize: 38,
+    fontSize: 34,
     fontWeight: "900",
-    lineHeight: 40,
-    marginTop: 16,
-    maxWidth: "88%",
-    textShadowColor: "rgba(32,16,31,0.36)",
-    textShadowOffset: { width: 2, height: 2.5 },
-    textShadowRadius: 0,
+    lineHeight: 35,
   },
-  storeText: {
-    color: candy.white,
-    fontSize: 14,
+  storeSubtitle: {
+    color: "rgba(255,249,240,0.84)",
+    fontSize: 13,
     fontWeight: "900",
-    lineHeight: 20,
-    marginTop: 9,
-    maxWidth: "92%",
-  },
-  storeHeroStats: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 18,
+    lineHeight: 16,
+    marginTop: 1,
   },
   storeStat: {
     backgroundColor: "rgba(255,255,255,0.18)",
@@ -14095,23 +16478,168 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   storeSectionHeader: {
-    paddingHorizontal: 4,
+    paddingHorizontal: 1,
   },
   storeSectionTitle: {
+    color: "rgba(255,249,240,0.7)",
+    fontFamily: displayFont,
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0,
+    lineHeight: 16,
+    textTransform: "uppercase",
+  },
+  storeUpgradeList: {
+    gap: 10,
+  },
+  storeUpgradeCard: {
+    alignItems: "center",
+    backgroundColor: candy.cream,
+    borderRadius: 25,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 69,
+    overflow: "visible",
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+  },
+  storeUpgradeCardHighlight: {
+    backgroundColor: candy.yellow,
+  },
+  storePopularBadge: {
+    alignItems: "center",
+    backgroundColor: candy.black,
+    borderRadius: 999,
+    minHeight: 24,
+    paddingHorizontal: 12,
+    position: "absolute",
+    right: 18,
+    top: -10,
+    zIndex: 4,
+  },
+  storePopularText: {
+    color: candy.yellow,
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 22,
+    textTransform: "uppercase",
+  },
+  storeUpgradeCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  storeUpgradeTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 26,
+    fontSize: 18,
     fontWeight: "900",
+    lineHeight: 21,
   },
-  storeSectionText: {
+  storeUpgradeText: {
     color: candy.text,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "900",
     lineHeight: 16,
-    marginTop: 2,
+    marginTop: 1,
   },
-  storeOfferList: {
-    gap: 10,
+  storeUpgradePrice: {
+    alignItems: "center",
+    backgroundColor: candy.red,
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 42,
+    minWidth: 75,
+    paddingHorizontal: 13,
+  },
+  storeUpgradePriceDark: {
+    backgroundColor: candy.black,
+  },
+  storeUpgradePriceText: {
+    color: candy.white,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  storeUpgradePriceTextDark: {
+    color: candy.white,
+  },
+  storePacksHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    marginTop: 12,
+  },
+  storePackGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    width: "100%",
+  },
+  storePackCard: {
+    borderRadius: 24,
+    justifyContent: "flex-end",
+    overflow: "hidden",
+    padding: 16,
+    position: "relative",
+  },
+  storePackCardFill: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  storePackCardCopy: {
+    position: "relative",
+    zIndex: 2,
+  },
+  storePackTitle: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 20,
+    fontWeight: "900",
+    lineHeight: 22,
+  },
+  storePackTitleLight: {
+    color: candy.cream,
+  },
+  storePackTitleDark: {
+    color: candy.ink,
+  },
+  storePackPrice: {
+    color: candy.ink,
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 16,
+    marginTop: 1,
+  },
+  storePackPriceLight: {
+    color: candy.yellow,
+  },
+  storePackPriceDark: {
+    color: candy.ink,
+  },
+  storeFooter: {
+    alignItems: "center",
+    gap: 8,
+    marginTop: 18,
+    paddingTop: 4,
+  },
+  storeRestoreButton: {
+    minHeight: 28,
+    justifyContent: "center",
+  },
+  storeRestoreText: {
+    color: candy.cream,
+    fontSize: 13,
+    fontWeight: "900",
+    textDecorationLine: "underline",
+  },
+  storeLegalText: {
+    color: "rgba(255,249,240,0.72)",
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 14,
+    textAlign: "center",
   },
   storeOfferCard: {
     borderColor: candy.white,
@@ -14219,98 +16747,300 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "8deg" }],
   },
   homeScreen: {
-    gap: 16,
+    gap: 12,
     paddingTop: 20,
   },
-  dailyAdviceCard: {
-    borderColor: candy.white,
-    borderRadius: 28,
-    borderWidth: 2,
-    minHeight: 168,
-    overflow: "hidden",
-    padding: 16,
-    paddingRight: 88,
-    shadowColor: "rgba(255,36,95,0.16)",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
+  homeFrame: {
+    flex: 1,
+    position: "relative",
   },
-  dailyAdviceEmoji: {
-    fontFamily: emojiFont,
-    fontSize: 64,
-    lineHeight: 72,
-    opacity: 0.9,
+  homeFloatingHeader: {
     position: "absolute",
-    right: 12,
-    top: 18,
-    transform: [{ rotate: "10deg" }],
+    zIndex: 30,
   },
-  dailyAdviceTop: {
+  homeHero: {
+    gap: 20,
+    overflow: "hidden",
+    paddingBottom: 6,
+    position: "relative",
+  },
+  homeHeroTop: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 8,
     justifyContent: "space-between",
   },
-  dailyAdvicePill: {
-    alignSelf: "flex-start",
-    backgroundColor: candy.red,
-    borderColor: candy.white,
+  homeBrandPill: {
+    alignItems: "center",
+    backgroundColor: candy.cream,
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 36,
+    paddingHorizontal: 18,
+  },
+  homeBrandText: {
+    color: candy.red,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  homeProfileButton: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  homeProfileBubble: {
+    alignItems: "center",
+    backgroundColor: candy.black,
+    borderColor: candy.cream,
     borderRadius: 999,
     borderWidth: 2,
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
   },
-  dailyAdvicePillText: {
+  homeProfileIcon: {
     color: candy.white,
-    fontSize: 10,
-    fontWeight: "900",
-    textTransform: "uppercase",
+    fontFamily: emojiFont,
+    fontSize: 18,
+    lineHeight: 22,
   },
-  dailyAdviceDate: {
+  homeHeroTitle: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 43,
+    fontWeight: "900",
+    lineHeight: 45,
+    maxWidth: 280,
+  },
+  homeHeroQuestion: {
+    color: candy.yellow,
+  },
+  homeMoodRow: {
+    flexDirection: "row",
+    gap: 8,
+    width: "100%",
+  },
+  homeMoodChip: {
+    alignItems: "center",
+    borderColor: "rgba(255,249,240,0.72)",
+    borderRadius: 999,
+    borderWidth: 1.5,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 38,
+    minWidth: 0,
+    paddingHorizontal: 15,
+  },
+  homeMoodChipSelected: {
+    backgroundColor: candy.cream,
+    borderColor: candy.cream,
+  },
+  homeMoodChipPressed: {
+    opacity: 0.82,
+  },
+  homeMoodChipText: {
+    color: candy.white,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  homeMoodChipTextSelected: {
     color: candy.red,
-    fontSize: 11,
-    fontWeight: "900",
-    textTransform: "uppercase",
   },
-  dailyAdviceCategory: {
-    color: candy.red,
-    fontSize: 11,
-    fontWeight: "900",
-    marginTop: 12,
-    textTransform: "uppercase",
+  homeMoodSettingsChip: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderColor: "rgba(255,249,240,0.72)",
+    borderRadius: 999,
+    borderWidth: 1.5,
+    flexShrink: 0,
+    justifyContent: "center",
   },
-  dailyAdviceTitle: {
+  homeMoodSheetOverlay: {
+    alignItems: "center",
+    backgroundColor: "rgba(38,18,46,0.48)",
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  homeMoodSheetBackdrop: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  homeMoodSheet: {
+    backgroundColor: candy.cream,
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 34,
+    gap: 14,
+    maxWidth: 430,
+    minHeight: "78%",
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    shadowColor: "rgba(32,16,31,0.24)",
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 1,
+    shadowRadius: 24,
+    width: "100%",
+  },
+  homeMoodSheetHandle: {
+    alignSelf: "center",
+    backgroundColor: "rgba(169,126,96,0.42)",
+    borderRadius: 999,
+    height: 4,
+    marginBottom: 12,
+    width: 44,
+  },
+  homeMoodSheetHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+  },
+  homeMoodSheetTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  homeMoodSheetTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 25,
+    fontSize: 30,
     fontWeight: "900",
-    lineHeight: 27,
-    marginTop: 4,
+    lineHeight: 32,
   },
-  dailyAdviceText: {
-    color: candy.text,
+  homeMoodSheetTitleDot: {
+    color: candy.red,
+  },
+  homeMoodSheetSubtitle: {
+    color: candy.muted,
     fontSize: 13,
     fontWeight: "800",
-    lineHeight: 18,
-    marginTop: 7,
+    lineHeight: 17,
+    marginTop: 8,
   },
-  dailyAdviceFooter: {
+  homeMoodSheetClose: {
     alignItems: "center",
-    flexDirection: "row",
-    gap: 7,
-    marginTop: 12,
+    backgroundColor: "rgba(32,16,31,0.06)",
+    borderRadius: 17,
+    height: 34,
+    justifyContent: "center",
+    width: 34,
   },
-  dailyAdviceFooterText: {
+  homeMoodSignalList: {
+    gap: 10,
+  },
+  homeMoodSignalRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.32)",
+    borderColor: "rgba(169,126,96,0.24)",
+    borderRadius: 22,
+    borderWidth: 1.5,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 68,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  homeMoodSignalRowSelected: {
+    backgroundColor: candy.red,
+    borderColor: candy.red,
+    shadowColor: "rgba(255,36,95,0.24)",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 1,
+    shadowRadius: 20,
+  },
+  homeMoodSignalDot: {
+    borderColor: "rgba(32,16,31,0.05)",
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 34,
+    width: 34,
+  },
+  homeMoodSignalCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  homeMoodSignalTitle: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 17,
+    fontWeight: "900",
+    lineHeight: 20,
+  },
+  homeMoodSignalTitleSelected: {
+    color: candy.white,
+  },
+  homeMoodSignalText: {
     color: candy.muted,
+    fontSize: 11.5,
+    fontWeight: "800",
+    lineHeight: 15,
+    marginTop: 2,
+  },
+  homeMoodSignalTextSelected: {
+    color: "rgba(255,249,240,0.9)",
+  },
+  homeMoodNotificationPanel: {
+    gap: 8,
+  },
+  homeMoodNotificationTitle: {
+    color: candy.ink,
+    fontSize: 12,
+    fontWeight: "900",
+    paddingHorizontal: 4,
+    textTransform: "uppercase",
+  },
+  homeMoodSendButton: {
+    alignItems: "center",
+    backgroundColor: candy.black,
+    borderRadius: 22,
+    justifyContent: "center",
+    minHeight: 54,
+  },
+  homeMoodSendText: {
+    color: candy.white,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  homeMoodSheetFootnote: {
+    color: candy.muted,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 16,
+    paddingHorizontal: 10,
+    textAlign: "center",
+  },
+  dailyAdviceCard: {
+    alignItems: "center",
+    backgroundColor: candy.black,
+    borderRadius: 22,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 78,
+    padding: 14,
+  },
+  dailyAdviceIcon: {
+    alignItems: "center",
+    backgroundColor: candy.yellow,
+    borderRadius: 16,
+    height: 40,
+    justifyContent: "center",
+    width: 40,
+  },
+  dailyAdviceCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  dailyAdvicePillText: {
+    color: candy.yellow,
     fontSize: 10,
     fontWeight: "900",
     textTransform: "uppercase",
   },
-  dailyAdviceFooterDot: {
-    color: candy.red,
+  dailyAdviceText: {
+    color: candy.white,
     fontSize: 12,
-    fontWeight: "900",
+    fontWeight: "800",
+    lineHeight: 16,
+    marginTop: 4,
   },
   homeNextPanel: {
     borderColor: candy.white,
@@ -14456,13 +17186,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: 2,
   },
-  homeStatusText: {
-    color: candy.text,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 16,
-    marginTop: 3,
-  },
   homeStatusPartner: {
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.68)",
@@ -14528,271 +17251,259 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "900",
   },
-  homeCTA: {
-    alignItems: "center",
-    backgroundColor: candy.roseMist,
-    borderColor: candy.white,
-    borderRadius: 28,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 12,
-    minHeight: 118,
-    overflow: "visible",
-    padding: 14,
-    paddingRight: 86,
-    shadowColor: "rgba(255,36,95,0.28)",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
-  },
-  homeCTASticker: {
-    height: 92,
-    position: "absolute",
-    right: -10,
-    top: -15,
-    transform: [{ rotate: "10deg" }],
-    width: 92,
-  },
-  homeCTACopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  homeCTAEyebrow: {
-    alignSelf: "flex-start",
-    backgroundColor: candy.white,
-    borderColor: candy.red,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    color: candy.red,
-    fontSize: 10,
-    fontWeight: "900",
-    marginBottom: 7,
-    overflow: "hidden",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    textTransform: "uppercase",
-  },
-  homeCTATitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 28,
-    fontWeight: "900",
-    lineHeight: 30,
-  },
-  homeCTAText: {
-    color: candy.text,
-    fontSize: 12,
-    fontWeight: "900",
-    lineHeight: 16,
-    marginTop: 4,
-  },
-  homeCTAButton: {
-    alignItems: "center",
-    alignSelf: "flex-end",
-    backgroundColor: candy.black,
-    borderColor: candy.white,
-    borderRadius: 999,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 4,
-    minHeight: 44,
-    paddingHorizontal: 14,
-  },
-  homeCTAButtonText: {
-    color: candy.white,
-    fontSize: 13,
-    fontWeight: "900",
-  },
-  homeLogo: {
-    alignSelf: "center",
-    height: 46,
-    marginBottom: 2,
-    width: 154,
-  },
   coupleScreen: {
-    gap: 24,
-    paddingTop: APP_HEADER_TOP_SPACE,
+    alignSelf: "center",
+    flexGrow: 1,
+    justifyContent: "flex-start",
+    width: "100%",
   },
-  couplePanel: {
+  coupleTopBar: {
     alignItems: "center",
-    borderColor: "rgba(255,255,255,0.76)",
-    borderRadius: 36,
-    borderWidth: 1.5,
-    minHeight: 390,
-    overflow: "hidden",
-    padding: 20,
-    shadowColor: "rgba(255,36,95,0.18)",
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 1,
-    shadowRadius: 28,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
   },
-  coupleSoloPanel: {
-    justifyContent: "center",
-    minHeight: 520,
-  },
-  coupleSticker: {
-    height: 90,
-    opacity: 0.72,
-    position: "absolute",
-    right: -10,
-    top: 10,
-    transform: [{ rotate: "10deg" }],
-    width: 90,
-  },
-  coupleGlow: {
-    backgroundColor: "rgba(255,255,255,0.28)",
-    borderRadius: 999,
-    height: 220,
-    left: -78,
-    position: "absolute",
-    top: -72,
-    width: 220,
-  },
-  coupleTitle: {
-    color: candy.black,
+  coupleScreenTitle: {
+    color: candy.white,
     fontFamily: displayFont,
     fontSize: 34,
     fontWeight: "900",
-    lineHeight: 37,
-    marginTop: 14,
-    maxWidth: 430,
-    textAlign: "center",
-    textShadowColor: "rgba(255,255,255,0.64)",
-    textShadowOffset: { width: 1.5, height: 1.5 },
-    textShadowRadius: 0,
+    lineHeight: 36,
   },
-  coupleEyebrow: {
-    alignSelf: "center",
-    backgroundColor: candy.white,
-    borderColor: candy.red,
+  coupleScreenSubtitle: {
+    color: "rgba(255,249,240,0.68)",
+    fontSize: 11,
+    fontWeight: "900",
+    lineHeight: 14,
+    marginTop: 1,
+    maxWidth: 210,
+  },
+  coupleSettingsButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,249,240,0.18)",
     borderRadius: 999,
-    borderWidth: 1.5,
+    justifyContent: "center",
+    minHeight: 34,
+    paddingHorizontal: 16,
+  },
+  coupleSettingsText: {
+    color: candy.cream,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  coupleProfileGrid: {
+    flexDirection: "row",
+    gap: 10,
+    width: "100%",
+  },
+  coupleProfileCard: {
+    alignItems: "center",
+    backgroundColor: candy.cream,
+    borderRadius: 18,
+    flex: 1,
+    minHeight: 150,
+    paddingHorizontal: 10,
+    paddingVertical: 13,
+  },
+  coupleProfileCardHighlight: {
+    backgroundColor: candy.yellow,
+  },
+  coupleProfileAvatar: {
+    alignItems: "center",
+    backgroundColor: candy.black,
+    borderRadius: 999,
+    height: 46,
+    justifyContent: "center",
+    width: 46,
+  },
+  coupleProfileEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 25,
+    lineHeight: 31,
+  },
+  coupleProfileName: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 17,
+    fontWeight: "900",
+    lineHeight: 20,
+    marginTop: 9,
+  },
+  coupleProfileVibe: {
     color: candy.red,
     fontSize: 10,
     fontWeight: "900",
-    marginBottom: 8,
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    letterSpacing: 0,
+    lineHeight: 12,
+    marginTop: 1,
     textTransform: "uppercase",
   },
-  coupleSub: {
-    color: candy.black,
-    fontSize: 13,
-    fontWeight: "900",
-    lineHeight: 18,
-    marginTop: 8,
-    maxWidth: 390,
-    textAlign: "center",
-  },
-  coupleAvatarStage: {
+  coupleProfileMoodRow: {
     alignItems: "center",
     flexDirection: "row",
+    gap: 5,
+    marginTop: 7,
+  },
+  coupleProfileMoodDot: {
+    backgroundColor: candy.red,
+    borderRadius: 999,
+    height: 7,
+    width: 7,
+  },
+  coupleProfileMoodDotHot: {
+    backgroundColor: candy.pink,
+  },
+  coupleProfileMoodText: {
+    color: candy.text,
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 12,
+  },
+  coupleProfilePackRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(245,40,110,0.08)",
+    borderRadius: 999,
     justifyContent: "center",
-    marginTop: 14,
+    marginTop: 8,
+    minHeight: 24,
+    paddingHorizontal: 10,
+    width: "100%",
+  },
+  coupleProfilePackText: {
+    color: candy.ink,
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 12,
+  },
+  coupleCodePill: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,102,158,0.62)",
+    borderRadius: 20,
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 46,
+    paddingHorizontal: 15,
+    width: "100%",
+  },
+  coupleCodeText: {
+    color: candy.cream,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  coupleCodeStrong: {
+    color: candy.cream,
+    fontWeight: "900",
+  },
+  coupleCodeCopyButton: {
+    minHeight: 30,
+    justifyContent: "center",
+  },
+  coupleCodeCopyText: {
+    color: candy.cream,
+    fontSize: 11,
+    fontWeight: "900",
+    textDecorationLine: "underline",
+  },
+  coupleSoloScreen: {
+    flexGrow: 1,
+  },
+  coupleSoloScreenTitle: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 34,
+    fontWeight: "900",
+    lineHeight: 38,
+  },
+  coupleSoloCenter: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    paddingBottom: 76,
+    paddingHorizontal: 24,
   },
   coupleSoloAvatarStage: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "center",
-    marginTop: 22,
+    marginBottom: 28,
   },
-  coupleAvatarBubble: {
+  coupleSoloAvatar: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderColor: candy.white,
+    backgroundColor: candy.black,
+    borderColor: candy.cream,
     borderRadius: 999,
-    borderWidth: 2,
-    height: 92,
+    borderWidth: 4,
+    height: 96,
     justifyContent: "center",
-    shadowColor: "rgba(255,36,95,0.24)",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 1,
-    shadowRadius: 22,
-    width: 92,
+    width: 96,
+    zIndex: 2,
   },
-  coupleAvatarBubbleSecond: {
-    marginLeft: -18,
-    marginTop: 18,
-  },
-  coupleMissingBubble: {
-    backgroundColor: "rgba(255,255,255,0.42)",
-    borderColor: candy.red,
-    borderStyle: "dashed",
-    marginLeft: -14,
-    marginTop: 18,
-  },
-  coupleAvatarEmoji: {
-    fontFamily: emojiFont,
-    fontSize: 50,
-    lineHeight: 60,
-  },
-  coupleNameRow: {
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    marginTop: 12,
-    maxWidth: 390,
-    width: "100%",
-  },
-  coupleNamePill: {
-    backgroundColor: "rgba(255,255,255,0.52)",
-    borderColor: "rgba(255,255,255,0.72)",
-    borderRadius: 999,
-    borderWidth: 1,
-    color: candy.ink,
-    flex: 1,
-    fontSize: 12,
+  coupleSoloAvatarInitial: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 39,
     fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    textAlign: "center",
+    lineHeight: 44,
+  },
+  coupleSoloMissingAvatar: {
+    alignItems: "center",
+    backgroundColor: "rgba(245,40,110,0.18)",
+    borderColor: "rgba(255,249,240,0.72)",
+    borderRadius: 999,
+    borderStyle: "dashed",
+    borderWidth: 3,
+    height: 88,
+    justifyContent: "center",
+    marginLeft: -10,
+    width: 88,
+  },
+  coupleSoloMissingText: {
+    color: candy.cream,
+    fontFamily: displayFont,
+    fontSize: 36,
+    fontWeight: "900",
+    lineHeight: 40,
   },
   coupleStats: {
     flexDirection: "row",
     gap: 8,
-    marginTop: 20,
-    maxWidth: 430,
     width: "100%",
   },
   coupleStatPill: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.54)",
-    borderColor: "rgba(255,255,255,0.72)",
-    borderRadius: 22,
-    borderWidth: 1,
+    backgroundColor: candy.black,
+    borderRadius: 15,
     flex: 1,
-    minHeight: 70,
+    minHeight: 74,
     justifyContent: "center",
     paddingHorizontal: 8,
-    paddingVertical: 10,
+    paddingVertical: 9,
   },
   coupleStatValue: {
-    color: candy.red,
+    color: candy.yellow,
     fontFamily: displayFont,
     fontSize: 28,
     fontWeight: "900",
     lineHeight: 30,
   },
   coupleStatLabel: {
-    color: candy.black,
+    color: candy.cream,
     fontSize: 10,
     fontWeight: "900",
     marginTop: 2,
+    opacity: 0.88,
     textAlign: "center",
   },
   coupleReconnectCard: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.62)",
-    borderColor: "rgba(255,255,255,0.82)",
-    borderRadius: 24,
-    borderWidth: 1.5,
+    backgroundColor: "rgba(255,249,240,0.12)",
+    borderColor: "rgba(255,249,240,0.22)",
+    borderRadius: 18,
+    borderWidth: 1,
     flexDirection: "row",
     gap: 12,
-    marginTop: 12,
-    maxWidth: 430,
-    padding: 12,
+    padding: 11,
     width: "100%",
   },
   coupleReconnectCopy: {
@@ -14800,21 +17511,21 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   coupleReconnectLabel: {
-    color: candy.ink,
+    color: "rgba(255,249,240,0.72)",
     fontSize: 10,
     fontWeight: "900",
     opacity: 0.74,
     textTransform: "uppercase",
   },
   coupleReconnectCode: {
-    color: candy.red,
+    color: candy.cream,
     fontFamily: displayFont,
-    fontSize: 27,
+    fontSize: 20,
     fontWeight: "900",
-    lineHeight: 30,
+    lineHeight: 23,
   },
   coupleReconnectText: {
-    color: candy.text,
+    color: "rgba(255,249,240,0.66)",
     fontSize: 11,
     fontWeight: "800",
     lineHeight: 15,
@@ -14839,77 +17550,78 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "900",
   },
-  coupleSoloInviteCard: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderColor: "rgba(255,255,255,0.9)",
-    borderRadius: 24,
-    borderWidth: 1.5,
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 20,
-    maxWidth: 430,
-    padding: 14,
-    width: "100%",
-  },
   coupleSoloActions: {
-    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
-    marginTop: 12,
-    maxWidth: 430,
+    marginTop: 28,
+    maxWidth: 300,
     width: "100%",
   },
-  coupleSoloPrimaryAction: {
-    flex: 1,
-    minHeight: 52,
-    paddingHorizontal: 12,
+  coupleSoloInviteButton: {
+    alignItems: "center",
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 56,
+    paddingHorizontal: 30,
+    width: "100%",
   },
-  coupleSoloSecondaryAction: {
-    flex: 1,
-    minHeight: 52,
-    paddingHorizontal: 12,
-  },
-  inviteLabel: {
-    color: candy.black,
-    fontSize: 10,
-    fontWeight: "900",
-  },
-  inviteCodeBlock: {
-    flex: 1,
-    minWidth: 0,
-  },
-  inviteCode: {
-    color: candy.red,
+  coupleSoloInviteText: {
+    color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 24,
+    fontSize: 16,
     fontWeight: "900",
+    textAlign: "center",
   },
-  copyButton: {
+  coupleSoloJoinButton: {
+    alignItems: "center",
+    backgroundColor: candy.black,
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 52,
+    paddingHorizontal: 28,
+    width: "100%",
   },
-  coupleCategorySection: {
-    backgroundColor: "rgba(255,255,255,0.62)",
-    borderColor: candy.white,
-    borderRadius: 26,
-    borderWidth: 2,
-    gap: 12,
-    padding: 14,
+  coupleSoloJoinText: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "center",
   },
-  coupleRhythmSection: {
-    backgroundColor: "rgba(255,255,255,0.62)",
-    borderColor: candy.white,
-    borderRadius: 26,
-    borderWidth: 2,
-    gap: 12,
-    padding: 14,
+  coupleSoloTitle: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 28,
+    fontWeight: "900",
+    lineHeight: 32,
+    textAlign: "center",
+  },
+  coupleSoloText: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 22,
+    marginTop: 8,
+    maxWidth: 330,
+    textAlign: "center",
+  },
+  coupleSoloCode: {
+    color: "rgba(255,255,255,0.84)",
+    fontSize: 13,
+    fontWeight: "900",
+    marginTop: 12,
+    textAlign: "center",
   },
   coupleSection: {
     backgroundColor: "transparent",
     borderColor: "transparent",
     borderRadius: 0,
     borderWidth: 0,
-    gap: 12,
-    paddingHorizontal: 4,
+    gap: 9,
+    paddingHorizontal: 0,
     paddingVertical: 0,
+    width: "100%",
   },
   coupleSectionHeader: {
     alignItems: "flex-start",
@@ -14917,56 +17629,12 @@ const styles = StyleSheet.create({
     gap: 12,
     justifyContent: "space-between",
   },
-  coupleSectionCopy: {
-    flex: 1,
-  },
   coupleSectionTitle: {
-    color: candy.ink,
+    color: candy.cream,
     fontFamily: displayFont,
-    fontSize: 27,
+    fontSize: 18,
     fontWeight: "900",
-    lineHeight: 29,
-  },
-  coupleSectionText: {
-    color: candy.text,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 16,
-    marginTop: 4,
-  },
-  coupleSectionLink: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.68)",
-    borderColor: "rgba(255,255,255,0.84)",
-    borderRadius: 999,
-    borderWidth: 1.5,
-    justifyContent: "center",
-    minHeight: 34,
-    paddingHorizontal: 12,
-  },
-  coupleSectionLinkText: {
-    color: candy.red,
-    fontSize: 11,
-    fontWeight: "900",
-  },
-  coupleCategoryAvailablePill: {
-    backgroundColor: candy.red,
-    borderColor: candy.white,
-    borderRadius: 999,
-    borderWidth: 2,
-    color: candy.white,
-    fontSize: 11,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  coupleCategoryList: {
-    gap: 9,
-  },
-  coupleRhythmGrid: {
-    flexDirection: "row",
-    gap: 9,
+    lineHeight: 22,
   },
   coupleInsightCard: {
     backgroundColor: "rgba(255,255,255,0.76)",
@@ -14997,37 +17665,34 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   coupleRecentList: {
-    gap: 9,
+    gap: 8,
+    width: "100%",
   },
   coupleRecentMatch: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.52)",
-    borderColor: "rgba(255,255,255,0.72)",
-    borderRadius: 24,
-    borderWidth: 1,
+    backgroundColor: candy.cream,
+    borderRadius: 16,
     flexDirection: "row",
-    gap: 12,
-    minHeight: 78,
-    padding: 12,
-    shadowColor: "rgba(87,8,58,0.08)",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 14,
+    gap: 8,
+    minHeight: 43,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    width: "100%",
   },
   coupleRecentEmojiBubble: {
     alignItems: "center",
-    borderColor: candy.white,
+    borderColor: "rgba(245,40,110,0.12)",
     borderRadius: 999,
-    borderWidth: 1.5,
-    height: 54,
+    borderWidth: 1,
+    height: 28,
     justifyContent: "center",
     overflow: "hidden",
-    width: 54,
+    width: 28,
   },
   coupleRecentEmoji: {
     fontFamily: emojiFont,
-    fontSize: 32,
-    lineHeight: 39,
+    fontSize: 17,
+    lineHeight: 22,
     textAlign: "center",
   },
   coupleRecentCopy: {
@@ -15036,95 +17701,99 @@ const styles = StyleSheet.create({
   },
   coupleRecentTag: {
     alignSelf: "flex-start",
-    backgroundColor: candy.white,
-    borderRadius: 999,
+    backgroundColor: "transparent",
+    borderRadius: 0,
     fontSize: 8,
     fontWeight: "900",
     overflow: "hidden",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
     textTransform: "uppercase",
   },
   coupleRecentTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 17,
+    fontSize: 13,
     fontWeight: "900",
-    lineHeight: 20,
-    marginTop: 3,
+    lineHeight: 16,
+    marginTop: 0,
   },
   coupleRecentText: {
     color: candy.text,
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: "800",
-    lineHeight: 15,
+    lineHeight: 12,
+  },
+  coupleRecentOpenText: {
+    color: candy.red,
+    fontSize: 11,
+    fontWeight: "900",
   },
   coupleEmptyMatches: {
-    backgroundColor: "rgba(255,255,255,0.3)",
-    borderColor: "rgba(255,36,95,0.34)",
-    borderRadius: 24,
+    backgroundColor: "rgba(255,249,240,0.18)",
+    borderColor: "rgba(255,249,240,0.38)",
+    borderRadius: 18,
     borderStyle: "dashed",
     borderWidth: 1.5,
-    minHeight: 100,
+    minHeight: 82,
     justifyContent: "center",
-    padding: 18,
+    padding: 14,
+    width: "100%",
   },
   coupleEmptyMatchesTitle: {
-    color: candy.ink,
+    color: candy.cream,
     fontFamily: displayFont,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "900",
   },
   coupleEmptyMatchesText: {
-    color: candy.text,
+    color: "rgba(255,249,240,0.72)",
     fontSize: 12,
     fontWeight: "800",
     lineHeight: 16,
     marginTop: 3,
   },
-  couplePackCompactGrid: {
-    gap: 8,
-  },
-  couplePackCompact: {
+  couplePackSummary: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.4)",
-    borderColor: "rgba(255,255,255,0.66)",
-    borderRadius: 22,
-    borderWidth: 1,
+    backgroundColor: "rgba(255,102,158,0.62)",
+    borderRadius: 20,
     flexDirection: "row",
-    gap: 11,
-    minHeight: 64,
-    overflow: "hidden",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 12,
+    minHeight: 66,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    width: "100%",
   },
-  couplePackDot: {
-    borderRadius: 999,
-    height: 9,
-    width: 9,
-  },
-  couplePackCompactEmoji: {
-    fontFamily: emojiFont,
-    fontSize: 30,
-    lineHeight: 36,
-    textAlign: "center",
-    width: 42,
-  },
-  couplePackCompactCopy: {
+  couplePackSummaryCopy: {
     flex: 1,
     minWidth: 0,
   },
-  couplePackCompactTitle: {
-    color: candy.ink,
+  couplePackSummaryTitle: {
+    color: candy.cream,
     fontFamily: displayFont,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "900",
+    lineHeight: 21,
   },
-  couplePackCompactText: {
-    color: candy.text,
-    fontSize: 11,
+  couplePackSummaryText: {
+    color: "rgba(255,249,240,0.78)",
+    fontSize: 12,
     fontWeight: "900",
-    marginTop: 2,
+    lineHeight: 15,
+    marginTop: 1,
+  },
+  coupleBoutiqueButton: {
+    alignItems: "center",
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 37,
+    paddingHorizontal: 17,
+  },
+  coupleBoutiqueText: {
+    color: candy.ink,
+    fontSize: 12,
+    fontWeight: "900",
   },
   coupleCategoryCard: {
     borderColor: candy.white,
@@ -15197,334 +17866,507 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "900",
   },
-  coupleMatchShortcut: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.78)",
-    borderColor: candy.white,
-    borderRadius: 22,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 12,
-    minHeight: 74,
-    padding: 12,
-  },
-  coupleMatchShortcutIcon: {
-    alignItems: "center",
-    backgroundColor: candy.red,
-    borderRadius: 18,
-    height: 46,
-    justifyContent: "center",
-    width: 46,
-  },
-  coupleMatchShortcutCopy: {
-    flex: 1,
-  },
-  coupleMatchShortcutTitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  coupleMatchShortcutText: {
-    color: candy.text,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 16,
-    marginTop: 2,
-  },
   purchaseOverlay: {
-    backgroundColor: "rgba(35,18,36,0.42)",
     flex: 1,
-    justifyContent: "flex-end",
-    padding: 14,
+    paddingBottom: 18,
+    paddingHorizontal: 18,
+    paddingTop: 18,
   },
-  purchaseBackdrop: {
+  purchaseBackButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,249,240,0.16)",
+    borderRadius: 999,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  purchaseContent: {
+    alignItems: "center",
+    alignSelf: "center",
+    flex: 1,
+    justifyContent: "center",
+    maxWidth: 430,
+    paddingBottom: 18,
+    width: "100%",
+  },
+  purchaseHero: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 224,
+  },
+  purchasePackShadow: {
+    backgroundColor: "rgba(87,8,58,0.28)",
+    borderRadius: 34,
+    height: 210,
+    position: "absolute",
+    transform: [{ rotate: "-4deg" }, { translateY: 8 }],
+    width: 174,
+  },
+  purchasePackVisual: {
+    borderColor: "rgba(255,249,240,0.34)",
+    borderRadius: 34,
+    borderWidth: 2,
+    height: 210,
+    justifyContent: "flex-end",
+    overflow: "hidden",
+    padding: 24,
+    transform: [{ rotate: "-4deg" }],
+    width: 174,
+  },
+  purchaseFeaturePatternLayer: {
     bottom: 0,
     left: 0,
+    overflow: "hidden",
     position: "absolute",
     right: 0,
     top: 0,
   },
-  purchaseSheet: {
-    borderColor: candy.white,
-    borderRadius: 30,
-    borderWidth: 2,
-    gap: 13,
-    overflow: "hidden",
-    padding: 18,
-    shadowColor: "rgba(32,16,31,0.28)",
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-  },
-  purchaseSticker: {
-    height: 82,
-    position: "absolute",
-    right: 12,
-    top: 10,
-    transform: [{ rotate: "12deg" }],
-    width: 82,
-  },
-  purchaseNoAdsEmoji: {
-    fontFamily: emojiFont,
-    fontSize: 76,
-    lineHeight: 84,
-    opacity: 0.9,
-    position: "absolute",
-    right: 14,
-    top: 8,
-    transform: [{ rotate: "8deg" }],
-  },
-  purchaseEyebrow: {
-    alignSelf: "flex-start",
-    backgroundColor: candy.red,
-    borderColor: candy.white,
+  purchaseFeatureDot: {
+    backgroundColor: "rgba(255,249,240,0.32)",
     borderRadius: 999,
-    borderWidth: 2,
-    color: candy.white,
-    fontSize: 10,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    textTransform: "uppercase",
+    height: 10,
+    position: "absolute",
+    width: 10,
+  },
+  purchaseFeatureStripe: {
+    backgroundColor: "rgba(255,249,240,0.18)",
+    height: "160%",
+    position: "absolute",
+    top: "-30%",
+    transform: [{ rotate: "42deg" }],
+    width: 18,
+  },
+  purchaseFeatureEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 58,
+    left: 24,
+    lineHeight: 68,
+    position: "absolute",
+    top: 24,
   },
   purchaseTitle: {
-    color: candy.ink,
+    color: candy.white,
     fontFamily: displayFont,
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: "900",
-    lineHeight: 34,
-    maxWidth: "78%",
+    lineHeight: 36,
+    marginTop: 6,
+    textAlign: "center",
   },
   purchaseText: {
-    color: candy.text,
+    color: "rgba(255,249,240,0.88)",
     fontSize: 14,
     fontWeight: "800",
     lineHeight: 19,
-    maxWidth: "92%",
+    marginTop: 8,
+    maxWidth: 392,
+    textAlign: "center",
   },
-  purchaseBenefits: {
-    gap: 8,
+  purchaseVisualCopy: {
+    position: "relative",
+    zIndex: 2,
   },
-  purchaseBenefit: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderRadius: 18,
-    flexDirection: "row",
-    gap: 9,
-    minHeight: 44,
-    paddingHorizontal: 12,
-  },
-  purchaseBenefitEmoji: {
-    fontFamily: emojiFont,
-    fontSize: 20,
+  purchaseVisualTitle: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 22,
+    fontWeight: "900",
     lineHeight: 24,
   },
-  purchaseBenefitText: {
+  purchaseVisualMeta: {
     color: candy.ink,
-    flex: 1,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "900",
-    lineHeight: 17,
   },
-  purchasePriceRow: {
+  purchasePreviewRow: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.7)",
-    borderColor: candy.white,
-    borderRadius: 20,
-    borderWidth: 2,
     flexDirection: "row",
     gap: 10,
-    padding: 12,
+    justifyContent: "center",
+    marginTop: 26,
   },
-  purchasePrice: {
+  purchasePreviewCard: {
+    backgroundColor: candy.cream,
+    borderRadius: 16,
+    height: 106,
+    overflow: "hidden",
+    padding: 12,
+    width: 82,
+  },
+  purchasePreviewCardLeft: {
+    transform: [{ rotate: "-5deg" }],
+  },
+  purchasePreviewCardRight: {
+    transform: [{ rotate: "5deg" }],
+  },
+  purchasePreviewTag: {
     color: candy.red,
-    fontFamily: displayFont,
-    fontSize: 27,
+    fontSize: 8,
     fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  purchasePreviewLineWide: {
+    backgroundColor: "rgba(38,18,46,0.24)",
+    borderRadius: 999,
+    height: 9,
+    marginTop: 18,
+    width: "86%",
+  },
+  purchasePreviewLine: {
+    backgroundColor: "rgba(38,18,46,0.18)",
+    borderRadius: 999,
+    height: 9,
+    marginTop: 7,
+    width: "72%",
+  },
+  purchasePreviewLineShort: {
+    backgroundColor: "rgba(38,18,46,0.14)",
+    borderRadius: 999,
+    height: 9,
+    marginTop: 7,
+    width: "58%",
   },
   purchaseFinePrint: {
-    color: candy.text,
-    flex: 1,
+    color: "rgba(255,249,240,0.82)",
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "900",
     lineHeight: 15,
+    marginTop: 10,
+    textAlign: "center",
   },
-  purchaseActions: {
-    flexDirection: "row",
-    gap: 9,
+  purchaseBottomBar: {
+    gap: 10,
   },
   purchasePrimary: {
     alignItems: "center",
-    backgroundColor: candy.red,
-    borderColor: candy.white,
-    borderRadius: 20,
-    borderWidth: 2,
-    flex: 1.3,
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
     justifyContent: "center",
-    minHeight: 52,
+    minHeight: 62,
+    paddingHorizontal: 18,
   },
   purchasePrimaryText: {
-    color: candy.white,
-    fontSize: 14,
+    color: candy.black,
+    fontSize: 16,
     fontWeight: "900",
   },
-  purchaseSecondary: {
+  purchaseLegalText: {
+    color: "rgba(255,249,240,0.82)",
+    fontSize: 11,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  dailyLimitOverlay: {
+    backgroundColor: candy.red,
+    flex: 1,
+    justifyContent: "space-between",
+    overflow: "hidden",
+    paddingHorizontal: 14,
+  },
+  dailyLimitGlow: {
+    backgroundColor: "rgba(255,141,190,0.22)",
+    borderRadius: 999,
+    height: 340,
+    left: "50%",
+    marginLeft: -170,
+    position: "absolute",
+    top: 166,
+    width: 340,
+  },
+  dailyLimitClose: {
     alignItems: "center",
-    backgroundColor: candy.white,
-    borderRadius: 20,
+    alignSelf: "flex-end",
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderRadius: 999,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
+  dailyLimitContent: {
+    alignItems: "center",
     flex: 1,
     justifyContent: "center",
-    minHeight: 52,
+    paddingBottom: 34,
   },
-  purchaseSecondaryText: {
-    color: candy.red,
+  dailyLimitBadge: {
+    alignItems: "center",
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    height: 152,
+    justifyContent: "center",
+    width: 152,
+  },
+  dailyLimitBadgeCount: {
+    color: candy.black,
+    fontFamily: displayFont,
+    fontSize: 42,
+    fontWeight: "900",
+    lineHeight: 45,
+  },
+  dailyLimitBadgeLabel: {
+    color: candy.black,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 15,
+    marginTop: 2,
+    textTransform: "uppercase",
+  },
+  dailyLimitTitle: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 35,
+    fontWeight: "900",
+    lineHeight: 38,
+    marginTop: 38,
+    textAlign: "center",
+  },
+  dailyLimitTitleDot: {
+    color: candy.yellow,
+  },
+  dailyLimitText: {
+    color: "rgba(255,249,240,0.92)",
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 20,
+    marginTop: 18,
+    maxWidth: 310,
+    textAlign: "center",
+  },
+  dailyLimitPartnerText: {
+    color: "rgba(255,249,240,0.78)",
     fontSize: 13,
     fontWeight: "900",
+    lineHeight: 18,
+    marginTop: 18,
+    maxWidth: 310,
+    textAlign: "center",
+  },
+  dailyLimitActions: {
+    gap: 12,
+    paddingBottom: 2,
+  },
+  dailyLimitPrimary: {
+    alignItems: "center",
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 58,
+    paddingHorizontal: 18,
+  },
+  dailyLimitPrimaryText: {
+    color: candy.black,
+    fontFamily: displayFont,
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  dailyLimitSecondary: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 28,
+  },
+  dailyLimitSecondaryText: {
+    color: candy.cream,
+    fontSize: 13,
+    fontWeight: "900",
+    textAlign: "center",
+    textDecorationLine: "underline",
   },
   purchaseSuccessScreen: {
     alignItems: "center",
     flex: 1,
-    justifyContent: "center",
+    justifyContent: "space-between",
     overflow: "hidden",
-    padding: 20,
+    paddingHorizontal: 28,
+    paddingTop: 18,
   },
   purchaseSuccessGlow: {
-    backgroundColor: "rgba(255,36,95,0.22)",
+    backgroundColor: "rgba(178,32,94,0.18)",
     borderRadius: 999,
     height: 260,
     position: "absolute",
-    top: 88,
+    top: 76,
     width: 260,
   },
-  purchaseSuccessConfetti: {
-    color: candy.white,
-    fontSize: 36,
-    fontWeight: "900",
+  purchaseSuccessConfettiDot: {
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    height: 10,
     position: "absolute",
-    textShadowColor: "rgba(255,36,95,0.4)",
-    textShadowOffset: { width: 0, height: 3 },
-    textShadowRadius: 0,
+    width: 10,
+  },
+  purchaseSuccessConfettiDash: {
+    backgroundColor: candy.cream,
+    borderRadius: 999,
+    height: 20,
+    position: "absolute",
+    width: 7,
   },
   purchaseSuccessConfettiOne: {
-    left: 34,
-    top: 128,
+    left: 72,
+    top: 102,
   },
   purchaseSuccessConfettiTwo: {
-    right: 44,
-    top: 184,
+    right: 54,
+    top: 150,
   },
   purchaseSuccessConfettiThree: {
-    bottom: 156,
-    left: 58,
+    right: 74,
+    top: 338,
   },
-  purchaseSuccessSticker: {
-    height: 116,
-    marginBottom: 18,
-    width: 116,
+  purchaseSuccessConfettiFour: {
+    left: 52,
+    top: 272,
   },
-  purchaseSuccessEyebrow: {
-    alignSelf: "center",
-    backgroundColor: candy.roseMist,
-    borderColor: candy.white,
+  purchaseSuccessClose: {
+    alignItems: "center",
+    alignSelf: "flex-end",
+    backgroundColor: "rgba(255,249,240,0.16)",
     borderRadius: 999,
-    borderWidth: 2,
-    color: candy.red,
-    fontSize: 11,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    textTransform: "uppercase",
+    height: 52,
+    justifyContent: "center",
+    width: 52,
+    zIndex: 5,
   },
-  purchaseSuccessTitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 40,
-    fontWeight: "900",
-    lineHeight: 42,
-    marginTop: 12,
-    textAlign: "center",
-    textShadowColor: "rgba(255,255,255,0.78)",
-    textShadowOffset: { width: 1.5, height: 1.5 },
-    textShadowRadius: 0,
-  },
-  purchaseSuccessText: {
-    color: candy.text,
-    fontSize: 15,
-    fontWeight: "900",
-    lineHeight: 21,
-    marginTop: 10,
-    maxWidth: 360,
-    textAlign: "center",
-  },
-  purchaseSuccessPack: {
-    borderColor: candy.white,
-    borderRadius: 28,
-    borderWidth: 2,
-    marginTop: 22,
-    minHeight: 146,
-    overflow: "hidden",
-    padding: 16,
+  purchaseSuccessCenter: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    paddingBottom: 26,
     width: "100%",
   },
-  purchaseSuccessShimmer: {
-    backgroundColor: "rgba(255,255,255,0.34)",
-    bottom: -30,
-    position: "absolute",
-    top: -40,
-    width: 54,
+  purchaseSuccessHero: {
+    alignItems: "center",
+    height: 324,
+    justifyContent: "center",
+    width: "100%",
   },
-  purchaseSuccessPackTag: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.78)",
+  purchaseSuccessUnlockGlow: {
+    backgroundColor: "rgba(255,211,64,0.72)",
     borderRadius: 999,
-    fontSize: 10,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    textTransform: "uppercase",
+    height: 252,
+    position: "absolute",
+    width: 252,
   },
-  purchaseSuccessPackTitle: {
+  purchaseSuccessUnlockStage: {
+    overflow: "visible",
+    position: "relative",
+  },
+  purchaseSuccessPackShadow: {
+    backgroundColor: "rgba(178,32,94,0.62)",
+    borderRadius: 35,
+    height: 266,
+    position: "absolute",
+    transform: [{ rotate: "4deg" }, { translateY: 12 }],
+    width: 226,
+  },
+  purchaseSuccessTitle: {
+    color: candy.cream,
+    fontFamily: displayFont,
+    fontSize: 38,
+    fontWeight: "900",
+    lineHeight: 40,
+    textAlign: "center",
+  },
+  purchaseSuccessText: {
+    color: "rgba(255,249,240,0.9)",
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 20,
+    marginTop: 14,
+    maxWidth: 336,
+    textAlign: "center",
+  },
+  purchaseSuccessPackVisual: {
+    borderRadius: 34,
+    height: 266,
+    justifyContent: "flex-end",
+    overflow: "hidden",
+    padding: 26,
+    width: 226,
+  },
+  purchaseSuccessUnlockBadge: {
+    alignItems: "center",
+    backgroundColor: candy.cream,
+    borderColor: candy.yellow,
+    borderRadius: 999,
+    borderWidth: 4,
+    boxShadow: "0 12px 24px rgba(38,18,46,0.22)",
+    height: 72,
+    justifyContent: "center",
+    position: "absolute",
+    right: -24,
+    top: -22,
+    width: 72,
+    zIndex: 4,
+  },
+  purchaseSuccessUnlockParticleLayer: {
+    bottom: -48,
+    left: -56,
+    overflow: "visible",
+    position: "absolute",
+    right: -56,
+    top: -48,
+    zIndex: 5,
+  },
+  purchaseSuccessUnlockParticle: {
+    position: "absolute",
+  },
+  purchaseSuccessVisualCopy: {
+    position: "relative",
+    zIndex: 2,
+  },
+  purchaseSuccessVisualTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "900",
-    lineHeight: 30,
-    marginTop: 9,
+    lineHeight: 28,
   },
-  purchaseSuccessPackText: {
-    color: candy.text,
+  purchaseSuccessVisualTitleLight: {
+    color: candy.cream,
+  },
+  purchaseSuccessVisualMeta: {
+    color: candy.ink,
     fontSize: 13,
     fontWeight: "900",
-    lineHeight: 18,
-    marginTop: 5,
-    maxWidth: "86%",
+    lineHeight: 16,
+  },
+  purchaseSuccessVisualMetaLight: {
+    color: "rgba(255,249,240,0.86)",
+  },
+  purchaseSuccessCopy: {
+    alignItems: "center",
+    marginTop: -6,
   },
   purchaseSuccessCTA: {
     alignItems: "center",
-    backgroundColor: candy.black,
-    borderColor: candy.white,
-    borderRadius: 22,
-    borderWidth: 2,
+    backgroundColor: candy.cream,
+    borderRadius: 999,
     flexDirection: "row",
-    gap: 8,
     justifyContent: "center",
-    marginTop: 18,
-    minHeight: 58,
-    shadowColor: "rgba(32,16,31,0.28)",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
+    minHeight: 56,
+    paddingHorizontal: 18,
     width: "100%",
   },
   purchaseSuccessCTAText: {
-    color: candy.white,
+    color: candy.black,
     fontFamily: displayFont,
     fontSize: 18,
     fontWeight: "900",
+  },
+  purchaseSuccessBottom: {
+    alignItems: "center",
+    gap: 12,
+    paddingBottom: 10,
+    width: "100%",
+  },
+  purchaseSuccessLegal: {
+    color: "rgba(255,249,240,0.72)",
+    fontSize: 11,
+    fontWeight: "900",
+    lineHeight: 14,
+    textAlign: "center",
   },
   moodWidgetShell: {
     borderRadius: 30,
@@ -15577,16 +18419,6 @@ const styles = StyleSheet.create({
     position: "relative",
     zIndex: 2,
   },
-  moodWidgetWarming: {
-    borderColor: "rgba(255,255,255,0.92)",
-  },
-  moodWidgetLit: {
-    borderColor: candy.white,
-    shadowColor: "rgba(255,36,95,0.36)",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-  },
   moodWidgetHeader: {
     alignItems: "flex-start",
     flexDirection: "row",
@@ -15603,23 +18435,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "900",
     lineHeight: 27,
-  },
-  moodWidgetTitleLit: {
-    color: candy.white,
-    textShadowColor: "rgba(32,16,31,0.22)",
-    textShadowOffset: { width: 1, height: 1.5 },
-    textShadowRadius: 0,
-  },
-  moodWidgetText: {
-    color: candy.text,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 16,
-    marginTop: 4,
-  },
-  moodWidgetTextLit: {
-    color: candy.white,
-    fontWeight: "900",
   },
   moodBellButton: {
     alignItems: "center",
@@ -15835,123 +18650,70 @@ const styles = StyleSheet.create({
     width: 34,
   },
   profileScreen: {
+    alignItems: "center",
+    alignSelf: "center",
     flexGrow: 1,
-    gap: 12,
-    justifyContent: "space-between",
-    paddingBottom: 116,
-    paddingHorizontal: 14,
-    paddingTop: APP_HEADER_TOP_SPACE,
+    gap: 10,
+    width: "100%",
   },
-  profileMainArea: {
-    gap: 12,
-  },
-  profilePanel: {
+  profileHeader: {
     alignItems: "center",
-    borderColor: candy.white,
-    borderRadius: 34,
-    borderWidth: 2,
-    justifyContent: "center",
-    minHeight: 244,
-    overflow: "hidden",
-    padding: 18,
-    shadowColor: "rgba(255, 30, 112, 0.26)",
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 1,
-    shadowRadius: 28,
+    alignSelf: "center",
+    flexDirection: "row",
+    gap: 14,
+    width: "100%",
   },
-  profileSparkle: {
-    height: 82,
-    position: "absolute",
-    right: 18,
-    top: 16,
-    transform: [{ rotate: "8deg" }],
-    width: 82,
-  },
-  profileCherry: {
-    bottom: -14,
-    height: 96,
-    left: -10,
-    opacity: 0.78,
-    position: "absolute",
-    transform: [{ rotate: "-12deg" }],
-    width: 96,
-  },
-  profileAvatar: {
+  profileBackButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderColor: candy.white,
+    backgroundColor: "rgba(255,249,240,0.16)",
     borderRadius: 999,
-    borderWidth: 2,
-    height: 106,
+    height: 50,
     justifyContent: "center",
-    shadowColor: "rgba(32,16,31,0.22)",
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 1,
-    shadowRadius: 22,
-    width: 106,
+    width: 50,
   },
-  profileAvatarEmoji: {
-    fontFamily: emojiFont,
-    fontSize: 52,
-    lineHeight: 64,
-  },
-  profileTitle: {
+  profileHeaderTitle: {
     color: candy.white,
     fontFamily: displayFont,
-    fontSize: 35,
+    fontSize: 44,
     fontWeight: "900",
-    lineHeight: 38,
-    marginTop: 10,
-    textAlign: "center",
-    textShadowColor: "rgba(32,16,31,0.3)",
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 0,
+    lineHeight: 48,
   },
-  profileMeta: {
-    backgroundColor: "rgba(255,255,255,0.22)",
-    borderColor: "rgba(255,255,255,0.42)",
-    borderRadius: 999,
-    borderWidth: 1.5,
-    color: candy.white,
-    fontSize: 12,
-    fontWeight: "900",
-    marginTop: 8,
-    overflow: "hidden",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    textAlign: "center",
+  profileMainArea: {
+    alignSelf: "center",
+    gap: 17,
+    width: "100%",
   },
   statusEditorPanel: {
-    backgroundColor: "rgba(255,255,255,0.78)",
-    borderColor: candy.white,
-    borderRadius: 26,
-    borderWidth: 2,
-    gap: 12,
-    padding: 14,
-    shadowColor: "rgba(255,36,95,0.14)",
-    shadowOffset: { width: 0, height: 10 },
+    backgroundColor: candy.cream,
+    borderColor: "rgba(43,23,53,0.08)",
+    borderRadius: 30,
+    borderWidth: 1,
+    gap: 16,
+    padding: 20,
+    shadowColor: "rgba(38,18,46,0.1)",
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 1,
-    shadowRadius: 18,
+    shadowRadius: 16,
   },
   statusEditorHeader: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 12,
+    gap: 16,
   },
   statusEditorPreview: {
     alignItems: "center",
-    backgroundColor: candy.white,
-    borderColor: "rgba(255,36,95,0.2)",
-    borderRadius: 24,
+    backgroundColor: candy.red,
+    borderColor: candy.yellow,
+    borderRadius: 26,
     borderWidth: 2,
-    height: 62,
+    height: 68,
     justifyContent: "center",
-    width: 62,
+    width: 68,
   },
   statusEditorPreviewEmoji: {
     fontFamily: emojiFont,
-    fontSize: 34,
-    lineHeight: 42,
+    fontSize: 37,
+    lineHeight: 44,
   },
   statusEditorCopy: {
     flex: 1,
@@ -15960,177 +18722,128 @@ const styles = StyleSheet.create({
   statusEditorTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 21,
+    fontSize: 25,
     fontWeight: "900",
-    lineHeight: 23,
+    lineHeight: 28,
   },
   statusEditorText: {
-    color: candy.text,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 16,
-    marginTop: 4,
-  },
-  statusEditorSectionHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 4,
-  },
-  statusEditorSectionTitle: {
-    color: candy.ink,
-    fontSize: 12,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  statusEditorSectionHint: {
     color: candy.muted,
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: "800",
+    lineHeight: 19,
+    marginTop: 4,
   },
   statusPresetGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
   statusPresetButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.76)",
-    borderColor: "rgba(255,255,255,0.92)",
+    backgroundColor: "rgba(245,40,110,0.08)",
+    borderColor: "transparent",
     borderRadius: 20,
-    borderWidth: 1.5,
+    borderWidth: 2,
     flexBasis: 58,
     flexGrow: 1,
-    height: 54,
+    height: 56,
     justifyContent: "center",
   },
   statusPresetButtonActive: {
-    backgroundColor: candy.red,
-    borderColor: candy.white,
-    shadowColor: "rgba(255,36,95,0.24)",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 1,
-    shadowRadius: 14,
+    backgroundColor: candy.yellow,
+    borderColor: candy.red,
   },
   statusPresetEmoji: {
     fontFamily: emojiFont,
-    fontSize: 28,
-    lineHeight: 34,
-  },
-  statusCustomPanel: {
-    backgroundColor: "rgba(255,255,255,0.68)",
-    borderColor: "rgba(255,255,255,0.86)",
-    borderRadius: 22,
-    borderWidth: 1.5,
-    gap: 10,
-    padding: 10,
-  },
-  statusCustomCopy: {
-    gap: 2,
-    paddingHorizontal: 2,
-  },
-  statusCustomTitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 15,
-    fontWeight: "900",
-  },
-  statusCustomHint: {
-    color: candy.text,
-    fontSize: 11,
-    fontWeight: "800",
-    lineHeight: 15,
+    fontSize: 29,
+    lineHeight: 36,
   },
   statusCustomRow: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 8,
+    gap: 10,
   },
   statusCustomInputBox: {
     backgroundColor: candy.white,
-    borderColor: "rgba(35,18,36,0.14)",
-    borderRadius: 18,
+    borderColor: "rgba(43,23,53,0.12)",
+    borderRadius: 22,
     borderWidth: 1.5,
     flex: 1,
     justifyContent: "center",
-    minHeight: 58,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  statusCustomInputLabel: {
-    color: candy.red,
-    fontSize: 9,
-    fontWeight: "900",
-    textTransform: "uppercase",
+    minHeight: 64,
+    paddingHorizontal: 18,
+    paddingVertical: 5,
   },
   statusCustomInput: {
     color: candy.ink,
     fontFamily: emojiFont,
-    fontSize: 24,
+    fontSize: 32,
     fontWeight: "900",
-    lineHeight: 30,
-    minHeight: 31,
+    lineHeight: 40,
+    minHeight: 42,
     paddingHorizontal: 0,
     paddingVertical: 0,
+    textAlign: "center",
   },
   statusCustomButton: {
     alignItems: "center",
-    backgroundColor: candy.black,
-    borderColor: candy.white,
-    borderRadius: 18,
+    backgroundColor: candy.darkColor,
+    borderColor: candy.darkColor,
+    borderRadius: 22,
     borderWidth: 2,
     justifyContent: "center",
-    minHeight: 58,
-    paddingHorizontal: 18,
+    minHeight: 64,
+    paddingHorizontal: 24,
   },
   statusCustomButtonText: {
     color: candy.white,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "900",
   },
   profileSettingsSection: {
-    gap: 8,
+    gap: 9,
   },
   profileSectionTitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 21,
+    color: "rgba(255,249,240,0.72)",
+    fontSize: 13,
     fontWeight: "900",
-    paddingHorizontal: 4,
+    letterSpacing: 1.8,
+    paddingHorizontal: 18,
+    textTransform: "uppercase",
   },
   profileNotificationList: {
-    gap: 8,
+    backgroundColor: candy.cream,
+    borderColor: "rgba(43,23,53,0.08)",
+    borderRadius: 30,
+    borderWidth: 1,
+    overflow: "hidden",
   },
   profileNotificationPanel: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.78)",
-    borderColor: candy.white,
-    borderRadius: 22,
-    borderWidth: 2,
+    backgroundColor: candy.cream,
+    borderBottomColor: "rgba(43,23,53,0.08)",
+    borderBottomWidth: 1,
     flexDirection: "row",
-    gap: 10,
-    minHeight: 62,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    gap: 13,
+    minHeight: 68,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
   },
   profileNotificationIcon: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderColor: "rgba(255,36,95,0.28)",
-    borderRadius: 18,
-    borderWidth: 2,
-    height: 42,
+    backgroundColor: "rgba(245,40,110,0.08)",
+    borderRadius: 17,
+    height: 44,
     justifyContent: "center",
-    width: 42,
+    width: 44,
   },
   profileNotificationEmoji: {
     fontFamily: emojiFont,
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 24,
+    lineHeight: 30,
   },
   profileNotificationIconOn: {
-    backgroundColor: candy.red,
-    borderColor: candy.white,
+    backgroundColor: candy.yellow,
   },
   profileNotificationCopy: {
     flex: 1,
@@ -16139,27 +18852,26 @@ const styles = StyleSheet.create({
   profileNotificationTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: "900",
-    lineHeight: 21,
+    lineHeight: 23,
   },
   profileNotificationToggle: {
     alignItems: "center",
-    backgroundColor: candy.white,
-    borderColor: candy.red,
+    backgroundColor: "rgba(43,23,53,0.08)",
+    borderColor: "transparent",
     borderRadius: 999,
-    borderWidth: 2,
+    borderWidth: 0,
     justifyContent: "center",
     minHeight: 38,
-    minWidth: 104,
-    paddingHorizontal: 12,
+    minWidth: 100,
+    paddingHorizontal: 14,
   },
   profileNotificationToggleOn: {
     backgroundColor: candy.red,
-    borderColor: candy.white,
   },
   profileNotificationToggleText: {
-    color: candy.red,
+    color: candy.muted,
     fontSize: 12,
     fontWeight: "900",
   },
@@ -16167,116 +18879,89 @@ const styles = StyleSheet.create({
     color: candy.white,
   },
   profileUtilityGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  actorRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 18,
-  },
-  actorChip: {
-    backgroundColor: candy.white,
-    borderColor: candy.black,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  actorChipActive: {
-    backgroundColor: candy.red,
-  },
-  actorChipText: {
-    color: candy.black,
-    fontSize: 13,
-    fontWeight: "900",
-  },
-  actorChipTextActive: {
-    color: candy.white,
+    backgroundColor: candy.cream,
+    borderColor: "rgba(43,23,53,0.08)",
+    borderRadius: 30,
+    borderWidth: 1,
+    overflow: "hidden",
   },
   profileAction: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.82)",
-    borderColor: candy.white,
-    borderRadius: 22,
-    borderWidth: 2,
-    flexBasis: 148,
-    flexGrow: 1,
+    backgroundColor: candy.cream,
+    borderBottomColor: "rgba(43,23,53,0.08)",
+    borderBottomWidth: 1,
     flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    minWidth: 140,
-    minHeight: 52,
-    paddingHorizontal: 10,
+    gap: 13,
+    justifyContent: "space-between",
+    minHeight: 68,
+    paddingHorizontal: 20,
   },
   profileActionText: {
-    color: candy.red,
+    color: candy.ink,
+    flex: 1,
     flexShrink: 1,
-    fontSize: 14,
+    fontSize: 17,
     fontWeight: "900",
-    textAlign: "center",
   },
   profileActionDanger: {
-    backgroundColor: "rgba(255,255,255,0.76)",
-    borderColor: candy.red,
-    borderStyle: "dashed",
+    backgroundColor: candy.roseDeep,
+    borderBottomColor: "rgba(255,249,240,0.14)",
   },
   profileActionDangerText: {
-    color: candy.red,
+    color: candy.white,
   },
   profileActionDangerSolid: {
     backgroundColor: candy.red,
-    borderColor: candy.white,
+    borderBottomColor: "rgba(255,249,240,0.14)",
   },
   profileActionDangerSolidText: {
     color: candy.white,
   },
   profileActionDark: {
-    backgroundColor: candy.black,
-    borderColor: "rgba(255,255,255,0.88)",
+    backgroundColor: candy.darkColor,
+    borderBottomColor: "rgba(255,249,240,0.14)",
   },
   profileActionDarkText: {
     color: candy.white,
   },
   aboutPanel: {
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderColor: candy.white,
-    borderRadius: 24,
-    borderWidth: 2,
-    padding: 14,
+    backgroundColor: "rgba(173,13,78,0.62)",
+    borderColor: "rgba(255,249,240,0.1)",
+    borderRadius: 30,
+    borderWidth: 1,
+    padding: 20,
   },
   aboutEyebrow: {
     alignSelf: "flex-start",
-    backgroundColor: candy.roseMist,
+    backgroundColor: "rgba(255,249,240,0.18)",
     borderRadius: 999,
-    color: candy.red,
-    fontSize: 10,
+    color: candy.yellow,
+    fontSize: 11,
     fontWeight: "900",
     overflow: "hidden",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     textTransform: "uppercase",
   },
   aboutTitle: {
-    color: candy.ink,
+    color: candy.white,
     fontFamily: displayFont,
-    fontSize: 23,
+    fontSize: 29,
     fontWeight: "900",
     marginTop: 8,
   },
   aboutText: {
-    color: candy.text,
-    fontSize: 13,
+    color: "rgba(255,249,240,0.76)",
+    fontSize: 15,
     fontWeight: "800",
-    lineHeight: 18,
-    marginTop: 6,
+    lineHeight: 21,
+    marginTop: 8,
   },
   aboutMeta: {
-    color: candy.red,
-    fontSize: 11,
+    color: "rgba(255,249,240,0.78)",
+    fontSize: 12,
     fontWeight: "900",
-    marginTop: 10,
+    marginTop: 12,
   },
   debugHero: {
     borderColor: candy.white,
@@ -16546,6 +19231,168 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: 2,
   },
+  debugPurchasePanel: {
+    gap: 12,
+  },
+  debugPurchaseAll: {
+    alignItems: "center",
+    backgroundColor: candy.yellow,
+    borderColor: "rgba(255,255,255,0.78)",
+    borderRadius: 24,
+    borderWidth: 2,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 78,
+    padding: 13,
+  },
+  debugPurchaseAllDone: {
+    backgroundColor: "rgba(255,255,255,0.82)",
+  },
+  debugPurchaseAllIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderRadius: 18,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  debugPurchaseAllTitle: {
+    color: candy.black,
+    fontFamily: displayFont,
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  debugPurchaseAllText: {
+    color: "rgba(35,18,36,0.78)",
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  debugPurchaseAllCta: {
+    backgroundColor: candy.black,
+    borderRadius: 999,
+    color: candy.white,
+    fontSize: 11,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  debugPurchaseGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  debugPurchaseCard: {
+    backgroundColor: "rgba(255,255,255,0.82)",
+    borderColor: "rgba(255,255,255,0.88)",
+    borderRadius: 20,
+    borderWidth: 2,
+    flexBasis: "47%",
+    flexGrow: 1,
+    gap: 8,
+    minHeight: 116,
+    padding: 12,
+  },
+  debugPurchaseCardDone: {
+    backgroundColor: "rgba(255,225,241,0.72)",
+    borderColor: "rgba(255,255,255,0.54)",
+  },
+  debugPurchaseDot: {
+    borderColor: "rgba(255,255,255,0.84)",
+    borderRadius: 999,
+    borderWidth: 2,
+    height: 24,
+    width: 24,
+  },
+  debugPurchaseCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  debugPurchaseTitle: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  debugPurchaseText: {
+    color: candy.text,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  debugPurchaseStatus: {
+    alignSelf: "flex-start",
+    backgroundColor: candy.black,
+    borderRadius: 999,
+    color: candy.white,
+    fontSize: 10,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  debugPurchaseStatusDone: {
+    backgroundColor: candy.cream,
+    color: candy.red,
+  },
+  debugPurchaseFeatureList: {
+    gap: 9,
+  },
+  debugPurchaseFeature: {
+    alignItems: "center",
+    backgroundColor: candy.black,
+    borderColor: "rgba(255,255,255,0.72)",
+    borderRadius: 20,
+    borderWidth: 2,
+    flexDirection: "row",
+    gap: 11,
+    minHeight: 68,
+    padding: 11,
+  },
+  debugPurchaseFeatureDone: {
+    backgroundColor: "rgba(255,255,255,0.84)",
+  },
+  debugPurchaseFeatureIcon: {
+    alignItems: "center",
+    backgroundColor: candy.red,
+    borderRadius: 15,
+    height: 34,
+    justifyContent: "center",
+    width: 34,
+  },
+  debugPurchaseFeatureIconDone: {
+    backgroundColor: candy.yellow,
+  },
+  debugPurchaseFeatureTitle: {
+    color: candy.white,
+    fontFamily: displayFont,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  debugPurchaseFeatureTitleDone: {
+    color: candy.ink,
+  },
+  debugPurchaseFeatureText: {
+    color: "rgba(255,255,255,0.76)",
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 15,
+    marginTop: 1,
+  },
+  debugPurchaseFeatureTextDone: {
+    color: candy.text,
+  },
+  debugPurchaseFeaturePrice: {
+    backgroundColor: candy.yellow,
+    borderRadius: 999,
+    color: candy.black,
+    fontSize: 11,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
   debugSectionHeader: {
     paddingHorizontal: 4,
   },
@@ -16627,36 +19474,11 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     paddingTop: 30,
   },
-  inviteFloatingHeart: {
-    height: 112,
-    opacity: 0.78,
-    position: "absolute",
-    right: -8,
-    top: 74,
-    width: 112,
-  },
-  inviteFloatingCherry: {
-    bottom: -44,
-    height: 104,
-    left: -24,
-    opacity: 0.58,
-    position: "absolute",
-    width: 104,
-  },
   inviteHero: {
     flex: 1,
     minHeight: 626,
     overflow: "visible",
     paddingTop: 8,
-  },
-  inviteBackdropCircle: {
-    backgroundColor: "rgba(255,249,240,0.08)",
-    borderRadius: 999,
-    height: 220,
-    position: "absolute",
-    right: -102,
-    top: 58,
-    width: 220,
   },
   inviteTopRow: {
     alignItems: "center",
@@ -16671,48 +19493,6 @@ const styles = StyleSheet.create({
   },
   inviteBrandPill: {
     alignSelf: "center",
-  },
-  inviteLock: {
-    height: 86,
-    position: "absolute",
-    right: 12,
-    top: 16,
-    transform: [{ rotate: "10deg" }],
-    width: 86,
-  },
-  inviteSparkles: {
-    bottom: 18,
-    height: 88,
-    opacity: 0.78,
-    position: "absolute",
-    right: 12,
-    width: 88,
-  },
-  inviteEyebrow: {
-    alignSelf: "center",
-    color: candy.white,
-    fontFamily: displayFont,
-    fontSize: 21,
-    fontWeight: "900",
-    letterSpacing: 0,
-    marginBottom: 6,
-    textAlign: "center",
-    textShadowColor: "rgba(32,16,31,0.28)",
-    textShadowOffset: { width: 1.5, height: 1.5 },
-    textShadowRadius: 0,
-    textTransform: "uppercase",
-  },
-  inviteTitle: {
-    color: candy.white,
-    fontFamily: displayFont,
-    fontSize: 39,
-    fontWeight: "900",
-    lineHeight: 41,
-    marginTop: 42,
-    maxWidth: "82%",
-    textShadowColor: "rgba(32,16,31,0.36)",
-    textShadowOffset: { width: 2, height: 2.5 },
-    textShadowRadius: 0,
   },
   inviteText: {
     color: candy.white,
@@ -16731,22 +19511,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     paddingHorizontal: 18,
     paddingVertical: 28,
-  },
-  inviteTicketGlow: {
-    backgroundColor: candy.pink,
-    borderRadius: 999,
-    bottom: -42,
-    height: 92,
-    left: 42,
-    position: "absolute",
-    right: 42,
-  },
-  inviteTicketShimmer: {
-    backgroundColor: "rgba(255,255,255,0.42)",
-    bottom: -36,
-    position: "absolute",
-    top: -36,
-    width: 42,
   },
   inviteTicketLabel: {
     alignSelf: "center",
@@ -16802,36 +19566,6 @@ const styles = StyleSheet.create({
     color: candy.white,
     fontSize: 14,
     fontWeight: "900",
-  },
-  inviteTicketDots: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    marginVertical: 8,
-  },
-  inviteDot: {
-    backgroundColor: candy.red,
-    borderRadius: 999,
-    height: 8,
-    width: 8,
-  },
-  inviteDash: {
-    backgroundColor: "rgba(255,36,95,0.22)",
-    borderRadius: 999,
-    flex: 1,
-    height: 3,
-    maxWidth: 150,
-  },
-  inviteTicketHint: {
-    color: candy.text,
-    fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 18,
-    textAlign: "center",
-  },
-  inviteActions: {
-    gap: 9,
   },
   inviteWaitingCard: {
     alignItems: "center",
@@ -16895,22 +19629,6 @@ const styles = StyleSheet.create({
   inviteTertiaryButtonText: {
     color: candy.white,
   },
-  inviteSecondaryButton: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.82)",
-    borderColor: candy.white,
-    borderRadius: 20,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    minHeight: 50,
-  },
-  inviteSecondaryText: {
-    color: candy.red,
-    fontSize: 14,
-    fontWeight: "900",
-  },
   joinScreen: {
     flexGrow: 1,
     justifyContent: "space-between",
@@ -16919,24 +19637,6 @@ const styles = StyleSheet.create({
     paddingBottom: 13,
     paddingHorizontal: 21,
     paddingTop: 16,
-  },
-  joinBackdropCircleLarge: {
-    backgroundColor: "rgba(255,249,240,0.08)",
-    borderRadius: 999,
-    height: 220,
-    position: "absolute",
-    right: -96,
-    top: 158,
-    width: 220,
-  },
-  joinBackdropCircleSmall: {
-    backgroundColor: "rgba(255,249,240,0.08)",
-    borderRadius: 999,
-    bottom: 164,
-    height: 180,
-    left: -118,
-    position: "absolute",
-    width: 180,
   },
   joinContent: {
     gap: 26,
@@ -16951,18 +19651,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     gap: 10,
-  },
-  joinTitle: {
-    color: candy.white,
-    fontFamily: displayFont,
-    fontSize: 37,
-    fontWeight: "900",
-    lineHeight: 40,
-    marginTop: 12,
-    maxWidth: 320,
-    textShadowColor: "rgba(32,16,31,0.32)",
-    textShadowOffset: { width: 2, height: 2.5 },
-    textShadowRadius: 0,
   },
   joinCodePressable: {
     minHeight: 68,
@@ -17044,172 +19732,142 @@ const styles = StyleSheet.create({
   joinPrimaryButton: {
     minHeight: 58,
   },
-  inviteContinueButton: {
-    alignItems: "center",
-    backgroundColor: candy.black,
-    borderColor: candy.white,
-    borderRadius: 20,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    minHeight: 52,
-    shadowColor: "rgba(32,16,31,0.26)",
-    shadowOffset: { width: 0, height: 9 },
-    shadowOpacity: 1,
-    shadowRadius: 16,
-  },
-  inviteContinueText: {
-    color: candy.white,
-    fontFamily: displayFont,
-    fontSize: 15,
-    fontWeight: "900",
-  },
-  inviteFinePrint: {
-    color: candy.ink,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 16,
-    textAlign: "center",
-  },
-  inviteInlineLink: {
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 26,
-  },
-  inviteInlineLinkText: {
-    color: candy.white,
-    fontSize: 12,
-    fontWeight: "900",
-    lineHeight: 16,
-    textAlign: "center",
-    textDecorationLine: "underline",
-  },
   leaveScreen: {
-    alignItems: "center",
+    backgroundColor: candy.darkColor,
     flex: 1,
-    justifyContent: "center",
     overflow: "hidden",
-    paddingHorizontal: 24,
-    paddingVertical: 20,
   },
-  leaveContent: {
+  leaveScrollContent: {
     alignItems: "center",
-    maxWidth: 430,
+    flexGrow: 1,
+  },
+  leaveInner: {
+    alignSelf: "center",
+    flexGrow: 1,
+    justifyContent: "space-between",
     width: "100%",
   },
-  leaveFloatingHeart: {
-    height: 104,
-    left: -16,
-    opacity: 0.42,
-    position: "absolute",
-    top: 78,
-    width: 104,
+  leaveTopBar: {
+    alignSelf: "stretch",
   },
-  leaveFloatingBubble: {
-    bottom: 84,
-    height: 96,
-    opacity: 0.5,
-    position: "absolute",
-    right: -14,
-    width: 96,
-  },
-  leaveEmojiHalo: {
+  leaveBackButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.52)",
-    borderColor: candy.white,
+    backgroundColor: "rgba(255,244,232,0.12)",
     borderRadius: 999,
-    borderWidth: 2,
-    height: 138,
+    height: 40,
     justifyContent: "center",
-    shadowColor: "rgba(255,36,95,0.28)",
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 1,
-    shadowRadius: 26,
-    width: 138,
+    width: 40,
+  },
+  leaveContentStage: {
+    flexGrow: 1,
+    width: "100%",
+  },
+  leaveCopyBlock: {
+    marginTop: 0,
   },
   leaveEmoji: {
     fontFamily: emojiFont,
-    fontSize: 82,
-    lineHeight: 96,
-  },
-  leaveEyebrow: {
-    alignSelf: "center",
-    backgroundColor: candy.roseMist,
-    borderColor: candy.white,
-    borderRadius: 999,
-    borderWidth: 2,
-    color: candy.red,
-    fontSize: 11,
-    fontWeight: "900",
-    marginTop: 26,
-    overflow: "hidden",
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    textTransform: "uppercase",
+    fontSize: 35,
+    lineHeight: 42,
+    marginBottom: 16,
   },
   leaveTitle: {
-    color: candy.ink,
+    color: candy.cream,
     fontFamily: displayFont,
-    fontSize: 38,
+    fontSize: 34,
     fontWeight: "900",
-    lineHeight: 41,
-    marginTop: 14,
-    maxWidth: 390,
-    textAlign: "center",
-    textShadowColor: "rgba(255,255,255,0.75)",
-    textShadowOffset: { width: 1.5, height: 1.5 },
-    textShadowRadius: 0,
+    lineHeight: 36,
+    maxWidth: 340,
   },
   leaveText: {
-    color: candy.text,
-    fontSize: 15,
+    color: "rgba(255,244,232,0.73)",
+    fontSize: 14,
     fontWeight: "900",
-    lineHeight: 21,
-    marginTop: 10,
-    maxWidth: 370,
-    textAlign: "center",
+    lineHeight: 19,
+    marginTop: 14,
+    maxWidth: 350,
   },
-  leavePromise: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.74)",
-    borderColor: candy.white,
-    borderRadius: 24,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 10,
+  leaveChecklist: {
+    gap: 9,
     marginTop: 18,
-    maxWidth: 380,
-    padding: 14,
+  },
+  leaveChecklistRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,244,232,0.10)",
+    borderRadius: 15,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     width: "100%",
   },
-  leavePromiseEmoji: {
-    fontFamily: emojiFont,
-    fontSize: 26,
-    lineHeight: 32,
+  leaveChecklistDot: {
+    backgroundColor: candy.red,
+    borderRadius: 999,
+    height: 8,
+    width: 8,
   },
-  leavePromiseText: {
-    color: candy.ink,
+  leaveChecklistText: {
+    color: candy.cream,
     flex: 1,
     fontSize: 13,
     fontWeight: "900",
-    lineHeight: 18,
+    lineHeight: 16,
+  },
+  leaveConfirmBlock: {
+    marginTop: 20,
+  },
+  leaveConfirmInput: {
+    backgroundColor: "rgba(255,244,232,0.10)",
+    borderColor: "rgba(255,244,232,0.22)",
+    borderRadius: 17,
+    borderWidth: 1.5,
+    color: candy.cream,
+    fontFamily: labelFont,
+    fontSize: 14,
+    fontWeight: "900",
+    minHeight: 52,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  leaveConfirmInputValid: {
+    borderColor: candy.red,
+    boxShadow: "0 0 0 1px rgba(245,40,110,0.22)",
   },
   leaveActions: {
     alignItems: "center",
-    gap: 10,
-    marginTop: 24,
-    maxWidth: 330,
+    gap: 11,
     width: "100%",
   },
-  leavePrimary: {
-    minHeight: 58,
-    paddingHorizontal: 18,
+  leavePrimaryButton: {
+    alignItems: "center",
+    backgroundColor: candy.red,
+    borderRadius: 20,
+    justifyContent: "center",
+    minHeight: 64,
     width: "100%",
   },
-  leaveSecondary: {
-    minHeight: 50,
-    width: "100%",
+  leavePrimaryButtonDisabled: {
+    opacity: 0.45,
+  },
+  leavePrimaryText: {
+    color: candy.cream,
+    fontSize: 16,
+    fontWeight: "900",
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  leaveCancelButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 32,
+  },
+  leaveCancelText: {
+    color: "rgba(255,244,232,0.62)",
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 18,
   },
   welcomeScreen: {
     alignItems: "center",
@@ -17251,9 +19909,6 @@ const styles = StyleSheet.create({
     left: -138,
     position: "absolute",
     width: 180,
-  },
-  welcomeLogo: {
-    marginBottom: 0,
   },
   welcomeTopBar: {
     alignItems: "center",
@@ -17319,22 +19974,6 @@ const styles = StyleSheet.create({
     shadowRadius: 9,
     top: 2,
   },
-  welcomeCherry: {
-    height: 96,
-    left: -24,
-    opacity: 0.54,
-    position: "absolute",
-    top: 92,
-    width: 96,
-  },
-  welcomeSparkles: {
-    height: 74,
-    opacity: 0.78,
-    position: "absolute",
-    right: -8,
-    top: 44,
-    width: 74,
-  },
   welcomeSlide: {
     alignSelf: "center",
     flexGrow: 1,
@@ -17357,43 +19996,6 @@ const styles = StyleSheet.create({
     minHeight: 0,
     overflow: "visible",
     width: "100%",
-  },
-  welcomeVisualHalo: {
-    alignItems: "center",
-    alignSelf: "center",
-    backgroundColor: "transparent",
-    borderColor: "transparent",
-    borderRadius: 999,
-    borderWidth: 0,
-    height: 78,
-    justifyContent: "center",
-    marginBottom: 10,
-    width: 78,
-  },
-  welcomeVisualHaloCompact: {
-    height: 54,
-    marginBottom: 8,
-    width: 54,
-  },
-  welcomeBigSticker: {
-    height: 76,
-    width: 76,
-  },
-  welcomeBigStickerCompact: {
-    height: 54,
-    width: 54,
-  },
-  welcomeHero: {
-    backgroundColor: "rgba(255,255,255,0.78)",
-    borderColor: candy.white,
-    borderRadius: 32,
-    borderWidth: 2,
-    overflow: "hidden",
-    padding: 18,
-    shadowColor: "rgba(87, 8, 58, 0.18)",
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 1,
-    shadowRadius: 24,
   },
   welcomeEyebrow: {
     alignSelf: "flex-start",
@@ -17510,75 +20112,6 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(32,16,31,0.28)",
     textShadowOffset: { width: 1.5, height: 1.5 },
     textShadowRadius: 0,
-  },
-  welcomeDemoVotedHint: {
-    color: "rgba(255,249,240,0.86)",
-    fontSize: 11,
-    fontWeight: "900",
-    lineHeight: 15,
-    marginTop: 10,
-    maxWidth: 250,
-    textAlign: "center",
-  },
-  welcomeDemoTop: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  welcomeDemoMetaRow: {
-    alignItems: "center",
-    flex: 1,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    minWidth: 0,
-    paddingRight: 8,
-  },
-  welcomeDemoTag: {
-    alignSelf: "flex-start",
-    backgroundColor: candy.white,
-    borderRadius: 999,
-    color: candy.red,
-    fontSize: 10,
-    fontWeight: "900",
-    overflow: "hidden",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    textTransform: "uppercase",
-  },
-  welcomeDemoSticker: {
-    height: 62,
-    position: "absolute",
-    right: 10,
-    top: 10,
-    transform: [{ rotate: "10deg" }],
-    width: 62,
-    zIndex: 1,
-  },
-  welcomeDemoCopy: {
-    alignItems: "center",
-    paddingHorizontal: 58,
-  },
-  welcomeDemoTitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 26,
-    fontWeight: "900",
-    lineHeight: 29,
-    marginTop: 10,
-    textAlign: "center",
-    textShadowColor: "rgba(255,255,255,0.52)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 0,
-  },
-  welcomeDemoText: {
-    color: candy.text,
-    fontSize: 12,
-    fontWeight: "800",
-    height: 17,
-    lineHeight: 16,
-    marginTop: 5,
-    textAlign: "center",
   },
   welcomePracticeCard: {
     backgroundColor: candy.cream,
@@ -17731,40 +20264,6 @@ const styles = StyleSheet.create({
   welcomeDemoFeedbackTextHot: {
     color: candy.white,
   },
-  welcomeSteps: {
-    gap: 9,
-  },
-  welcomeStep: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.72)",
-    borderColor: candy.white,
-    borderRadius: 23,
-    borderWidth: 2,
-    flexDirection: "row",
-    gap: 12,
-    minHeight: 88,
-    padding: 12,
-  },
-  welcomeStepSticker: {
-    height: 58,
-    width: 58,
-  },
-  welcomeStepCopy: {
-    flex: 1,
-  },
-  welcomeStepTitle: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  welcomeStepText: {
-    color: candy.text,
-    fontSize: 12,
-    fontWeight: "700",
-    lineHeight: 16,
-    marginTop: 3,
-  },
   welcomeCTA: {
     alignSelf: "center",
     flex: 1,
@@ -17796,14 +20295,6 @@ const styles = StyleSheet.create({
   },
   welcomeNavDisabled: {
     opacity: 0.42,
-  },
-  welcomeHint: {
-    color: candy.ink,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 16,
-    marginTop: 8,
-    textAlign: "center",
   },
   welcomeSkipButton: {
     alignItems: "center",
@@ -17948,14 +20439,5 @@ const styles = StyleSheet.create({
     fontFamily: labelFont,
     fontSize: 14,
     fontWeight: "900",
-  },
-  errorText: {
-    color: candy.red,
-    fontSize: 13,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  disabled: {
-    opacity: 0.6,
   },
 });

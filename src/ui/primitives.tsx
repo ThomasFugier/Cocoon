@@ -255,8 +255,8 @@ const buttonSizes = StyleSheet.create({
 
 const buttonVariants = StyleSheet.create({
   primary: {
-    backgroundColor: wsColors.black,
-    borderColor: wsColors.black,
+    backgroundColor: wsColors.darkColor,
+    borderColor: wsColors.darkColor,
   },
   secondary: {
     backgroundColor: wsColors.cream,

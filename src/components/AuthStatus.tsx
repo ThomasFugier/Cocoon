@@ -100,7 +100,7 @@ export function ProfileAccountPanel({
     <View style={styles.accountPanel}>
       <View style={styles.accountHeader}>
         <View style={[styles.accountIcon, account.connected && styles.accountIconConnected]}>
-          {account.connected ? <User size={18} color={candy.white} /> : <LockKeyhole size={18} color={candy.red} />}
+          {account.connected ? <User size={22} color={candy.white} /> : <LockKeyhole size={22} color={candy.red} />}
         </View>
         <View style={styles.accountCopy}>
           <Text style={styles.accountTitle}>
@@ -177,31 +177,30 @@ function ProviderButton({
 
 const styles = StyleSheet.create({
   accountPanel: {
-    backgroundColor: "rgba(255,249,240,0.82)",
-    borderColor: candy.white,
-    borderRadius: 24,
-    borderWidth: 2,
-    gap: 12,
-    padding: 14,
+    backgroundColor: candy.cream,
+    borderColor: "rgba(43,23,53,0.08)",
+    borderRadius: 30,
+    borderWidth: 1,
+    gap: 14,
+    padding: 20,
+    width: "100%",
   },
   accountHeader: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 10,
+    gap: 14,
   },
   accountIcon: {
     alignItems: "center",
-    backgroundColor: candy.white,
-    borderColor: "rgba(245,40,110,0.24)",
-    borderRadius: 18,
-    borderWidth: 2,
-    height: 42,
+    backgroundColor: "rgba(245,40,110,0.08)",
+    borderColor: "transparent",
+    borderRadius: 22,
+    height: 54,
     justifyContent: "center",
-    width: 42,
+    width: 54,
   },
   accountIconConnected: {
-    backgroundColor: candy.red,
-    borderColor: candy.white,
+    backgroundColor: candy.darkColor,
   },
   accountCopy: {
     flex: 1,
@@ -210,45 +209,44 @@ const styles = StyleSheet.create({
   accountTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 19,
+    fontSize: 23,
     fontWeight: "900",
-    lineHeight: 22,
+    lineHeight: 27,
   },
   accountText: {
     color: candy.text,
     fontFamily: labelFont,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "800",
-    lineHeight: 16,
-    marginTop: 3,
+    lineHeight: 19,
+    marginTop: 4,
   },
   accountDetailGrid: {
-    gap: 8,
+    borderTopColor: "rgba(43,23,53,0.08)",
+    borderTopWidth: 1,
+    marginTop: 4,
   },
   accountDetailCell: {
-    backgroundColor: "rgba(255,249,240,0.78)",
-    borderColor: "rgba(245,40,110,0.14)",
-    borderRadius: 16,
-    borderWidth: 1.5,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderBottomColor: "rgba(43,23,53,0.08)",
+    borderBottomWidth: 1,
+    paddingVertical: 12,
   },
   accountLabel: {
     color: candy.red,
     fontFamily: labelFont,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
     textTransform: "uppercase",
   },
   accountValue: {
     color: candy.ink,
     fontFamily: labelFont,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "900",
-    marginTop: 3,
+    marginTop: 4,
   },
   accountProviderActions: {
-    gap: 10,
+    gap: 12,
   },
   errorText: {
     color: candy.red,

@@ -1,5 +1,7 @@
 import { Platform, type TextStyle, type ViewStyle } from "react-native";
 
+export const darkColor = "#26122E";
+
 export const wsColors = {
   ink: "#2B1735",
   text: "#3A2541",
@@ -23,7 +25,8 @@ export const wsColors = {
   white: "#FFF9F0",
   mint: "#82D7BE",
   green: "#2B9B78",
-  black: "#26122E",
+  darkColor,
+  black: darkColor,
   shadow: "rgba(38, 18, 46, 0.22)",
   line: "rgba(43,23,53,0.14)",
   veil: "rgba(255,249,240,0.78)",

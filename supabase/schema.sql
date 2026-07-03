@@ -1197,7 +1197,7 @@ begin
     returning members.couple_id
   )
   delete from public.couples couples
-  where couples.id in (select couple_id from deleted_memberships)
+  where couples.id in (select deleted_memberships.couple_id from deleted_memberships)
     and not exists (
       select 1
       from public.couple_members remaining
