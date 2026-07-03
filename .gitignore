@@ -30,6 +30,10 @@ yarn-error.*
 expo-web.*.log
 .codex-runtime/
 
+# generated local artifacts
+ASO/
+artifacts/
+
 # macOS
 .DS_Store
 *.pem

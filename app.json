@@ -3,7 +3,7 @@
     "name": "WeSpice",
     "slug": "wespice",
     "scheme": "wespice",
-    "version": "1.0.41",
+    "version": "1.0.42",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -51,6 +51,12 @@
         }
       ],
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ee16f06b-5c1e-4054-bd8f-5bd0577346c3"
+      }
+    },
+    "owner": "thomasfugiers-organization"
   }
 }

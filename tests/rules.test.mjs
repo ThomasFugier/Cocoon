@@ -10,6 +10,8 @@ const uiPrimitives = readFileSync(new URL("../src/ui/primitives.tsx", import.met
 const offlineQueue = readFileSync(new URL("../src/lib/offlineQueue.ts", import.meta.url), "utf8");
 const easJson = readFileSync(new URL("../eas.json", import.meta.url), "utf8");
 const packageJson = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+const envExample = readFileSync(new URL("../.env.example", import.meta.url), "utf8");
+const envTypes = readFileSync(new URL("../src/env.d.ts", import.meta.url), "utf8");
 const deleteAccountFunction = readFileSync(new URL("../supabase/functions/delete-account/index.ts", import.meta.url), "utf8");
 const notifyEvent = readFileSync(new URL("../supabase/functions/notify-event/index.ts", import.meta.url), "utf8");
 const notifyScheduled = readFileSync(new URL("../supabase/functions/notify-scheduled/index.ts", import.meta.url), "utf8");
@@ -494,12 +496,23 @@ test("debug screen can simulate store purchases locally", () => {
 
 test("web store purchases unlock locally without the debug screen", () => {
   assert.match(app, /function withPurchaseTargetUnlocked/);
-  assert.match(app, /if \(Platform\.OS === "web"\) \{/);
+  assert.match(app, /if \(storeBypassEnabled \|\| Platform\.OS === "web"\) \{/);
   assert.match(app, /setCouple\(withPurchaseTargetUnlocked\(couple, config\)\)/);
   assert.match(app, /setPurchaseSuccess\(success\)/);
   assert.match(app, /setResponseLimitPromptVisible\(false\)/);
   assert.match(app, /await Haptics\.notificationAsync\(Haptics\.NotificationFeedbackType\.Success\)/);
   assert.match(app, /if \(session\) \{[\s\S]{0,260}purchaseWithRevenueCat/);
+});
+
+test("store bypass mode keeps Supabase active while skipping RevenueCat", () => {
+  assert.match(app, /const storeBypassEnabled = process\.env\.EXPO_PUBLIC_ENABLE_STORE_BYPASS === "true"/);
+  assert.match(app, /storeBypassEnabled \? "Mode test: achat/);
+  assert.match(app, /if \(storeBypassEnabled\) \{[\s\S]{0,700}withUnlockedFeatures\(withUnlockedCategories\(couple, PAID_PACK_CATEGORIES\), PAID_FEATURES\)/);
+  assert.match(app, /storeBypassEnabled \? \(fallback\?\.unlockedCategories \?\? \[\]\)\.filter/);
+  assert.match(app, /storeBypassEnabled \? \(fallback\?\.unlockedFeatures \?\? \[\]\)\.filter/);
+  assert.match(envExample, /EXPO_PUBLIC_ENABLE_STORE_BYPASS=false/);
+  assert.match(envTypes, /EXPO_PUBLIC_ENABLE_STORE_BYPASS\?: string/);
+  assert.match(readFileSync(new URL("../README.md", import.meta.url), "utf8"), /EXPO_PUBLIC_ENABLE_STORE_BYPASS=true/);
 });
 
 test("chat screen uses the dark ephemeral conversation layout", () => {

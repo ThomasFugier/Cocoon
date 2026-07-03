@@ -49,6 +49,14 @@ EXPO_PUBLIC_REVENUECAT_IOS_API_KEY=appl_...
 EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY=goog_...
 ```
 
+Pour un APK interne de QA sans compte store, tu peux activer :
+
+```txt
+EXPO_PUBLIC_ENABLE_STORE_BYPASS=true
+```
+
+Ce mode garde Supabase/Auth actifs, mais les boutons d'achat déverrouillent les packs/options localement sans appeler RevenueCat ni Google Play/App Store. Ne jamais l'activer sur un build public App Store / Google Play.
+
 Secret Supabase :
 
 ```bash

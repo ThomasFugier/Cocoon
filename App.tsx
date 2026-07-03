@@ -271,6 +271,7 @@ const purchaseUnlockParticles = [
   { color: candy.cream, height: 8, left: 184, radius: 999, rotate: "0deg", top: 222, width: 8, x: 42, y: 42 },
 ] as const;
 const localModeEnabled = process.env.NODE_ENV !== "production" || process.env.EXPO_PUBLIC_ENABLE_LOCAL_MODE === "true";
+const storeBypassEnabled = process.env.EXPO_PUBLIC_ENABLE_STORE_BYPASS === "true";
 
 function desireCardCount(category: DesireCategory) {
   return desireCardCountsByCategory.get(category) ?? 0;
@@ -1422,9 +1423,13 @@ async function coupleFromRemoteState(remote: RemoteCoupleState, fallback?: Coupl
     unlockedCategories: Array.from(new Set([
       "Vanille" as DesireCategory,
       PERSONAL_CATEGORY,
+      ...(storeBypassEnabled ? (fallback?.unlockedCategories ?? []).filter((category) => PAID_PACK_CATEGORIES.includes(category)) : []),
       ...(remote.category_unlocks ?? []).filter(isKnownCategory),
     ])),
-    unlockedFeatures: Array.from(new Set((remote.feature_unlocks ?? []).filter(isKnownFeature))),
+    unlockedFeatures: Array.from(new Set([
+      ...(storeBypassEnabled ? (fallback?.unlockedFeatures ?? []).filter(isKnownFeature) : []),
+      ...(remote.feature_unlocks ?? []).filter(isKnownFeature),
+    ])),
     mood: {
       me: moodLevelFromRemote(remote, currentMember, fallback?.mood.me ?? 0),
       partner: moodLevelFromRemote(remote, partnerMember, fallback?.mood.partner ?? 0),
@@ -2921,14 +2926,14 @@ function Root() {
         return;
       }
 
-      if (Platform.OS === "web") {
+      if (storeBypassEnabled || Platform.OS === "web") {
         setCouple(withPurchaseTargetUnlocked(couple, config));
         if (config.target.kind === "feature" && config.target.feature === NO_ADS_FEATURE) {
           fakeAdStats.current = { matchesSinceAd: 0, votesSinceAd: 0 };
           completeFakeAd();
         }
         setResponseLimitPromptVisible(false);
-        setSyncError("");
+        setSyncError(storeBypassEnabled ? "Mode test: achat débloqué sans store. Google/Supabase restent actifs." : "");
         setPurchaseSuccess(success);
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         return;
@@ -3135,6 +3140,21 @@ function Root() {
   }, []);
 
   const handleRestorePurchases = useCallback(async () => {
+    if (storeBypassEnabled) {
+      if (!couple) {
+        return;
+      }
+
+      setCouple(withUnlockedFeatures(withUnlockedCategories(couple, PAID_PACK_CATEGORIES), PAID_FEATURES));
+      fakeAdStats.current = { matchesSinceAd: 0, votesSinceAd: 0 };
+      completeFakeAd();
+      setResponseLimitPromptVisible(false);
+      setPurchaseSuccess(null);
+      setSyncError("Mode test: tous les achats sont actifs sans store.");
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      return;
+    }
+
     if (!session || !couple || !canWriteRemoteCouple(couple)) {
       setSyncError("Connecte-toi avec un espace Supabase synchronisé pour restaurer les achats.");
       return;
@@ -3150,7 +3170,7 @@ function Root() {
       setSyncError(`Restauration impossible: ${message}`);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
-  }, [canWriteRemoteCouple, couple, refreshRemoteCoupleState, session]);
+  }, [canWriteRemoteCouple, completeFakeAd, couple, refreshRemoteCoupleState, session]);
 
   const handleCopyInvite = useCallback(async () => {
     if (!couple) {
