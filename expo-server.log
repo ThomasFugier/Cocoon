@@ -1,0 +1,32 @@
+
+> wespice@1.0.43 start
+> expo start --host localhost
+
+env: load .env
+env: export EXPO_ACCESS_TOKEN EXPO_PUBLIC_EAS_PROJECT_ID EXPO_PUBLIC_ENABLE_LOCAL_MODE EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY EXPO_PUBLIC_REVENUECAT_IOS_API_KEY EXPO_PUBLIC_SUPABASE_ANON_KEY EXPO_PUBLIC_SUPABASE_URL REVENUECAT_SECRET_API_KEY WESPICE_NOTIFICATION_SECRET
+Starting project at C:\Users\ThomasFugier\Documents\Repositories\VoodooStudios\Cocoon
+Starting Metro Bundler
+
+Waiting on http://localhost:8081
+Logs for your project will appear below.
+Web Bundled 2840ms index.ts (2412 modules)
+Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+Web  LOG  Web platform detected. Using RevenueCat in Browser Mode.
+Web  WARN  [expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  WARN  "textShadow*" style props are deprecated. Use "textShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.
+Web  WARN  props.pointerEvents is deprecated. Use style.pointerEvents
+Web Bundled 62ms index.ts (1 module)
+Web  INFO  %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+Web  LOG  Web platform detected. Using RevenueCat in Browser Mode.
+Web  WARN  [expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.
+Web  WARN  "shadow*" style props are deprecated. Use "boxShadow".
+Web  WARN  "textShadow*" style props are deprecated. Use "textShadow".
+Web  LOG  Running application "main" with appParams:
+ {"hydrate": undefined, "rootTag": "#root"} 
+Development-level warnings: ON.
+Performance optimizations: OFF.

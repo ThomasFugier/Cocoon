@@ -375,6 +375,30 @@ export async function saveRemoteProfileStatus(coupleId: string, statusEmoji: str
   }
 }
 
+export async function saveRemoteProfileName(displayName: string) {
+  const client = requireSupabase();
+  const { data, error: userError } = await client.auth.getUser();
+
+  if (userError) {
+    throw userError;
+  }
+
+  const userId = data.user?.id;
+
+  if (!userId) {
+    throw new Error("not_authenticated");
+  }
+
+  const { error } = await client
+    .from("profiles")
+    .update({ display_name: displayName })
+    .eq("id", userId);
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function saveRemoteNotificationPreferences(coupleId: string, settings: NotificationSettings, activePartnerId: "me" | "partner") {
   const client = requireSupabase();
   const { error } = await client.rpc("upsert_notification_preferences", {

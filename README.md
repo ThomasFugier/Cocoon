@@ -37,6 +37,45 @@ supabase db reset
 
 `supabase/schema.sql` reste un snapshot complet pratique à relire, mais les changements prod doivent passer par `supabase/migrations`.
 
+## Outil admin BDD
+
+Un outil local PowerShell/CMD permet de lire et administrer les users Supabase avec la clé `service_role`.
+Ajoute cette variable dans `.env` local seulement :
+
+```txt
+SUPABASE_SERVICE_ROLE_KEY=...
+```
+
+Lancer le menu :
+
+```powershell
+npm run db:admin
+```
+
+Lancer le back-office local dans le navigateur :
+
+```powershell
+npm.cmd run db:admin:web
+```
+
+Si PowerShell bloque `npm`, utilise :
+
+```powershell
+npm.cmd run db:admin
+```
+
+Commandes directes :
+
+```powershell
+.\tools\db-admin.ps1 Get User List
+.\tools\db-admin.ps1 Get User Info user@email.com
+.\tools\db-admin.ps1 Update Profile user@email.com --display-name "Alex"
+.\tools\db-admin.ps1 Delete User user@email.com --dry-run
+.\tools\db-admin.ps1 Delete User user@email.com --confirm user@email.com
+```
+
+Voir `tools/README-db-admin.md` pour le détail.
+
 ## Monetisation
 
 Les achats passent par RevenueCat cote mobile, puis par la fonction Edge Supabase `verify-purchase`.

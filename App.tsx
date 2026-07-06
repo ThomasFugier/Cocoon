@@ -49,6 +49,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   PixelRatio,
   Platform,
   Pressable,
@@ -65,6 +66,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   type TextProps,
+  type TextStyle,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -94,6 +96,7 @@ import {
   saveRemoteCustomDesire,
   saveRemoteMood,
   saveRemoteNotificationPreferences,
+  saveRemoteProfileName,
   saveRemoteProfileStatus,
   saveRemoteVote,
   sendRemoteChatMessage,
@@ -230,16 +233,15 @@ const PAID_FEATURES: UnlockedFeature[] = [
   CUSTOM_CARDS_UNLIMITED_FEATURE,
   NO_ADS_FEATURE,
 ];
-const GAME_CARD_SETTLE_MS = 500;
-const GAME_CARD_EXIT_MS = 420;
-const HEART_BURST_MS = 3000;
-const GAME_CARD_TOTAL_TRANSITION_MS = GAME_CARD_SETTLE_MS + GAME_CARD_EXIT_MS;
+const GAME_CARD_CONFIRM_MS = 260;
+const GAME_CARD_EXIT_MS = 260;
+const GAME_CARD_TOTAL_TRANSITION_MS = GAME_CARD_CONFIRM_MS + GAME_CARD_EXIT_MS;
 const AD_REVEAL_COOLDOWN_MS = 30000;
 const AD_GAME_COOLDOWN_MS = 90000;
 const AD_GAME_MIN_RESPONSES = 6;
 const AD_GAME_VOTE_INTERVAL = 8;
 const AD_GAME_MATCH_INTERVAL = 3;
-const AD_AFTER_VOTE_DELAY_MS = GAME_CARD_SETTLE_MS + HEART_BURST_MS + 260;
+const AD_AFTER_VOTE_DELAY_MS = GAME_CARD_TOTAL_TRANSITION_MS + 260;
 const CHAT_REFRESH_COOLDOWN_MS = 300;
 const CHAT_ACTIVE_SYNC_POLL_MS = 8000;
 const EPHEMERAL_PHOTO_VIEW_MS = 10000;
@@ -336,45 +338,6 @@ function userFacingSyncNotice(message: string) {
   return "Hors ligne. Vos réponses sont gardées au chaud et repartiront toutes seules.";
 }
 
-type BurstParticle = { emoji: string; floatX: number; rotate: string; size: number; x: number; y: number };
-const responseBurstParticles: Partial<Record<VoteLevel, BurstParticle[]>> = {
-  0: [
-    { emoji: "🙅‍♀️", floatX: -18, x: -166, y: -370, rotate: "-16deg", size: 54 },
-    { emoji: "🙅", floatX: 22, x: 118, y: -430, rotate: "13deg", size: 50 },
-    { emoji: "👎", floatX: -18, x: -74, y: -470, rotate: "-12deg", size: 48 },
-    { emoji: "🚫", floatX: 18, x: 48, y: -520, rotate: "16deg", size: 52 },
-    { emoji: "🙅‍♂️", floatX: 20, x: 178, y: -320, rotate: "18deg", size: 48 },
-    { emoji: "✋", floatX: -22, x: -198, y: -258, rotate: "-20deg", size: 44 },
-    { emoji: "👎", floatX: 12, x: 132, y: -190, rotate: "10deg", size: 42 },
-    { emoji: "🚫", floatX: -14, x: -20, y: -300, rotate: "-8deg", size: 40 },
-  ],
-  1: [
-    { emoji: "😏", floatX: -24, x: -168, y: -390, rotate: "-18deg", size: 54 },
-    { emoji: "💕", floatX: 22, x: -112, y: -470, rotate: "12deg", size: 44 },
-    { emoji: "👀", floatX: -16, x: -42, y: -430, rotate: "-8deg", size: 52 },
-    { emoji: "💗", floatX: 18, x: 34, y: -510, rotate: "16deg", size: 48 },
-    { emoji: "😉", floatX: -18, x: 118, y: -410, rotate: "-14deg", size: 50 },
-    { emoji: "💞", floatX: 24, x: 186, y: -345, rotate: "18deg", size: 50 },
-    { emoji: "😏", floatX: 16, x: -202, y: -250, rotate: "20deg", size: 42 },
-    { emoji: "💕", floatX: -22, x: 206, y: -230, rotate: "-22deg", size: 42 },
-    { emoji: "✨", floatX: -14, x: -132, y: -172, rotate: "-12deg", size: 44 },
-    { emoji: "👀", floatX: 14, x: 142, y: -160, rotate: "10deg", size: 44 },
-  ],
-  2: [
-    { emoji: "🔥", floatX: -24, x: -168, y: -390, rotate: "-18deg", size: 58 },
-    { emoji: "💖", floatX: 22, x: -112, y: -470, rotate: "12deg", size: 56 },
-    { emoji: "❤️‍🔥", floatX: -16, x: -42, y: -430, rotate: "-8deg", size: 62 },
-    { emoji: "💘", floatX: 18, x: 34, y: -510, rotate: "16deg", size: 54 },
-    { emoji: "🔥", floatX: -18, x: 118, y: -410, rotate: "-14deg", size: 56 },
-    { emoji: "💞", floatX: 24, x: 186, y: -345, rotate: "18deg", size: 52 },
-    { emoji: "💋", floatX: 16, x: -202, y: -250, rotate: "20deg", size: 48 },
-    { emoji: "❤️‍🔥", floatX: -22, x: 206, y: -230, rotate: "-22deg", size: 50 },
-    { emoji: "🔥", floatX: -14, x: -132, y: -172, rotate: "-12deg", size: 48 },
-    { emoji: "💖", floatX: 14, x: 142, y: -160, rotate: "10deg", size: 48 },
-    { emoji: "💓", floatX: -20, x: -6, y: -560, rotate: "6deg", size: 48 },
-    { emoji: "💝", floatX: 20, x: 82, y: -442, rotate: "-16deg", size: 46 },
-  ],
-};
 const weSpiceLogoAsset = require("./assets/wespice-logo.png");
 
 function Text({ style, ...props }: TextProps) {
@@ -1061,6 +1024,13 @@ function normalizeStatusEmoji(value: string) {
   return normalizeEmoji(value, stickers.heart);
 }
 
+function normalizeProfileDisplayName(value: string, fallback = "Moi") {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  const safeFallback = fallback.trim() || "Moi";
+
+  return Array.from(normalized || safeFallback).slice(0, 32).join("");
+}
+
 function randomCustomDesireEmoji() {
   return customDesireEmojiPresets[Math.floor(Math.random() * customDesireEmojiPresets.length)] ?? stickers.heart;
 }
@@ -1094,6 +1064,19 @@ function withUpdatedProfileStatus(couple: CoupleState, partnerId: PartnerId, sta
         ...couple.profiles[partnerId],
         statusEmoji,
         statusUpdatedAt: new Date().toISOString(),
+      },
+    },
+  };
+}
+
+function withUpdatedProfileName(couple: CoupleState, partnerId: PartnerId, displayName: string): CoupleState {
+  return {
+    ...couple,
+    profiles: {
+      ...couple.profiles,
+      [partnerId]: {
+        ...couple.profiles[partnerId],
+        displayName,
       },
     },
   };
@@ -2058,7 +2041,7 @@ function Root() {
       refreshTask = (async () => {
         try {
           const remoteMessages = await fetchRemoteChatMessages(coupleId);
-          const messages = await chatMessagesFromRemote(remoteMessages);
+          const remoteChatMessages = await chatMessagesFromRemote(remoteMessages);
           chatSyncMarkerRef.current = {
             coupleId,
             key: chatSyncMarkerKeyFromMessages(remoteMessages),
@@ -2071,6 +2054,7 @@ function Root() {
 
             const cleanCouple = purgeExpiredChat(current);
             const currentMessages = cleanCouple.chat?.messages ?? [];
+            const messages = mergePendingChatMessages(remoteChatMessages, cleanCouple);
 
             if (areChatMessagesEqual(currentMessages, messages)) {
               return cleanCouple;
@@ -2849,12 +2833,22 @@ function Root() {
         return;
       }
 
-      if (!canWriteRemoteCouple(couple)) {
+      const remoteCouple = isRemoteCoupleId(couple.id);
+      if (remoteCouple && !canWriteRemoteCouple(couple)) {
         setSyncError("Attends que ton espace soit synchronisé avant de changer ton statut.");
         return;
       }
 
       const statusEmoji = normalizeStatusEmoji(nextEmoji);
+      const previousCouple = couple;
+      const nextCouple = withUpdatedProfileStatus(couple, couple.activePartnerId, statusEmoji);
+      setCouple(nextCouple);
+
+      if (!remoteCouple) {
+        setSyncError("");
+        await Haptics.selectionAsync();
+        return;
+      }
 
       try {
         await saveRemoteProfileStatus(couple.id, statusEmoji);
@@ -2862,7 +2856,51 @@ function Root() {
         setSyncError("");
         await Haptics.selectionAsync();
       } catch {
+        setCouple(previousCouple);
         setSyncError("Le statut n'a pas pu être enregistré. Vérifie ta connexion et réessaie.");
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    },
+    [canWriteRemoteCouple, couple, refreshRemoteCoupleState],
+  );
+
+  const handleProfileNameChange = useCallback(
+    async (nextName: string) => {
+      if (!couple) {
+        return;
+      }
+
+      const activeProfile = couple.profiles[couple.activePartnerId];
+      const displayName = normalizeProfileDisplayName(nextName, activeProfile.displayName);
+
+      if (displayName === activeProfile.displayName) {
+        return;
+      }
+
+      const remoteCouple = isRemoteCoupleId(couple.id);
+      if (remoteCouple && !canWriteRemoteCouple(couple)) {
+        setSyncError("Attends que ton espace soit synchronisé avant de changer ton profil.");
+        return;
+      }
+
+      const previousCouple = couple;
+      const nextCouple = withUpdatedProfileName(couple, couple.activePartnerId, displayName);
+      setCouple(nextCouple);
+
+      if (!remoteCouple) {
+        setSyncError("");
+        await Haptics.selectionAsync();
+        return;
+      }
+
+      try {
+        await saveRemoteProfileName(displayName);
+        await refreshRemoteCoupleState(couple.id, { force: true });
+        setSyncError("");
+        await Haptics.selectionAsync();
+      } catch {
+        setCouple(previousCouple);
+        setSyncError("Le nom de profil n'a pas pu être enregistré. Vérifie ta connexion et réessaie.");
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
     },
@@ -3903,6 +3941,7 @@ function Root() {
         onShowDebugPreview={setDebugPreviewScreen}
         onShowInvitePrompt={handleShowInvitePrompt}
         onShowOnboarding={handleShowOnboarding}
+        onProfileNameChange={handleProfileNameChange}
         onStatusEmojiChange={handleStatusEmojiChange}
         onTabChange={handleTabChange}
         onUnlockCustomCards={handleUnlockCustomCards}
@@ -4474,6 +4513,7 @@ function MainShell({
   onShowDebugPreview,
   onShowInvitePrompt,
   onShowOnboarding,
+  onProfileNameChange,
   onStatusEmojiChange,
   onTabChange,
   onUnlockCustomCards,
@@ -4527,6 +4567,7 @@ function MainShell({
   onShowDebugPreview: (screen: DebugPreviewScreen) => void;
   onShowInvitePrompt: () => void;
   onShowOnboarding: () => void;
+  onProfileNameChange: (name: string) => void;
   onStatusEmojiChange: (emoji: string) => void;
   onTabChange: (tab: TabKey) => void;
   onUnlockCustomCards: () => void;
@@ -4637,6 +4678,7 @@ function MainShell({
               onReplayTutorial={onReplayTutorial}
               onRestorePurchases={onRestorePurchases}
               onReset={onReset}
+              onProfileNameChange={onProfileNameChange}
               onStatusEmojiChange={onStatusEmojiChange}
             />
           </Entrance>
@@ -4853,8 +4895,6 @@ function EnviesScreen({
   const [gameTransitionVoteLevel, setGameTransitionVoteLevel] = useState<VoteLevel | null>(null);
   const [exitingGameCardId, setExitingGameCardId] = useState<string | null>(null);
   const [replayDeckIds, setReplayDeckIds] = useState<string[]>([]);
-  const [gameBurstNonce, setGameBurstNonce] = useState(0);
-  const [gameBurstVoteLevel, setGameBurstVoteLevel] = useState<VoteLevel>(2);
   const [purchaseCategory, setPurchaseCategory] = useState<DesireCategory | null>(null);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [customPurchaseOpen, setCustomPurchaseOpen] = useState(false);
@@ -5053,12 +5093,10 @@ function EnviesScreen({
 
     setGameTransitionCardId(cardId);
     setGameTransitionVoteLevel(level);
-    setGameBurstVoteLevel(level);
 
     const exitTimer = setTimeout(() => {
       setExitingGameCardId(cardId);
-      setGameBurstNonce((current) => current + 1);
-    }, GAME_CARD_SETTLE_MS);
+    }, GAME_CARD_CONFIRM_MS);
     const nextTimer = setTimeout(() => {
       setAnsweredInSession((current) => ({ ...current, [cardId]: true }));
       setExitingGameCardId(null);
@@ -5212,7 +5250,7 @@ function EnviesScreen({
             stickyHeaderIndices={[0]}
           >
             {enviesHeader}
-            <View style={styles.gameCardBurstHost}>
+            <View style={styles.gameCardStageHost}>
               {activeGameCard ? (
                 <GameCardTransition
                   exiting={exitingGameCardId === activeGameCard.id}
@@ -5239,7 +5277,6 @@ function EnviesScreen({
                   />
                 </Entrance>
               )}
-              <PersistentBurstLayer triggerKey={gameBurstNonce} voteLevel={gameBurstVoteLevel} />
             </View>
           </ScrollView>
         )}
@@ -6299,118 +6336,6 @@ function DesireCandyCard({
   );
 }
 
-type BurstInstance = {
-  id: string;
-  voteLevel: VoteLevel;
-};
-
-function HeartBurst({ burstKey, voteLevel = 2 }: { burstKey: number | string; voteLevel?: VoteLevel }) {
-  const progress = useRef(new Animated.Value(0)).current;
-  const particles = responseBurstParticles[voteLevel] ?? responseBurstParticles[2] ?? [];
-  const shadowColor =
-    voteLevel === 0
-      ? "rgba(35,18,36,0.22)"
-      : voteLevel === 1
-        ? "rgba(255,36,95,0.24)"
-        : "rgba(255,36,95,0.34)";
-
-  useEffect(() => {
-    progress.setValue(0);
-    Animated.timing(progress, {
-      duration: HEART_BURST_MS,
-      easing: Easing.out(Easing.cubic),
-      toValue: 1,
-      useNativeDriver: useNativeAnimations,
-    }).start();
-  }, [burstKey, progress]);
-
-  return (
-    <View pointerEvents="none" style={styles.heartBurstLayer}>
-      {particles.map((particle, index) => (
-        <Animated.Text
-          key={`${burstKey}-${index}`}
-          style={[
-            styles.heartBurstParticle,
-            {
-              fontSize: particle.size,
-              textShadowColor: shadowColor,
-              opacity: progress.interpolate({
-                inputRange: [0, 0.05, 0.78, 1],
-                outputRange: [0, 1, 0.92, 0],
-              }),
-              transform: [
-                {
-                  translateX: progress.interpolate({
-                    inputRange: [0, 0.22, 0.78, 1],
-                    outputRange: [0, particle.x * 0.58, particle.x + particle.floatX, particle.x + particle.floatX * 0.42],
-                  }),
-                },
-                {
-                  translateY: progress.interpolate({
-                    inputRange: [0, 0.18, 0.78, 1],
-                    outputRange: [0, particle.y * 0.26, particle.y * 0.84, particle.y],
-                  }),
-                },
-                {
-                  scale: progress.interpolate({
-                    inputRange: [0, 0.12, 0.72, 1],
-                    outputRange: [0.34, 1.2, 1.08, 0.84],
-                  }),
-                },
-                { rotate: particle.rotate },
-              ],
-            },
-          ]}
-        >
-          {particle.emoji}
-        </Animated.Text>
-      ))}
-    </View>
-  );
-}
-
-function PersistentBurstLayer({
-  triggerKey,
-  voteLevel,
-}: {
-  triggerKey: number;
-  voteLevel: VoteLevel;
-}) {
-  const [bursts, setBursts] = useState<BurstInstance[]>([]);
-  const lastTrigger = useRef(triggerKey);
-  const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
-
-  useEffect(() => () => {
-    timers.current.forEach((timer) => clearTimeout(timer));
-    timers.current = [];
-  }, []);
-
-  useEffect(() => {
-    if (triggerKey === 0 || triggerKey === lastTrigger.current) {
-      return;
-    }
-
-    lastTrigger.current = triggerKey;
-    const id = `${triggerKey}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    setBursts((current) => [...current, { id, voteLevel }]);
-
-    const timer = setTimeout(() => {
-      setBursts((current) => current.filter((burst) => burst.id !== id));
-      timers.current = timers.current.filter((item) => item !== timer);
-    }, HEART_BURST_MS + 180);
-
-    timers.current.push(timer);
-  }, [triggerKey, voteLevel]);
-
-  return (
-    <View pointerEvents="none" style={styles.persistentBurstLayer}>
-      {bursts.map((burst) => (
-        <HeartBurst burstKey={burst.id} key={burst.id} voteLevel={burst.voteLevel} />
-      ))}
-    </View>
-  );
-}
-
 function GameCardTransition({
   children,
   exiting,
@@ -6426,7 +6351,7 @@ function GameCardTransition({
   useEffect(() => {
     entrance.setValue(0);
     Animated.timing(entrance, {
-      duration: 280,
+      duration: 240,
       easing: Easing.out(Easing.cubic),
       toValue: 1,
       useNativeDriver: useNativeAnimations,
@@ -6439,41 +6364,33 @@ function GameCardTransition({
       return;
     }
 
-    Animated.sequence([
-      Animated.timing(exit, {
-        duration: 260,
-        easing: Easing.in(Easing.cubic),
-        toValue: 0.72,
-        useNativeDriver: useNativeAnimations,
-      }),
-      Animated.timing(exit, {
-        duration: 160,
-        easing: Easing.out(Easing.cubic),
-        toValue: 1,
-        useNativeDriver: useNativeAnimations,
-      }),
-    ]).start();
+    Animated.timing(exit, {
+      duration: GAME_CARD_EXIT_MS,
+      easing: Easing.inOut(Easing.cubic),
+      toValue: 1,
+      useNativeDriver: useNativeAnimations,
+    }).start();
   }, [exit, exiting]);
 
   const exitOpacity = exit.interpolate({
-    inputRange: [0, 0.62, 0.86, 1],
-    outputRange: [1, 1, 0.44, 0],
+    inputRange: [0, 0.66, 1],
+    outputRange: [1, 0.96, 0],
   });
   const exitScale = exit.interpolate({
-    inputRange: [0, 0.62, 1],
-    outputRange: [1, 1.035, 0.88],
+    inputRange: [0, 0.66, 1],
+    outputRange: [1, 0.985, 0.94],
   });
   const exitRotate = exit.interpolate({
-    inputRange: [0, 0.62, 1],
-    outputRange: ["0deg", voteLevel === 0 ? "-2deg" : voteLevel === 1 ? "2deg" : "0deg", voteLevel === 0 ? "-7deg" : voteLevel === 1 ? "7deg" : "3deg"],
+    inputRange: [0, 1],
+    outputRange: ["0deg", voteLevel === 0 ? "-3deg" : voteLevel === 1 ? "3deg" : "1deg"],
   });
   const exitTranslateX = exit.interpolate({
-    inputRange: [0, 0.62, 1],
-    outputRange: [0, voteLevel === 0 ? -6 : voteLevel === 1 ? 6 : 0, voteLevel === 0 ? -54 : voteLevel === 1 ? 54 : 0],
+    inputRange: [0, 1],
+    outputRange: [0, voteLevel === 0 ? -14 : voteLevel === 1 ? 14 : 0],
   });
   const exitTranslateY = exit.interpolate({
-    inputRange: [0, 0.62, 1],
-    outputRange: [0, 12, 86],
+    inputRange: [0, 1],
+    outputRange: [0, 28],
   });
 
   return (
@@ -6487,7 +6404,7 @@ function GameCardTransition({
               {
                 translateY: entrance.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [16, 0],
+                  outputRange: [18, 0],
                 }),
               },
               { translateX: exitTranslateX },
@@ -6495,7 +6412,7 @@ function GameCardTransition({
               {
                 scale: entrance.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0.96, 1],
+                  outputRange: [0.965, 1],
                 }),
               },
               { scale: exitScale },
@@ -6506,6 +6423,53 @@ function GameCardTransition({
       >
         {children}
       </Animated.View>
+    </View>
+  );
+}
+
+function DesireGameCardFace({
+  cardStyle,
+  category,
+  copyStyle,
+  deckStyle,
+  description,
+  overlay,
+  prompt,
+  roomy,
+  testID,
+  textStyle,
+  titleStyle,
+}: {
+  cardStyle?: StyleProp<ViewStyle>;
+  category: DesireCategory;
+  copyStyle?: StyleProp<ViewStyle>;
+  deckStyle?: StyleProp<ViewStyle>;
+  description: string;
+  overlay?: React.ReactNode;
+  prompt: string;
+  roomy?: boolean;
+  testID?: string;
+  textStyle?: StyleProp<TextStyle>;
+  titleStyle?: StyleProp<TextStyle>;
+}) {
+  return (
+    <View style={[styles.desireGameDeck, roomy && styles.desireGameDeckRoomy, deckStyle]}>
+      <View style={[styles.desireGameBackCard, styles.desireGameBackCardLeft]} />
+      <View style={[styles.desireGameBackCard, styles.desireGameBackCardRight]} />
+      <View
+        style={[styles.desireGameCard, roomy && styles.desireGameCardRoomy, cardStyle]}
+        testID={testID}
+      >
+        <View style={styles.desireGameTopRow}>
+          <Text numberOfLines={1} style={styles.desireGameCategoryLabel}>{categoryLabel(category)}</Text>
+          <View style={styles.desireGameCornerRing} />
+        </View>
+        <View style={[styles.desireGameCopy, roomy && styles.desireGameCopyRoomy, copyStyle]}>
+          <Text adjustsFontSizeToFit numberOfLines={5} style={[styles.desireGameTitle, titleStyle]}>{prompt}</Text>
+        </View>
+        <Text numberOfLines={2} style={[styles.desireGameText, textStyle]}>{description}</Text>
+        {overlay}
+      </View>
     </View>
   );
 }
@@ -6537,7 +6501,7 @@ function DesireGameCard({
   const description = card.blurb || card.title;
   const activeVote = confirmingVote ?? selectedVote;
   const validationProgress = useRef(new Animated.Value(0)).current;
-  const gameVerticalDrop = Math.round(Math.min(roomy ? 64 : 52, Math.max(26, height * 0.048)));
+  const gameVerticalDrop = Math.round(Math.min(roomy ? 86 : 72, Math.max(38, height * 0.075)));
   const validationTone = confirmingVote === 2
     ? { backgroundColor: candy.yellow, iconColor: candy.ink, veilColor: "rgba(255,210,63,0.24)" }
     : confirmingVote === 1
@@ -6553,85 +6517,82 @@ function DesireGameCard({
     }
 
     validationProgress.setValue(0);
-    Animated.sequence([
-      Animated.timing(validationProgress, {
-        duration: 190,
-        easing: Easing.out(Easing.back(1.3)),
-        toValue: 1,
-        useNativeDriver: useNativeAnimations,
-      }),
-      Animated.timing(validationProgress, {
-        duration: 150,
-        easing: Easing.inOut(Easing.cubic),
-        toValue: 0.92,
-        useNativeDriver: useNativeAnimations,
-      }),
-      Animated.timing(validationProgress, {
-        duration: 120,
-        easing: Easing.out(Easing.cubic),
-        toValue: 1,
-        useNativeDriver: useNativeAnimations,
-      }),
-    ]).start();
+    Animated.timing(validationProgress, {
+      duration: GAME_CARD_CONFIRM_MS,
+      easing: Easing.out(Easing.cubic),
+      toValue: 1,
+      useNativeDriver: useNativeAnimations,
+    }).start();
   }, [confirmingVote, validationProgress]);
+
+  const validationOverlay = confirmingVote !== undefined ? (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.desireGameValidationVeil,
+        {
+          backgroundColor: validationTone.veilColor,
+          opacity: validationProgress.interpolate({
+            inputRange: [0, 0.5, 1],
+            outputRange: [0, 0.78, 0.9],
+          }),
+        },
+      ]}
+    >
+      <Animated.View
+        style={[
+          styles.desireGameValidationPulse,
+          {
+            opacity: validationProgress.interpolate({
+              inputRange: [0, 0.5, 1],
+              outputRange: [0, 0.42, 0],
+            }),
+            transform: [
+              {
+                scale: validationProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.82, 1.55],
+                }),
+              },
+            ],
+          },
+        ]}
+      />
+      <Animated.View
+        style={[
+          styles.desireGameValidationBadge,
+          { backgroundColor: validationTone.backgroundColor },
+          {
+            opacity: validationProgress.interpolate({
+              inputRange: [0, 0.34, 1],
+              outputRange: [0, 1, 1],
+            }),
+            transform: [
+              {
+                scale: validationProgress.interpolate({
+                  inputRange: [0, 0.72, 1],
+                  outputRange: [0.82, 1.06, 1],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <Check color={validationTone.iconColor} size={28} strokeWidth={4} />
+      </Animated.View>
+    </Animated.View>
+  ) : null;
 
   return (
     <View style={[styles.desireGameStage, roomy && styles.desireGameStageRoomy, { paddingTop: gameVerticalDrop }]}>
-      <View style={[styles.desireGameDeck, roomy && styles.desireGameDeckRoomy]}>
-        <View style={[styles.desireGameBackCard, styles.desireGameBackCardLeft]} />
-        <View style={[styles.desireGameBackCard, styles.desireGameBackCardRight]} />
-        <View
-          style={[styles.desireGameCard, roomy && styles.desireGameCardRoomy]}
-          testID={`desire-game-card-${card.id}`}
-        >
-          <View style={styles.desireGameTopRow}>
-            <Text numberOfLines={1} style={styles.desireGameCategoryLabel}>{categoryLabel(card.category)}</Text>
-            <View style={styles.desireGameCornerRing} />
-          </View>
-          <View style={[styles.desireGameCopy, roomy && styles.desireGameCopyRoomy]}>
-            <Text adjustsFontSizeToFit numberOfLines={5} style={styles.desireGameTitle}>{prompt}</Text>
-          </View>
-          <Text numberOfLines={2} style={styles.desireGameText}>{description}</Text>
-          {confirmingVote !== undefined ? (
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.desireGameValidationVeil,
-                {
-                  backgroundColor: validationTone.veilColor,
-                  opacity: validationProgress.interpolate({
-                    inputRange: [0, 0.24, 1],
-                    outputRange: [0, 1, 1],
-                  }),
-                },
-              ]}
-            >
-              <Animated.View
-                style={[
-                  styles.desireGameValidationBadge,
-                  { backgroundColor: validationTone.backgroundColor },
-                  {
-                    opacity: validationProgress.interpolate({
-                      inputRange: [0, 0.18, 1],
-                      outputRange: [0, 1, 1],
-                    }),
-                    transform: [
-                      {
-                        scale: validationProgress.interpolate({
-                          inputRange: [0, 0.62, 1],
-                          outputRange: [0.46, 1.1, 1],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <Check color={validationTone.iconColor} size={34} strokeWidth={4} />
-              </Animated.View>
-            </Animated.View>
-          ) : null}
-        </View>
-      </View>
+      <DesireGameCardFace
+        category={card.category}
+        description={description}
+        overlay={validationOverlay}
+        prompt={prompt}
+        roomy={roomy}
+        testID={`desire-game-card-${card.id}`}
+      />
       <View style={[styles.desireGameVoteDock, roomy && styles.desireGameVoteDockRoomy]}>
         <View style={[styles.desireGameVoteRow, roomy && styles.desireGameVoteRowRoomy, { gap: voteGap }]}>
           <VoteButton disabled={disabled} label="Non" onPress={() => onVote(card.id, 0)} prominent selected={activeVote === 0} size={sideVoteSize} testID={`game-vote-${card.id}-0`} />
@@ -6790,6 +6751,7 @@ function MatchScreen({
   const newestRevealedMatch = revealedMatches[0] ?? matches[0];
   const newestMatch = hiddenMatchCount > 0 ? newestHiddenMatch : newestRevealedMatch;
   const [revealingMatchId, setRevealingMatchId] = useState<string | null>(null);
+  const [spotlightMatch, setSpotlightMatch] = useState<DesireCard | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<DesireCard | null>(null);
   const revealAnim = useRef(new Animated.Value(0)).current;
   const safeAreaInsets = useSafeAreaInsets();
@@ -6802,18 +6764,25 @@ function MatchScreen({
   const listedMatches = hasHiddenReveal ? revealedMatches : matches;
   const hasSecondaryMatchContent = hasHiddenReveal ? revealedMatches.length > 0 : listedMatches.length > 0;
   const centerPrimaryMatchStage = hasHiddenReveal && !hasSecondaryMatchContent;
+  const inlineRevealMatch = spotlightMatch ?? (isNewestOpening ? newestHiddenMatch ?? null : null);
+  const showInlineReveal = Boolean(inlineRevealMatch);
+  const inlineRevealStageHeight = Math.max(620, matchLayout.frameHeight - matchLayout.bottomPadding);
   const matchContentStyle = useMemo<ViewStyle>(() => ({
-    gap: hasAnyMatch ? Math.max(14, matchLayout.rhythm * 0.62) : 0,
+    gap: showInlineReveal ? 0 : hasAnyMatch ? Math.max(14, matchLayout.rhythm * 0.62) : 0,
     minHeight: matchLayout.frameHeight,
-    paddingBottom: matchLayout.bottomPadding,
-    paddingHorizontal: Math.max(10, 14 * matchLayout.widthScale),
-    paddingTop: Math.max(12, matchLayout.rhythm),
-  }), [hasAnyMatch, matchLayout.bottomPadding, matchLayout.frameHeight, matchLayout.rhythm, matchLayout.widthScale]);
+    paddingBottom: showInlineReveal ? 0 : matchLayout.bottomPadding,
+    paddingHorizontal: showInlineReveal ? 0 : Math.max(10, 14 * matchLayout.widthScale),
+    paddingTop: showInlineReveal ? 0 : Math.max(12, matchLayout.rhythm),
+  }), [hasAnyMatch, matchLayout.bottomPadding, matchLayout.frameHeight, matchLayout.rhythm, matchLayout.widthScale, showInlineReveal]);
 
   useEffect(() => {
+    if (spotlightMatch) {
+      return;
+    }
+
     revealAnim.setValue(0);
     setRevealingMatchId(null);
-  }, [hiddenMatchCount, newestMatch?.id, revealAnim]);
+  }, [hiddenMatchCount, newestMatch?.id, revealAnim, spotlightMatch]);
 
   async function revealNewestMatch() {
     if (!hasHiddenReveal || isNewestOpening || (!remoteCouple && !newestHiddenMatch)) {
@@ -6842,10 +6811,16 @@ function MatchScreen({
       onRevealMatch(newestHiddenMatch?.id);
       setRevealingMatchId(null);
       if (newestHiddenMatch) {
-        setSelectedMatch(newestHiddenMatch);
+        setSpotlightMatch(newestHiddenMatch);
+        revealAnim.setValue(1);
       }
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     });
+  }
+
+  function closeInlineReveal() {
+    setSpotlightMatch(null);
+    revealAnim.setValue(0);
   }
 
   return (
@@ -6855,23 +6830,47 @@ function MatchScreen({
           styles.matchScreen,
           matchContentStyle,
           !hasAnyMatch && styles.matchScreenEmptyMode,
+          showInlineReveal && styles.matchScreenRevealMode,
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.matchScreenHeader}>
-          <Text style={styles.matchScreenTitle}>Matchs</Text>
-          <Text style={styles.matchScreenSubtitle}>Ce qui vous plaît à tous les deux. Rien d'autre.</Text>
-        </View>
+        {!showInlineReveal ? (
+          <View style={styles.matchScreenHeader}>
+            <Text style={styles.matchScreenTitle}>Matchs</Text>
+            <Text style={styles.matchScreenSubtitle}>Ce qui vous plaît à tous les deux. Rien d'autre.</Text>
+          </View>
+        ) : null}
 
-        {hasHiddenReveal || !hasAnyMatch ? (
+        {showInlineReveal || hasHiddenReveal || !hasAnyMatch ? (
           <View
             style={[
               styles.matchPrimaryStage,
+              showInlineReveal && styles.matchPrimaryStageReveal,
               centerPrimaryMatchStage && styles.matchPrimaryStageCentered,
               !hasAnyMatch && styles.matchPrimaryStageEmpty,
             ]}
           >
-            {hasHiddenReveal ? (
+            {showInlineReveal ? (
+              <MatchRevealTheater
+                couple={couple}
+                hiddenMatchCount={hiddenMatchCount}
+                isOpening={isNewestOpening}
+                match={inlineRevealMatch}
+                onDismiss={closeInlineReveal}
+                onOpenChat={() => {
+                  closeInlineReveal();
+                  onOpenChat(inlineRevealMatch?.id);
+                }}
+                onOpenDetail={() => {
+                  if (inlineRevealMatch) {
+                    setSelectedMatch(inlineRevealMatch);
+                  }
+                }}
+                onReveal={revealNewestMatch}
+                revealAnim={revealAnim}
+                stageHeight={inlineRevealStageHeight}
+              />
+            ) : hasHiddenReveal ? (
               <HiddenMatchRevealPanel
                 hiddenMatchCount={hiddenMatchCount}
                 isOpening={isNewestOpening}
@@ -6884,7 +6883,7 @@ function MatchScreen({
           </View>
         ) : null}
 
-        {hasAnyMatch ? (
+        {hasAnyMatch && !showInlineReveal ? (
           hasHiddenReveal ? (
             <>
               {revealedMatches.length ? (
@@ -6922,6 +6921,110 @@ function MatchScreen({
         }}
       />
     </>
+  );
+}
+
+function MatchRevealTheater({
+  couple,
+  hiddenMatchCount,
+  isOpening,
+  match,
+  onDismiss,
+  onOpenChat,
+  onOpenDetail,
+  onReveal,
+  revealAnim,
+  stageHeight,
+}: {
+  couple: CoupleState;
+  hiddenMatchCount: number;
+  isOpening: boolean;
+  match: DesireCard | null;
+  onDismiss: () => void;
+  onOpenChat: () => void;
+  onOpenDetail: () => void;
+  onReveal: () => void;
+  revealAnim: Animated.Value;
+  stageHeight: number;
+}) {
+  const revealBackdropOpacity = revealAnim.interpolate({
+    inputRange: [0, 0.25, 1],
+    outputRange: [0, 0.56, 1],
+  });
+  const hiddenOpacity = revealAnim.interpolate({
+    inputRange: [0, 0.34, 0.62, 1],
+    outputRange: [1, 0.82, 0, 0],
+  });
+  const hiddenScale = revealAnim.interpolate({
+    inputRange: [0, 0.58, 1],
+    outputRange: [1, 0.92, 0.88],
+  });
+  const hiddenLift = revealAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -26],
+  });
+  const revealedOpacity = revealAnim.interpolate({
+    inputRange: [0, 0.36, 0.68, 1],
+    outputRange: [0, 0, 0.92, 1],
+  });
+  const revealedScale = revealAnim.interpolate({
+    inputRange: [0, 0.44, 1],
+    outputRange: [0.9, 0.9, 1],
+  });
+  const revealedLift = revealAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [30, 0],
+  });
+
+  return (
+    <View style={[styles.matchRevealTheater, { minHeight: stageHeight }]}>
+      <Animated.View pointerEvents="none" style={[styles.matchRevealTheaterBackdrop, { opacity: revealBackdropOpacity }]} />
+      <Animated.View
+        pointerEvents={match ? "none" : "auto"}
+        style={[
+          styles.matchRevealHiddenLayer,
+          {
+            opacity: hiddenOpacity,
+            transform: [
+              { translateY: hiddenLift },
+              { scale: hiddenScale },
+            ],
+          },
+        ]}
+      >
+        <HiddenMatchRevealPanel
+          hiddenMatchCount={hiddenMatchCount}
+          isOpening={isOpening}
+          onReveal={onReveal}
+          revealAnim={revealAnim}
+        />
+      </Animated.View>
+      {match ? (
+        <Animated.View
+          pointerEvents={isOpening ? "none" : "auto"}
+          style={[
+            styles.matchRevealRevealedLayer,
+            {
+              opacity: revealedOpacity,
+              transform: [
+                { translateY: revealedLift },
+                { scale: revealedScale },
+              ],
+            },
+          ]}
+        >
+          <MatchRevealedPanel
+            couple={couple}
+            inline
+            match={match}
+            onDismiss={onDismiss}
+            onOpenChat={onOpenChat}
+            onOpenDetail={onOpenDetail}
+            revealAnim={revealAnim}
+          />
+        </Animated.View>
+      ) : null}
+    </View>
   );
 }
 
@@ -7005,14 +7108,20 @@ function HiddenMatchRevealPanel({
 
 function MatchRevealedPanel({
   couple,
+  inline,
   match,
+  onDismiss,
   onOpenChat,
   onOpenDetail,
+  revealAnim,
 }: {
   couple: CoupleState;
+  inline?: boolean;
   match: DesireCard;
+  onDismiss?: () => void;
   onOpenChat: () => void;
   onOpenDetail: () => void;
+  revealAnim?: Animated.Value;
 }) {
   const activeId = couple.activePartnerId;
   const partnerId = otherPartnerId(activeId);
@@ -7021,9 +7130,63 @@ function MatchRevealedPanel({
   const partnerVote = couple.votes[partnerId][match.id];
   const activeVoteText = isFlameVote(activeVote) ? "Très envie 🔥" : voteRevealLabel(activeVote);
   const partnerVoteText = isFlameVote(partnerVote) ? "Très envie 🔥" : voteRevealLabel(partnerVote);
+  const heroMotionStyle = revealAnim ? {
+    opacity: revealAnim.interpolate({
+      inputRange: [0, 0.52, 0.78, 1],
+      outputRange: [0, 0, 1, 1],
+    }),
+    transform: [
+      {
+        translateY: revealAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [18, 0],
+        }),
+      },
+    ],
+  } : null;
+  const cardMotionStyle = revealAnim ? {
+    opacity: revealAnim.interpolate({
+      inputRange: [0, 0.42, 0.7, 1],
+      outputRange: [0, 0, 1, 1],
+    }),
+    transform: [
+      {
+        translateY: revealAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [34, 0],
+        }),
+      },
+      {
+        scale: revealAnim.interpolate({
+          inputRange: [0, 0.66, 1],
+          outputRange: [0.86, 1.035, 1],
+        }),
+      },
+    ],
+  } : null;
+  const actionsMotionStyle = revealAnim ? {
+    opacity: revealAnim.interpolate({
+      inputRange: [0, 0.7, 1],
+      outputRange: [0, 0, 1],
+    }),
+    transform: [
+      {
+        translateY: revealAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [30, 0],
+        }),
+      },
+      {
+        scale: revealAnim.interpolate({
+          inputRange: [0, 0.78, 1],
+          outputRange: [0.94, 0.94, 1],
+        }),
+      },
+    ],
+  } : null;
 
   return (
-    <LinearGradient colors={[candy.darkColor, "#210D27", "#16051A"]} style={styles.matchRevealedPanel}>
+    <LinearGradient colors={[candy.darkColor, "#210D27", "#16051A"]} style={[styles.matchRevealedPanel, inline && styles.matchRevealedPanelInline]}>
       <View pointerEvents="none" style={styles.matchRevealedDecor}>
         <View style={styles.matchRevealedAura} />
         <View style={[styles.matchRevealedSparkDot, styles.matchRevealedSparkDotOne]} />
@@ -7032,7 +7195,7 @@ function MatchRevealedPanel({
         <View style={[styles.matchRevealedSparkDash, styles.matchRevealedSparkDashTwo]} />
       </View>
 
-      <View style={styles.matchRevealedHeroCopy}>
+      <Animated.View style={[styles.matchRevealedHeroCopy, heroMotionStyle]}>
         <Text style={styles.matchRevealedHeadline}>
           C'est un match<Text style={styles.matchRevealedHeadlineDot}>.</Text>
         </Text>
@@ -7040,31 +7203,33 @@ function MatchRevealedPanel({
           <View style={styles.matchRevealedSubDot} />
           <Text style={styles.matchRevealedSubtitle}>Vous avez répondu oui, tous les deux.</Text>
         </View>
-      </View>
+      </Animated.View>
 
-      <SpringPressable onPress={onOpenDetail} style={styles.matchRevealedCardShell}>
-        <View pointerEvents="none" style={styles.matchRevealedCardGlow} />
-        <View pointerEvents="none" style={styles.matchRevealedSidePeek} />
-        <View pointerEvents="none" style={styles.matchRevealedTopDot} />
-        <View style={styles.matchRevealedBigCard}>
-          <Text style={styles.matchRevealedCategory}>{categoryLabel(match.category)}</Text>
-          <View style={styles.matchRevealedCornerDot} />
-          <Text numberOfLines={5} style={styles.matchRevealedCardTitle}>{match.title}</Text>
-          <View style={styles.matchRevealedAnswerRow}>
-            <MatchAnswerPill label="Toi" mine value={activeVoteText} />
-            <MatchAnswerPill label={partnerName} value={partnerVoteText} />
+      <Animated.View style={[styles.matchRevealedCardMotion, cardMotionStyle]}>
+        <SpringPressable onPress={onOpenDetail} style={styles.matchRevealedCardShell}>
+          <View pointerEvents="none" style={styles.matchRevealedCardGlow} />
+          <View pointerEvents="none" style={styles.matchRevealedSidePeek} />
+          <View pointerEvents="none" style={styles.matchRevealedTopDot} />
+          <View style={styles.matchRevealedBigCard}>
+            <Text style={styles.matchRevealedCategory}>{categoryLabel(match.category)}</Text>
+            <View style={styles.matchRevealedCornerDot} />
+            <Text numberOfLines={5} style={styles.matchRevealedCardTitle}>{match.title}</Text>
+            <View style={styles.matchRevealedAnswerRow}>
+              <MatchAnswerPill label="Toi" mine value={activeVoteText} />
+              <MatchAnswerPill label={partnerName} value={partnerVoteText} />
+            </View>
           </View>
-        </View>
-      </SpringPressable>
+        </SpringPressable>
+      </Animated.View>
 
-      <View style={styles.matchRevealedActionBlock}>
+      <Animated.View style={[styles.matchRevealedActionBlock, actionsMotionStyle]}>
         <SpringPressable onPress={onOpenChat} style={styles.matchRevealedChatButton}>
           <Text style={styles.matchRevealedChatText}>En parler maintenant</Text>
         </SpringPressable>
-        <SpringPressable onPress={onOpenDetail} style={styles.matchRevealedLaterButton}>
+        <SpringPressable onPress={onDismiss ?? onOpenDetail} style={styles.matchRevealedLaterButton}>
           <Text style={styles.matchRevealedLaterText}>Plus tard</Text>
         </SpringPressable>
-      </View>
+      </Animated.View>
     </LinearGradient>
   );
 }
@@ -7212,9 +7377,9 @@ function MatchDetailModal({
   const detailSideInset = viewportWidth >= 700 ? 22 : viewportWidth >= 520 ? 20 : 18;
   const detailStageMaxWidth = Math.min(334, Math.max(0, viewportWidth - detailSideInset * 2));
   const detailContentMinHeight = Math.max(0, viewportHeight - safeAreaInsets.top - safeAreaInsets.bottom);
-  const detailTopPadding = Math.round(Math.max(safeAreaInsets.top + 28, Math.min(96, Math.max(44, viewportHeight * 0.075))));
-  const detailActionTopGap = Math.round(Math.min(168, Math.max(72, viewportHeight * 0.105)));
-  const detailBottomPadding = Math.max(18, safeAreaInsets.bottom + 18);
+  const detailVerticalPadding = Math.round(Math.min(54, Math.max(20, viewportHeight * 0.045)));
+  const detailActionTopGap = Math.round(Math.min(46, Math.max(26, viewportHeight * 0.035)));
+  const detailBottomPadding = Math.max(18, safeAreaInsets.bottom + detailVerticalPadding);
 
   if (!match) {
     return null;
@@ -7247,7 +7412,7 @@ function MatchDetailModal({
                 minHeight: detailContentMinHeight,
                 paddingBottom: detailBottomPadding,
                 paddingHorizontal: detailSideInset,
-                paddingTop: detailTopPadding,
+                paddingTop: detailVerticalPadding,
               },
             ]}
             showsVerticalScrollIndicator={false}
@@ -8389,12 +8554,111 @@ function HomeMoodSettingsSheet({
   const partnerName = partnerProfile.displayName.trim() || "Ton/ta partenaire";
   const notificationsEnabled = isMoodNotificationEnabled(couple, activeId);
   const [pendingMood, setPendingMood] = useState<CoupleMoodLevel>(activeMood);
+  const { height } = useWindowDimensions();
+  const sheetHiddenY = Math.max(420, height);
+  const dragY = useRef(new Animated.Value(sheetHiddenY)).current;
+  const [sheetMounted, setSheetMounted] = useState(visible);
+  const wasVisibleRef = useRef(false);
+  const isClosingRef = useRef(false);
 
   useEffect(() => {
-    if (visible) {
-      setPendingMood(activeMood);
+    if (!visible) {
+      wasVisibleRef.current = false;
+
+      if (!isClosingRef.current) {
+        dragY.stopAnimation();
+        dragY.setValue(sheetHiddenY);
+        setSheetMounted(false);
+      }
+
+      return;
     }
-  }, [activeMood, visible]);
+
+    setSheetMounted(true);
+    setPendingMood(activeMood);
+
+    if (!wasVisibleRef.current) {
+      isClosingRef.current = false;
+      dragY.stopAnimation();
+      dragY.setValue(sheetHiddenY);
+      Animated.spring(dragY, {
+        friction: 20,
+        tension: 190,
+        toValue: 0,
+        useNativeDriver: useNativeAnimations,
+        velocity: -0.8,
+      }).start();
+    }
+
+    wasVisibleRef.current = true;
+  }, [activeMood, dragY, sheetHiddenY, visible]);
+
+  const requestSheetClose = useCallback((afterClose?: () => void) => {
+    if (isClosingRef.current) {
+      return;
+    }
+
+    isClosingRef.current = true;
+    dragY.stopAnimation();
+
+    Animated.timing(dragY, {
+      duration: 220,
+      easing: Easing.in(Easing.cubic),
+      toValue: sheetHiddenY,
+      useNativeDriver: useNativeAnimations,
+    }).start(() => {
+      dragY.setValue(sheetHiddenY);
+      wasVisibleRef.current = false;
+      setSheetMounted(false);
+      afterClose?.();
+      onClose();
+      isClosingRef.current = false;
+    });
+  }, [dragY, onClose, sheetHiddenY]);
+
+  const dragHandleResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponder: (_event, gestureState) =>
+          gestureState.dy > 3 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 0.7,
+        onMoveShouldSetPanResponderCapture: (_event, gestureState) =>
+          gestureState.dy > 3 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx) * 0.7,
+        onPanResponderGrant: () => {
+          dragY.stopAnimation();
+        },
+        onPanResponderMove: (_event, gestureState) => {
+          dragY.setValue(Math.max(0, gestureState.dy));
+        },
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderRelease: (_event, gestureState) => {
+          const shouldClose = gestureState.dy > 82 || (gestureState.dy > 28 && gestureState.vy > 0.8);
+
+          if (shouldClose) {
+            requestSheetClose();
+            return;
+          }
+
+          Animated.spring(dragY, {
+            friction: 18,
+            tension: 210,
+            toValue: 0,
+            useNativeDriver: useNativeAnimations,
+            velocity: gestureState.vy,
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(dragY, {
+            friction: 18,
+            tension: 210,
+            toValue: 0,
+            useNativeDriver: useNativeAnimations,
+          }).start();
+        },
+      }),
+    [dragY, requestSheetClose],
+  );
 
   const handleMoodPress = useCallback((level: CoupleMoodLevel) => {
     setPendingMood(level);
@@ -8404,15 +8668,28 @@ function HomeMoodSettingsSheet({
   const handleSendSignal = useCallback(() => {
     onMoodChange(pendingMood);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onClose();
-  }, [onClose, onMoodChange, pendingMood]);
+    requestSheetClose();
+  }, [onMoodChange, pendingMood, requestSheetClose]);
+
+  const modalVisible = visible || sheetMounted;
+
+  if (!modalVisible) {
+    return null;
+  }
 
   return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+    <Modal animationType="none" onRequestClose={() => requestSheetClose()} transparent visible={modalVisible}>
       <View style={styles.homeMoodSheetOverlay}>
-        <Pressable accessibilityLabel="Fermer les réglages de mood" onPress={onClose} style={styles.homeMoodSheetBackdrop} />
-        <View style={[styles.homeMoodSheet, { paddingBottom: Math.max(18, insets.bottom + 12) }]}>
-          <View style={styles.homeMoodSheetHandle} />
+        <Pressable accessibilityLabel="Fermer les réglages de mood" onPress={() => requestSheetClose()} style={styles.homeMoodSheetBackdrop} />
+        <Animated.View style={[styles.homeMoodSheet, { paddingBottom: Math.max(18, insets.bottom + 12), transform: [{ translateY: dragY }] }]}>
+          <View
+            accessibilityLabel="Faire glisser vers le bas pour fermer les réglages de mood"
+            {...dragHandleResponder.panHandlers}
+            hitSlop={{ bottom: 12, left: 18, right: 18, top: 10 }}
+            style={styles.homeMoodSheetHandleHitArea}
+          >
+            <View style={styles.homeMoodSheetHandle} />
+          </View>
           <View style={styles.homeMoodSheetHeader}>
             <View style={styles.homeMoodSheetTitleBlock}>
               <Text style={styles.homeMoodSheetTitle}>
@@ -8420,7 +8697,7 @@ function HomeMoodSettingsSheet({
               </Text>
               <Text style={styles.homeMoodSheetSubtitle}>{partnerName} ne verra rien... sauf si vos moods s'alignent.</Text>
             </View>
-            <SpringPressable onPress={onClose} style={styles.homeMoodSheetClose}>
+            <SpringPressable onPress={() => requestSheetClose()} style={styles.homeMoodSheetClose}>
               <X color={candy.ink} size={18} strokeWidth={3} />
             </SpringPressable>
           </View>
@@ -8465,7 +8742,7 @@ function HomeMoodSettingsSheet({
             <Text style={styles.homeMoodSendText}>Envoyer le signal</Text>
           </SpringPressable>
           <Text style={styles.homeMoodSheetFootnote}>Si vos moods s'alignent, vous serez prévenus tous les deux.</Text>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -8823,7 +9100,7 @@ function StoreScreen({
             </View>
 
             <View style={styles.storeSectionHeader}>
-              <Text style={styles.storeSectionTitle}>Améliorer le jeu</Text>
+              <Text style={styles.storeSectionTitle}>Améliorer l'expérience</Text>
             </View>
 
             <View style={styles.storeUpgradeList}>
@@ -8851,7 +9128,7 @@ function StoreScreen({
 
             <View style={styles.storePacksHeader}>
               <View style={styles.storeSectionHeader}>
-                <Text style={styles.storeSectionTitle}>Nouveaux univers</Text>
+                <Text style={styles.storeSectionTitle}>Pack d'envies</Text>
               </View>
             </View>
 
@@ -10214,6 +10491,7 @@ function ProfileScreen({
   onReplayTutorial,
   onRestorePurchases,
   onReset,
+  onProfileNameChange,
   onStatusEmojiChange,
 }: {
   authError: string;
@@ -10230,6 +10508,7 @@ function ProfileScreen({
   onReplayTutorial: () => void;
   onRestorePurchases: () => void;
   onReset: () => void;
+  onProfileNameChange: (name: string) => void;
   onStatusEmojiChange: (emoji: string) => void;
 }) {
   const activeProfile = couple.profiles[couple.activePartnerId];
@@ -10324,6 +10603,10 @@ function ProfileScreen({
       </View>
       <View style={[styles.profileMainArea, profileContentFrameStyle]}>
         <View style={styles.profileSettingsSection}>
+          <Text style={styles.profileSectionTitle}>Profil</Text>
+          <StatusEmojiEditor profile={activeProfile} onChange={onStatusEmojiChange} onNameChange={onProfileNameChange} />
+        </View>
+        <View style={styles.profileSettingsSection}>
           <Text style={styles.profileSectionTitle}>Compte</Text>
           <ProfileAccountPanel
             account={account}
@@ -10331,10 +10614,6 @@ function ProfileScreen({
             providerLoading={providerLoading}
             onProvider={onProvider}
           />
-        </View>
-        <View style={styles.profileSettingsSection}>
-          <Text style={styles.profileSectionTitle}>Avatar</Text>
-          <StatusEmojiEditor profile={activeProfile} onChange={onStatusEmojiChange} />
         </View>
         <View style={styles.profileSettingsSection}>
           <Text style={styles.profileSectionTitle}>Notifications</Text>
@@ -10407,23 +10686,63 @@ function ProfileScreen({
 
 function StatusEmojiEditor({
   onChange,
+  onNameChange,
   profile,
 }: {
   onChange: (emoji: string) => void;
+  onNameChange: (name: string) => void;
   profile: PartnerProfile;
 }) {
   const [customEmoji, setCustomEmoji] = useState(profileEmoji(profile));
+  const [profileName, setProfileName] = useState(profile.displayName);
   const currentEmoji = profileEmoji(profile);
+  const currentName = normalizeProfileDisplayName(profile.displayName);
 
   useEffect(() => {
     setCustomEmoji(currentEmoji);
   }, [currentEmoji]);
 
-  function submitCustomEmoji() {
-    const nextEmoji = normalizeStatusEmoji(customEmoji);
+  useEffect(() => {
+    setProfileName(currentName);
+  }, [currentName]);
+
+  const submitProfileName = useCallback(() => {
+    const nextName = normalizeProfileDisplayName(profileName, currentName);
+    setProfileName(nextName);
+
+    if (nextName !== currentName) {
+      onNameChange(nextName);
+    }
+  }, [currentName, onNameChange, profileName]);
+
+  const applyStatusEmoji = useCallback((nextEmoji: string) => {
+    if (!nextEmoji || /[a-z0-9]/i.test(nextEmoji)) {
+      return;
+    }
+
     setCustomEmoji(nextEmoji);
-    onChange(nextEmoji);
-  }
+    if (nextEmoji !== currentEmoji) {
+      onChange(nextEmoji);
+    }
+  }, [currentEmoji, onChange]);
+
+  const handleCustomEmojiChange = useCallback((value: string) => {
+    const rawValue = value.trim();
+    setCustomEmoji(value);
+
+    if (!rawValue) {
+      return;
+    }
+
+    const insertedValue =
+      customEmoji && rawValue.startsWith(customEmoji) && rawValue.length > customEmoji.length
+        ? rawValue.slice(customEmoji.length)
+        : customEmoji && rawValue.endsWith(customEmoji) && rawValue.length > customEmoji.length
+          ? rawValue.slice(0, -customEmoji.length)
+          : rawValue;
+    const nextEmoji = normalizeStatusEmoji(insertedValue || rawValue);
+    applyStatusEmoji(nextEmoji);
+  }, [applyStatusEmoji, customEmoji]);
 
   return (
     <View style={styles.statusEditorPanel}>
@@ -10432,33 +10751,49 @@ function StatusEmojiEditor({
           <Text style={styles.statusEditorPreviewEmoji}>{currentEmoji}</Text>
         </View>
         <View style={styles.statusEditorCopy}>
-          <Text style={styles.statusEditorTitle}>{profile.displayName}</Text>
-          <Text style={styles.statusEditorText}>Choisis l'emoji affiché sur ton profil.</Text>
+          <Text style={styles.statusEditorNameLabel}>Nom d'utilisateur</Text>
+          <View style={styles.statusNameInputBox}>
+            <TextInput
+              accessibilityLabel="Nom d'utilisateur"
+              autoCapitalize="words"
+              autoCorrect={false}
+              maxLength={32}
+              onBlur={submitProfileName}
+              onChangeText={setProfileName}
+              onSubmitEditing={submitProfileName}
+              placeholder="Ton nom"
+              placeholderTextColor="rgba(35,18,36,0.34)"
+              returnKeyType="done"
+              selectTextOnFocus
+              style={[styles.statusNameInput, Platform.OS === "web" ? ({ outlineStyle: "none" } as never) : null]}
+              value={profileName}
+            />
+          </View>
+          <Text style={styles.statusEditorText}>Ton nom et ton avatar visibles dans votre espace.</Text>
         </View>
       </View>
       <View style={styles.statusCustomRow}>
         <View style={styles.statusCustomInputBox}>
           <TextInput
+            accessibilityLabel="Emoji du profil"
+            autoCapitalize="none"
+            autoCorrect={false}
             maxLength={8}
-            onChangeText={setCustomEmoji}
-            onSubmitEditing={submitCustomEmoji}
+            onBlur={() => setCustomEmoji(currentEmoji)}
+            onChangeText={handleCustomEmojiChange}
             placeholder="🙂"
             placeholderTextColor="rgba(35,18,36,0.34)"
-            returnKeyType="done"
             selectTextOnFocus
             style={[styles.statusCustomInput, Platform.OS === "web" ? ({ outlineStyle: "none" } as never) : null]}
             value={customEmoji}
           />
         </View>
-        <SpringPressable onPress={submitCustomEmoji} style={styles.statusCustomButton}>
-          <Text style={styles.statusCustomButtonText}>Utiliser</Text>
-        </SpringPressable>
       </View>
       <View style={styles.statusPresetGrid}>
-        {statusEmojiPresets.map((emoji) => (
+        {statusEmojiPresets.slice(0, 8).map((emoji) => (
           <SpringPressable
             key={emoji}
-            onPress={() => onChange(emoji)}
+            onPress={() => applyStatusEmoji(emoji)}
             style={[styles.statusPresetButton, currentEmoji === emoji && styles.statusPresetButtonActive]}
           >
             <Text style={styles.statusPresetEmoji}>{emoji}</Text>
@@ -10883,16 +11218,18 @@ function WelcomeTutorialScreen({
   const [demoCardNonce, setDemoCardNonce] = useState(0);
   const [demoCardExiting, setDemoCardExiting] = useState(false);
   const [demoTransitioning, setDemoTransitioning] = useState(false);
-  const [demoBurstNonce, setDemoBurstNonce] = useState(0);
   const progressBarEntrance = useRef(new Animated.Value(0)).current;
   const progressBarProgress = useRef(new Animated.Value(0)).current;
   const demoTransitionTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   const compactWelcome = viewportHeight < 700;
   const welcomeScale = Math.min(1.45, Math.max(0.9, Math.min(viewportWidth / 390, viewportHeight / 844)));
   const demoScale = Math.min(1.35, welcomeScale);
-  const demoCardWidth = Math.min(viewportWidth - 42 * demoScale, 342 * demoScale);
-  const demoCardHeight = demoVote === null ? (compactWelcome ? 246 : 276) * demoScale : (compactWelcome ? 286 : 310) * demoScale;
-  const demoPracticeCardHeight = 190 * demoScale;
+  const demoCardWidth = Math.min(viewportWidth - 42 * demoScale, 376 * demoScale);
+  const demoPracticeDeckHeight = (compactWelcome ? 250 : 282) * demoScale;
+  const demoPracticeCardHeight = (compactWelcome ? 220 : 252) * demoScale;
+  const demoVoteAreaHeight = (compactWelcome ? 54 : 58) * demoScale;
+  const demoFeedbackHeight = (compactWelcome ? 60 : 64) * demoScale;
+  const demoCardHeight = demoPracticeDeckHeight + demoVoteAreaHeight + (demoVote === null ? 0 : demoFeedbackHeight);
   const showDemoAnsweredPlaceholder = demoVote !== null && !demoTransitioning;
   const demoFeedback =
     demoVote !== null
@@ -11065,24 +11402,6 @@ function WelcomeTutorialScreen({
       fontSize: 15 * introScale,
       lineHeight: 18 * introScale,
     },
-    caption: {
-      fontSize: 11 * demoScale,
-      lineHeight: 15 * demoScale,
-      marginTop: 12 * demoScale,
-    },
-    card: {
-      borderRadius: 28 * demoScale,
-      minHeight: demoPracticeCardHeight,
-      padding: 20 * demoScale,
-    },
-    corner: {
-      borderRadius: 999,
-      borderWidth: 3 * demoScale,
-      height: 31 * demoScale,
-      right: 20 * demoScale,
-      top: 20 * demoScale,
-      width: 31 * demoScale,
-    },
     cta: {
       borderRadius: 22 * demoScale,
       minHeight: 57 * demoScale,
@@ -11114,11 +11433,6 @@ function WelcomeTutorialScreen({
       lineHeight: 15 * demoScale,
       marginBottom: 10 * demoScale,
     },
-    practiceEyebrow: {
-      fontSize: 11 * demoScale,
-      lineHeight: 14 * demoScale,
-      letterSpacing: 2 * demoScale,
-    },
     feedback: {
       borderRadius: 16 * demoScale,
       marginTop: 12 * demoScale,
@@ -11145,11 +11459,30 @@ function WelcomeTutorialScreen({
     nav: {
       gap: 12 * demoScale,
     },
-    prompt: {
-      fontSize: 21 * demoScale,
-      lineHeight: 24 * demoScale,
-      marginTop: 32 * demoScale,
-      maxWidth: 270 * demoScale,
+    practiceCopy: {
+      minHeight: (compactWelcome ? 106 : 126) * demoScale,
+      paddingTop: 18 * demoScale,
+    },
+    practiceDeck: {
+      height: demoPracticeDeckHeight,
+      maxWidth: demoCardWidth,
+      minHeight: demoPracticeDeckHeight,
+      width: demoCardWidth,
+    },
+    practiceGameCard: {
+      borderRadius: 32 * demoScale,
+      minHeight: demoPracticeCardHeight,
+      paddingHorizontal: 24 * demoScale,
+      paddingVertical: 24 * demoScale,
+    },
+    practiceText: {
+      fontSize: 12 * demoScale,
+      lineHeight: 16 * demoScale,
+      maxWidth: 300 * demoScale,
+    },
+    practiceTitle: {
+      fontSize: 25 * demoScale,
+      lineHeight: 28 * demoScale,
     },
     screen: {
       paddingBottom: 13 * introScale,
@@ -11250,8 +11583,7 @@ function WelcomeTutorialScreen({
     setDemoTransitioning(true);
     const exitTimer = setTimeout(() => {
       setDemoCardExiting(true);
-      setDemoBurstNonce((current) => current + 1);
-    }, GAME_CARD_SETTLE_MS);
+    }, GAME_CARD_CONFIRM_MS);
     const nextTimer = setTimeout(() => {
       setDemoCardExiting(false);
       setDemoTransitioning(false);
@@ -11412,12 +11744,14 @@ function WelcomeTutorialScreen({
                         </View>
                       ) : (
                         <>
-                          <View style={[styles.welcomePracticeCard, demoLayout.card]}>
-                            <View style={[styles.welcomePracticeCorner, demoLayout.corner]} />
-                            <Text style={[styles.welcomePracticeEyebrow, demoLayout.practiceEyebrow]}>Carte de démo</Text>
-                            <Text style={[styles.welcomePracticePrompt, demoLayout.prompt]}>Un bain à deux, lumière tamisée, téléphones interdits.</Text>
-                            <Text style={[styles.welcomePracticeCaption, demoLayout.caption]}>Réponse privée.</Text>
-                          </View>
+                          <DesireGameCardFace
+                            cardStyle={demoLayout.practiceGameCard}
+                            category="Vanille"
+                            copyStyle={demoLayout.practiceCopy}
+                            deckStyle={demoLayout.practiceDeck}
+                            description="Réponse privée."
+                            prompt="Un bain à deux, lumière tamisée, téléphones interdits."
+                          />
                           <View style={[styles.welcomeVoteRow, demoLayout.voteRow]}>
                             <SpringPressable
                               disabled={demoTransitioning}
@@ -11455,7 +11789,6 @@ function WelcomeTutorialScreen({
                       ) : null}
                     </View>
                   </GameCardTransition>
-                  <PersistentBurstLayer triggerKey={demoBurstNonce} voteLevel={demoVote ?? 2} />
                 </View>
               </View>
             ) : null}
@@ -12042,6 +12375,7 @@ function LeaveCoupleConfirmScreen({
   const leaveLayout = useMemo(() => ({
     actions: {
       gap: 10 * leaveScale,
+      marginTop: leaveRhythm * 1.08,
     },
     backButton: {
       height: 40 * leaveScale,
@@ -12079,15 +12413,16 @@ function LeaveCoupleConfirmScreen({
     },
     contentStage: {
       justifyContent: "center" as const,
-      paddingBottom: leaveRhythm * 0.9,
-      paddingTop: leaveRhythm * 0.35,
+      paddingBottom: leaveRhythm * 0.55,
+      paddingTop: leaveRhythm * 0.55,
     },
     emoji: {
-      fontSize: 35 * leaveScale,
-      lineHeight: 42 * leaveScale,
-      marginBottom: 14 * leaveScale,
+      fontSize: 58 * leaveScale,
+      lineHeight: 66 * leaveScale,
+      marginBottom: 18 * leaveScale,
     },
     inner: {
+      justifyContent: "center" as const,
       maxWidth: leaveContentWidth,
       minHeight: Math.max(0, viewportHeight - leaveTopPadding - leaveBottomPadding),
     },
@@ -12098,6 +12433,16 @@ function LeaveCoupleConfirmScreen({
     primaryText: {
       fontSize: 16 * leaveScale,
       lineHeight: 20 * leaveScale,
+    },
+    reassurance: {
+      borderRadius: 15 * leaveScale,
+      marginTop: leaveRhythm * 0.66,
+      paddingHorizontal: 14 * leaveScale,
+      paddingVertical: 10 * leaveScale,
+    },
+    reassuranceText: {
+      fontSize: 13 * leaveScale,
+      lineHeight: 17 * leaveScale,
     },
     scroll: {
       paddingBottom: leaveBottomPadding,
@@ -12154,7 +12499,13 @@ function LeaveCoupleConfirmScreen({
               ))}
             </Entrance>
 
-            <Entrance delay={220} style={[styles.leaveConfirmBlock, leaveLayout.confirmBlock]}>
+            <Entrance delay={210} style={[styles.leaveReassurance, leaveLayout.reassurance]}>
+              <Text style={[styles.leaveReassuranceText, leaveLayout.reassuranceText]}>
+                Tu pourras toujours te remettre en couple avec {partnerName} plus tard.
+              </Text>
+            </Entrance>
+
+            <Entrance delay={250} style={[styles.leaveConfirmBlock, leaveLayout.confirmBlock]}>
               <TextInput
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -12167,21 +12518,21 @@ function LeaveCoupleConfirmScreen({
                 value={confirmationInput}
               />
             </Entrance>
-          </View>
 
-          <Entrance delay={300} style={[styles.leaveActions, leaveLayout.actions]}>
-            <Pressable
-              accessibilityRole="button"
-              disabled={!canConfirm}
-              onPress={handleConfirm}
-              style={[styles.leavePrimaryButton, leaveLayout.primaryButton, !canConfirm && styles.leavePrimaryButtonDisabled]}
-            >
-              <Text style={[styles.leavePrimaryText, leaveLayout.primaryText]}>Quitter le couple</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" onPress={onCancel} style={styles.leaveCancelButton}>
-              <Text style={styles.leaveCancelText}>Annuler</Text>
-            </Pressable>
-          </Entrance>
+            <Entrance delay={320} style={[styles.leaveActions, leaveLayout.actions]}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={!canConfirm}
+                onPress={handleConfirm}
+                style={[styles.leavePrimaryButton, leaveLayout.primaryButton, !canConfirm && styles.leavePrimaryButtonDisabled]}
+              >
+                <Text style={[styles.leavePrimaryText, leaveLayout.primaryText]}>Quitter le couple</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={onCancel} style={styles.leaveCancelButton}>
+                <Text style={styles.leaveCancelText}>Annuler</Text>
+              </Pressable>
+            </Entrance>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -13718,42 +14069,11 @@ const styles = StyleSheet.create({
     elevation: 2,
     zIndex: 2,
   },
-  gameCardBurstHost: {
+  gameCardStageHost: {
     flexGrow: 1,
     justifyContent: "center",
     overflow: "visible",
     position: "relative",
-  },
-  persistentBurstLayer: {
-    bottom: 0,
-    elevation: 8,
-    left: 0,
-    overflow: "visible",
-    position: "absolute",
-    right: 0,
-    top: 0,
-    zIndex: 8,
-  },
-  heartBurstLayer: {
-    bottom: 0,
-    left: 0,
-    overflow: "visible",
-    position: "absolute",
-    right: 0,
-    top: 0,
-    zIndex: 8,
-    elevation: 8,
-  },
-  heartBurstParticle: {
-    fontFamily: emojiFont,
-    left: "50%",
-    lineHeight: 64,
-    position: "absolute",
-    textAlign: "center",
-    textShadowColor: "rgba(255,36,95,0.34)",
-    textShadowOffset: { width: 0, height: 8 },
-    textShadowRadius: 14,
-    top: "50%",
   },
   desireGameStage: {
     alignItems: "center",
@@ -13770,24 +14090,24 @@ const styles = StyleSheet.create({
   },
   desireGameDeck: {
     alignSelf: "center",
-    maxWidth: 430,
-    minHeight: 410,
+    maxWidth: 400,
+    minHeight: 388,
     overflow: "visible",
     position: "relative",
     width: "100%",
   },
   desireGameDeckRoomy: {
-    maxWidth: 520,
-    minHeight: 500,
+    maxWidth: 500,
+    minHeight: 480,
   },
   desireGameBackCard: {
     backgroundColor: "rgba(247,232,215,0.9)",
-    borderRadius: 34,
-    bottom: 6,
+    borderRadius: 32,
+    bottom: 8,
     boxShadow: "0 12px 22px rgba(38,18,46,0.12)",
     position: "absolute",
-    top: 36,
-    width: "86%",
+    top: 34,
+    width: "84%",
   },
   desireGameBackCardLeft: {
     left: 0,
@@ -13801,22 +14121,22 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     backgroundColor: candy.cream,
     borderColor: "rgba(255,249,240,0.92)",
-    borderRadius: 34,
+    borderRadius: 32,
     borderWidth: 2,
     boxShadow: "0 18px 28px rgba(38,18,46,0.18)",
     justifyContent: "space-between",
-    minHeight: 390,
+    minHeight: 360,
     overflow: "hidden",
-    paddingHorizontal: 28,
-    paddingVertical: 28,
+    paddingHorizontal: 24,
+    paddingVertical: 24,
     position: "relative",
-    width: "88%",
+    width: "86%",
   },
   desireGameCardRoomy: {
-    minHeight: 470,
-    paddingHorizontal: 34,
-    paddingVertical: 34,
-    width: "84%",
+    minHeight: 434,
+    paddingHorizontal: 30,
+    paddingVertical: 30,
+    width: "83%",
   },
   desireGameTopRow: {
     alignItems: "center",
@@ -13840,12 +14160,12 @@ const styles = StyleSheet.create({
   },
   desireGameCopy: {
     justifyContent: "center",
-    minHeight: 190,
-    paddingTop: 24,
+    minHeight: 164,
+    paddingTop: 20,
   },
   desireGameCopyRoomy: {
-    minHeight: 250,
-    paddingTop: 32,
+    minHeight: 220,
+    paddingTop: 28,
   },
   desireGameTitle: {
     color: candy.ink,
@@ -13872,15 +14192,22 @@ const styles = StyleSheet.create({
     top: 0,
     zIndex: 5,
   },
+  desireGameValidationPulse: {
+    backgroundColor: "rgba(255,249,240,0.62)",
+    borderRadius: 999,
+    height: 86,
+    position: "absolute",
+    width: 86,
+  },
   desireGameValidationBadge: {
     alignItems: "center",
     borderColor: candy.white,
     borderRadius: 999,
-    borderWidth: 3,
-    boxShadow: "0 18px 34px rgba(38,18,46,0.22)",
-    height: 78,
+    borderWidth: 2.5,
+    boxShadow: "0 10px 20px rgba(38,18,46,0.18)",
+    height: 58,
     justifyContent: "center",
-    width: 78,
+    width: 58,
   },
   desireGameVoteRow: {
     alignItems: "center",
@@ -13900,15 +14227,15 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     flexGrow: 1,
     justifyContent: "center",
-    minHeight: 190,
+    minHeight: 206,
     overflow: "visible",
     paddingBottom: 10,
-    paddingTop: 18,
+    paddingTop: 30,
   },
   desireGameVoteDockRoomy: {
-    minHeight: 230,
+    minHeight: 246,
     paddingBottom: 14,
-    paddingTop: 24,
+    paddingTop: 34,
   },
   enviesGameEmpty: {
     alignItems: "center",
@@ -14588,6 +14915,9 @@ const styles = StyleSheet.create({
   matchScreen: {
     flexGrow: 1,
   },
+  matchScreenRevealMode: {
+    justifyContent: "center",
+  },
   matchScreenEmptyMode: {
     justifyContent: "flex-start",
   },
@@ -14609,6 +14939,10 @@ const styles = StyleSheet.create({
   },
   matchPrimaryStage: {
     width: "100%",
+  },
+  matchPrimaryStageReveal: {
+    flexGrow: 1,
+    overflow: "hidden",
   },
   matchPrimaryStageEmpty: {
     flexGrow: 1,
@@ -14777,6 +15111,33 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     textAlign: "center",
   },
+  matchRevealTheater: {
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    position: "relative",
+    width: "100%",
+  },
+  matchRevealTheaterBackdrop: {
+    backgroundColor: "rgba(33,13,39,0.96)",
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  matchRevealHiddenLayer: {
+    width: "100%",
+    zIndex: 1,
+  },
+  matchRevealRevealedLayer: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 2,
+  },
   matchRevealedPanel: {
     flexGrow: 1,
     gap: 22,
@@ -14787,6 +15148,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     paddingTop: 86,
     position: "relative",
+  },
+  matchRevealedPanelInline: {
+    flex: 1,
+    gap: 28,
+    justifyContent: "center",
+    minHeight: 0,
+    paddingBottom: 30,
+    paddingHorizontal: 30,
+    paddingTop: 30,
   },
   matchRevealedDecor: {
     bottom: 0,
@@ -14878,6 +15248,11 @@ const styles = StyleSheet.create({
     maxWidth: 326,
     position: "relative",
     transform: [{ rotate: "-2.8deg" }],
+    width: "100%",
+  },
+  matchRevealedCardMotion: {
+    alignSelf: "center",
+    maxWidth: 326,
     width: "100%",
   },
   matchRevealedCardGlow: {
@@ -15431,7 +15806,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexGrow: 1,
     gap: 0,
-    justifyContent: "flex-start",
+    justifyContent: "center",
   },
   matchDetailStage: {
     alignSelf: "center",
@@ -16894,19 +17269,27 @@ const styles = StyleSheet.create({
     maxWidth: 430,
     minHeight: "78%",
     paddingHorizontal: 18,
-    paddingTop: 8,
+    paddingTop: 0,
     shadowColor: "rgba(32,16,31,0.24)",
     shadowOffset: { width: 0, height: -12 },
     shadowOpacity: 1,
     shadowRadius: 24,
     width: "100%",
   },
+  homeMoodSheetHandleHitArea: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    height: 52,
+    justifyContent: "center",
+    marginBottom: -8,
+    marginHorizontal: -18,
+    paddingTop: 4,
+  },
   homeMoodSheetHandle: {
     alignSelf: "center",
     backgroundColor: "rgba(169,126,96,0.42)",
     borderRadius: 999,
     height: 4,
-    marginBottom: 12,
     width: 44,
   },
   homeMoodSheetHeader: {
@@ -18739,12 +19122,33 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  statusEditorTitle: {
+  statusEditorNameLabel: {
+    color: candy.red,
+    fontFamily: labelFont,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  statusNameInputBox: {
+    backgroundColor: candy.white,
+    borderColor: "rgba(43,23,53,0.12)",
+    borderRadius: 18,
+    borderWidth: 1.5,
+    justifyContent: "center",
+    marginTop: 5,
+    minHeight: 46,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+  },
+  statusNameInput: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 25,
+    fontSize: 23,
     fontWeight: "900",
     lineHeight: 28,
+    minHeight: 34,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   statusEditorText: {
     color: candy.muted,
@@ -18755,19 +19159,19 @@ const styles = StyleSheet.create({
   },
   statusPresetGrid: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
+    flexWrap: "nowrap",
+    gap: 8,
   },
   statusPresetButton: {
     alignItems: "center",
     backgroundColor: "rgba(245,40,110,0.08)",
     borderColor: "transparent",
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 2,
-    flexBasis: 58,
-    flexGrow: 1,
-    height: 56,
+    flex: 1,
+    height: 54,
     justifyContent: "center",
+    minWidth: 0,
   },
   statusPresetButtonActive: {
     backgroundColor: candy.yellow,
@@ -18779,16 +19183,14 @@ const styles = StyleSheet.create({
     lineHeight: 36,
   },
   statusCustomRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 10,
+    alignItems: "stretch",
   },
   statusCustomInputBox: {
+    alignSelf: "stretch",
     backgroundColor: candy.white,
     borderColor: "rgba(43,23,53,0.12)",
     borderRadius: 22,
     borderWidth: 1.5,
-    flex: 1,
     justifyContent: "center",
     minHeight: 64,
     paddingHorizontal: 18,
@@ -18804,21 +19206,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 0,
     textAlign: "center",
-  },
-  statusCustomButton: {
-    alignItems: "center",
-    backgroundColor: candy.darkColor,
-    borderColor: candy.darkColor,
-    borderRadius: 22,
-    borderWidth: 2,
-    justifyContent: "center",
-    minHeight: 64,
-    paddingHorizontal: 24,
-  },
-  statusCustomButtonText: {
-    color: candy.white,
-    fontSize: 15,
-    fontWeight: "900",
   },
   profileSettingsSection: {
     gap: 9,
@@ -19764,11 +20151,16 @@ const styles = StyleSheet.create({
   leaveInner: {
     alignSelf: "center",
     flexGrow: 1,
-    justifyContent: "space-between",
+    justifyContent: "center",
+    position: "relative",
     width: "100%",
   },
   leaveTopBar: {
     alignSelf: "stretch",
+    left: 0,
+    position: "absolute",
+    top: 0,
+    zIndex: 2,
   },
   leaveBackButton: {
     alignItems: "center",
@@ -19780,16 +20172,19 @@ const styles = StyleSheet.create({
   },
   leaveContentStage: {
     flexGrow: 1,
+    justifyContent: "center",
     width: "100%",
   },
   leaveCopyBlock: {
     marginTop: 0,
   },
   leaveEmoji: {
+    alignSelf: "center",
     fontFamily: emojiFont,
-    fontSize: 35,
-    lineHeight: 42,
-    marginBottom: 16,
+    fontSize: 58,
+    lineHeight: 66,
+    marginBottom: 18,
+    textAlign: "center",
   },
   leaveTitle: {
     color: candy.cream,
@@ -19834,6 +20229,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     lineHeight: 16,
+  },
+  leaveReassurance: {
+    backgroundColor: "rgba(245,40,110,0.14)",
+    borderColor: "rgba(245,40,110,0.26)",
+    borderRadius: 15,
+    borderWidth: 1.5,
+    width: "100%",
+  },
+  leaveReassuranceText: {
+    color: "rgba(255,244,232,0.82)",
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 17,
+    textAlign: "center",
   },
   leaveConfirmBlock: {
     marginTop: 20,
@@ -20132,53 +20541,6 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(32,16,31,0.28)",
     textShadowOffset: { width: 1.5, height: 1.5 },
     textShadowRadius: 0,
-  },
-  welcomePracticeCard: {
-    backgroundColor: candy.cream,
-    borderColor: "rgba(255,249,240,0.92)",
-    borderRadius: 28,
-    borderWidth: 2,
-    minHeight: 190,
-    overflow: "hidden",
-    padding: 20,
-    position: "relative",
-    shadowColor: "rgba(38,18,46,0.2)",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
-  },
-  welcomePracticeCorner: {
-    borderColor: candy.yellow,
-    borderRadius: 999,
-    borderWidth: 3,
-    height: 31,
-    position: "absolute",
-    right: 20,
-    top: 20,
-    width: 31,
-  },
-  welcomePracticeEyebrow: {
-    color: candy.red,
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 2,
-    textTransform: "uppercase",
-  },
-  welcomePracticePrompt: {
-    color: candy.ink,
-    fontFamily: displayFont,
-    fontSize: 21,
-    fontWeight: "900",
-    lineHeight: 24,
-    marginTop: 32,
-    maxWidth: 270,
-  },
-  welcomePracticeCaption: {
-    color: candy.muted,
-    fontSize: 11,
-    fontWeight: "800",
-    lineHeight: 15,
-    marginTop: 12,
   },
   welcomeVoteRow: {
     flexDirection: "row",

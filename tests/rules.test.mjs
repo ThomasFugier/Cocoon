@@ -44,7 +44,11 @@ const notificationRowStart = app.indexOf("function NotificationPreferenceRow");
 const statusEditor = statusEditorStart >= 0 && notificationRowStart > statusEditorStart
   ? app.slice(statusEditorStart, notificationRowStart)
   : "";
-const desireGameCardStart = app.indexOf("function DesireGameCard");
+const desireGameCardFaceStart = app.indexOf("function DesireGameCardFace");
+const desireGameCardStart = app.indexOf("function DesireGameCard({");
+const desireGameCardFace = desireGameCardFaceStart >= 0 && desireGameCardStart > desireGameCardFaceStart
+  ? app.slice(desireGameCardFaceStart, desireGameCardStart)
+  : "";
 const enviesGameEmptyStart = app.indexOf("function EnviesGameEmpty");
 const desireGameCard = desireGameCardStart >= 0 && enviesGameEmptyStart > desireGameCardStart
   ? app.slice(desireGameCardStart, enviesGameEmptyStart)
@@ -228,13 +232,22 @@ test("leave couple confirmation requires typing the partner goodbye", () => {
   assert.match(app, /placeholder=\{`Écris « \$\{expectedConfirmation\} » pour confirmer`\}/);
   assert.match(app, />😭</);
   assert.match(app, /disabled=\{!canConfirm\}/);
+  assert.match(leaveCoupleConfirm, /emoji: \{[\s\S]{0,80}fontSize: 58 \* leaveScale[\s\S]{0,80}lineHeight: 66 \* leaveScale/);
   assert.match(leaveCoupleConfirm, /useSafeAreaInsets\(\)/);
   assert.match(leaveCoupleConfirm, /useWindowDimensions\(\)/);
   assert.match(leaveCoupleConfirm, /leaveContentWidth = Math\.min\(620, Math\.max\(0, viewportWidth - leaveSideInset \* 2\)\)/);
   assert.match(leaveCoupleConfirm, /contentContainerStyle=\{\[styles\.leaveScrollContent, leaveLayout\.scroll\]\}/);
   assert.match(leaveCoupleConfirm, /style=\{\[styles\.leaveInner, leaveLayout\.inner\]\}/);
   assert.match(leaveCoupleConfirm, /style=\{\[styles\.leaveContentStage, leaveLayout\.contentStage\]\}/);
+  assert.match(leaveCoupleConfirm, /Tu pourras toujours te remettre en couple avec \{partnerName\} plus tard\./);
+  assert.match(leaveCoupleConfirm, /style=\{\[styles\.leaveReassurance, leaveLayout\.reassurance\]\}[\s\S]{0,900}style=\{\[styles\.leaveConfirmBlock, leaveLayout\.confirmBlock\]\}/);
+  assert.match(leaveCoupleConfirm, /style=\{\[styles\.leaveConfirmBlock, leaveLayout\.confirmBlock\]\}[\s\S]{0,1400}style=\{\[styles\.leaveActions, leaveLayout\.actions\]\}/);
+  assert.match(app, /leaveInner: \{[\s\S]{0,160}justifyContent: "center"/);
+  assert.match(app, /leaveEmoji: \{[\s\S]{0,80}alignSelf: "center"[\s\S]{0,160}textAlign: "center"/);
+  assert.match(app, /leaveReassuranceText: \{[\s\S]{0,120}textAlign: "center"/);
+  assert.match(app, /leaveTopBar: \{[\s\S]{0,160}position: "absolute"/);
   assert.doesNotMatch(app, /leaveInner: \{[\s\S]{0,180}maxWidth: 430/);
+  assert.doesNotMatch(app, /leaveInner: \{[\s\S]{0,180}justifyContent: "space-between"/);
 });
 
 test("couple membership is unique and join switches atomically server-side", () => {
@@ -354,9 +367,9 @@ test("full reset signs out so Supabase cannot auto-hydrate the previous couple",
   assert.match(app, /const handleReset = useCallback\(async \(\) => \{[\s\S]*setRemoteHydrating\(false\);/);
 });
 
-test("profile screen puts account first and merges app actions", () => {
+test("profile screen puts app profile first and account second", () => {
+  const profileIndex = profileScreen.indexOf("<Text style={styles.profileSectionTitle}>Profil</Text>");
   const accountIndex = profileScreen.indexOf("<Text style={styles.profileSectionTitle}>Compte</Text>");
-  const avatarIndex = profileScreen.indexOf("<Text style={styles.profileSectionTitle}>Avatar</Text>");
   const notificationsIndex = profileScreen.indexOf("<Text style={styles.profileSectionTitle}>Notifications</Text>");
   const applicationIndex = profileScreen.indexOf("<Text style={styles.profileSectionTitle}>Application</Text>");
 
@@ -374,10 +387,13 @@ test("profile screen puts account first and merges app actions", () => {
   assert.match(profileScreen, /width: profileContentWidth/);
   assert.doesNotMatch(app, /profileHeader: \{[\s\S]{0,140}maxWidth: 430/);
   assert.doesNotMatch(app, /profileMainArea: \{[\s\S]{0,100}maxWidth: 430/);
+  assert.ok(profileIndex >= 0);
   assert.ok(accountIndex >= 0);
-  assert.ok(accountIndex < avatarIndex);
-  assert.ok(avatarIndex < notificationsIndex);
+  assert.ok(profileIndex < accountIndex);
+  assert.ok(accountIndex < notificationsIndex);
   assert.ok(notificationsIndex < applicationIndex);
+  assert.match(profileScreen, /<StatusEmojiEditor profile=\{activeProfile\} onChange=\{onStatusEmojiChange\} onNameChange=\{onProfileNameChange\} \/>/);
+  assert.doesNotMatch(profileScreen, /<Text style=\{styles\.profileSectionTitle\}>Avatar<\/Text>/);
   assert.doesNotMatch(profileScreen, />Statut<\/Text>/);
   assert.doesNotMatch(profileScreen, /<Text style=\{styles\.profileSectionTitle\}>Actions<\/Text>/);
   ["Réinitialiser le test", "Revoir l'intro", "Restaurer les achats", "Quitter le couple", "Supprimer mon compte", "Se déconnecter"].forEach((label) => {
@@ -386,10 +402,21 @@ test("profile screen puts account first and merges app actions", () => {
   assert.doesNotMatch(profileScreen, /Données privées par couple/);
   assert.match(profileScreen, /\{PROJECT_VERSION\.label\}/);
   assert.match(statusEditor, /TextInput/);
+  assert.match(statusEditor, /onNameChange: \(name: string\) => void/);
+  assert.match(statusEditor, /accessibilityLabel="Nom d'utilisateur"/);
+  assert.match(statusEditor, /onBlur=\{submitProfileName\}/);
+  assert.match(statusEditor, /onSubmitEditing=\{submitProfileName\}/);
+  assert.match(app, /function normalizeProfileDisplayName\(value: string, fallback = "Moi"\)/);
+  assert.match(app, /function withUpdatedProfileName\(couple: CoupleState, partnerId: PartnerId, displayName: string\)/);
+  assert.match(app, /const handleProfileNameChange = useCallback/);
+  assert.match(coupleApi, /export async function saveRemoteProfileName\(displayName: string\)/);
   assert.match(statusEditor, /maxLength=\{8\}/);
-  assert.match(statusEditor, /statusEmojiPresets\.map/);
-  assert.match(statusEditor, /Choisis l'emoji affich./);
+  assert.match(statusEditor, /onChangeText=\{handleCustomEmojiChange\}/);
+  assert.match(statusEditor, /statusEmojiPresets\.slice\(0, 8\)\.map/);
+  assert.match(statusEditor, /Ton nom et ton avatar visibles/);
+  assert.doesNotMatch(statusEditor, /Utiliser|submitCustomEmoji|statusCustomButton/);
   assert.doesNotMatch(statusEditor, /Ton signal du moment|Suggestions rapides|Emoji perso/);
+  assert.match(app, /statusPresetGrid: \{[\s\S]{0,120}flexWrap: "nowrap"/);
 });
 
 test("account and data deletion is authenticated, server-side, and partner-safe", () => {
@@ -629,8 +656,22 @@ test("home mood gear opens a mood and notification bottom sheet", () => {
   assert.match(homeMoodHero, /<Settings color=\{candy\.white\} size=\{18 \* heroScale\}/);
   assert.match(homeMoodSettingsSheet, /Ton mood/);
   assert.match(homeMoodSettingsSheet, /Envoyer le signal/);
-  assert.match(homeMoodSettingsSheet, /animationType="fade"/);
+  assert.match(homeMoodSettingsSheet, /animationType="none"/);
+  assert.doesNotMatch(homeMoodSettingsSheet, /animationType="fade"/);
+  assert.match(homeMoodSettingsSheet, /const sheetHiddenY = Math\.max\(420, height\)/);
+  assert.match(homeMoodSettingsSheet, /new Animated\.Value\(sheetHiddenY\)/);
+  assert.match(homeMoodSettingsSheet, /const \[sheetMounted, setSheetMounted\] = useState\(visible\)/);
+  assert.match(homeMoodSettingsSheet, /Animated\.spring\(dragY,[\s\S]{0,240}toValue: 0/);
+  assert.match(homeMoodSettingsSheet, /const requestSheetClose = useCallback/);
+  assert.match(homeMoodSettingsSheet, /Animated\.timing\(dragY,[\s\S]{0,240}toValue: sheetHiddenY/);
+  assert.match(homeMoodSettingsSheet, /const modalVisible = visible \|\| sheetMounted/);
+  assert.match(homeMoodSettingsSheet, /onRequestClose=\{\(\) => requestSheetClose\(\)\}/);
+  assert.match(homeMoodSettingsSheet, /onPress=\{\(\) => requestSheetClose\(\)\} style=\{styles\.homeMoodSheetBackdrop\}/);
+  assert.match(homeMoodSettingsSheet, /<SpringPressable onPress=\{\(\) => requestSheetClose\(\)\} style=\{styles\.homeMoodSheetClose\}/);
   assert.match(homeMoodSettingsSheet, /styles\.homeMoodSheetHandle/);
+  assert.match(homeMoodSettingsSheet, /onStartShouldSetPanResponder: \(\) => true/);
+  assert.match(homeMoodSettingsSheet, /onPanResponderTerminationRequest: \(\) => false/);
+  assert.match(homeMoodSettingsSheet, /requestSheetClose\(\);\s+return;/);
   assert.match(homeMoodSettingsSheet, /isMoodNotificationEnabled\(couple, activeId\)/);
   assert.match(homeMoodSettingsSheet, /<NotificationPreferenceRow/);
   assert.match(homeMoodSettingsSheet, /title="Humeur partagée"/);
@@ -642,6 +683,8 @@ test("home mood gear opens a mood and notification bottom sheet", () => {
   assert.match(app, /homeMoodSheetOverlay: \{[\s\S]{0,80}backgroundColor: "rgba\(38,18,46,0\.48\)"/);
   assert.match(app, /homeMoodSheet: \{[\s\S]{0,180}maxWidth: 430/);
   assert.match(app, /homeMoodSheet: \{[\s\S]{0,220}minHeight: "78%"/);
+  assert.match(app, /homeMoodSheetHandleHitArea: \{[\s\S]{0,120}alignSelf: "stretch"[\s\S]{0,80}height: 52/);
+  assert.match(app, /homeMoodSheetHandleHitArea: \{[\s\S]{0,220}marginHorizontal: -18/);
   assert.match(app, /homeMoodSignalRow: \{[\s\S]{0,260}minHeight: 68/);
   assert.match(app, /homeMoodSignalRow: \{[\s\S]{0,300}paddingVertical: 10/);
   assert.match(app, /moodSignalOptions/);
@@ -672,12 +715,23 @@ test("join prompt returns to invite only when explicitly requested", () => {
 });
 
 test("game cards use title as prompt and blurb as footer description", () => {
+  assert.match(desireGameCardFace, /function DesireGameCardFace/);
+  assert.match(desireGameCardFace, /styles\.desireGameDeck/);
+  assert.match(desireGameCardFace, /styles\.desireGameCard/);
+  assert.match(desireGameCardFace, /<Text adjustsFontSizeToFit numberOfLines=\{5\} style=\{\[styles\.desireGameTitle, titleStyle\]\}>\{prompt\}<\/Text>/);
+  assert.match(desireGameCardFace, /<Text numberOfLines=\{2\} style=\{\[styles\.desireGameText, textStyle\]\}>\{description\}<\/Text>/);
   assert.match(desireGameCard, /const prompt = card\.title \|\| card\.blurb/);
   assert.match(desireGameCard, /const description = card\.blurb \|\| card\.title/);
   assert.match(desireGameCard, /const activeVote = confirmingVote \?\? selectedVote/);
-  assert.match(desireGameCard, /<Text adjustsFontSizeToFit numberOfLines=\{5\} style=\{styles\.desireGameTitle\}>\{prompt\}<\/Text>/);
-  assert.match(desireGameCard, /<Text numberOfLines=\{2\} style=\{styles\.desireGameText\}>\{description\}<\/Text>/);
+  assert.match(desireGameCard, /<DesireGameCardFace[\s\S]{0,280}description=\{description\}[\s\S]{0,160}prompt=\{prompt\}/);
   assert.doesNotMatch(desireGameCard, /privacyCopy|partnerName/);
+});
+
+test("tutorial demo card reuses the game card face", () => {
+  assert.match(app, /<DesireGameCardFace[\s\S]{0,180}cardStyle=\{demoLayout\.practiceGameCard\}[\s\S]{0,80}category="Vanille"[\s\S]{0,120}deckStyle=\{demoLayout\.practiceDeck\}/);
+  assert.match(app, /prompt="Un bain . deux, lumi.re tamis.e, t.l.phones interdits\."/);
+  assert.match(app, /description="R.ponse priv.e\."/);
+  assert.doesNotMatch(app, /welcomePracticeCard|welcomePracticeCorner|welcomePracticePrompt|welcomePracticeCaption/);
 });
 
 test("game card stage sits lower and validates the selected answer", () => {
@@ -685,15 +739,19 @@ test("game card stage sits lower and validates the selected answer", () => {
   assert.match(app, /setGameTransitionVoteLevel\(level\)/);
   assert.match(app, /voteLevel=\{gameTransitionVoteLevel \?\? undefined\}/);
   assert.match(app, /confirmingVote=\{activeGameCard\.id === gameTransitionCardId \? gameTransitionVoteLevel \?\? undefined : undefined\}/);
-  assert.match(app, /gameCardBurstHost: \{[\s\S]{0,80}flexGrow: 1,[\s\S]{0,80}justifyContent: "center"/);
+  assert.match(app, /gameCardStageHost: \{[\s\S]{0,80}flexGrow: 1,[\s\S]{0,80}justifyContent: "center"/);
   assert.match(app, /gameCardTransitionBody: \{[\s\S]{0,60}flexGrow: 1/);
-  assert.match(app, /exitTranslateY = exit\.interpolate\(\{[\s\S]{0,120}outputRange: \[0, 12, 86\]/);
+  assert.match(app, /exitTranslateY = exit\.interpolate\(\{[\s\S]{0,120}outputRange: \[0, 28\]/);
   assert.match(app, /desireGameStage: \{[\s\S]{0,120}flexGrow: 1/);
-  assert.match(desireGameCard, /const gameVerticalDrop = Math\.round\(Math\.min\(roomy \? 64 : 52, Math\.max\(26, height \* 0\.048\)\)\)/);
+  assert.match(desireGameCard, /const gameVerticalDrop = Math\.round\(Math\.min\(roomy \? 86 : 72, Math\.max\(38, height \* 0\.075\)\)\)/);
   assert.match(desireGameCard, /\{ paddingTop: gameVerticalDrop \}/);
+  assert.match(app, /desireGameDeck: \{[\s\S]{0,120}maxWidth: 400,[\s\S]{0,80}minHeight: 388/);
+  assert.match(app, /desireGameCard: \{[\s\S]{0,300}minHeight: 360,[\s\S]{0,240}width: "86%"/);
   assert.match(desireGameCard, /styles\.desireGameValidationVeil/);
+  assert.match(desireGameCard, /styles\.desireGameValidationPulse/);
   assert.match(desireGameCard, /styles\.desireGameValidationBadge/);
-  assert.match(desireGameCard, /<Check color=\{validationTone\.iconColor\} size=\{34\} strokeWidth=\{4\} \/>/);
+  assert.match(desireGameCard, /<Check color=\{validationTone\.iconColor\} size=\{28\} strokeWidth=\{4\} \/>/);
+  assert.doesNotMatch(app, /PersistentBurstLayer|HeartBurst|responseBurstParticles/);
   assert.match(app, /desireGameVoteDock: \{[\s\S]{0,160}flexGrow: 1,[\s\S]{0,80}justifyContent: "center"/);
 });
 
@@ -736,17 +794,24 @@ test("match empty screen follows the simple centered layout", () => {
 });
 
 test("match tab reveals hidden matches first then lists all common matches", () => {
+  assert.match(matchScreen, /const \[spotlightMatch, setSpotlightMatch\] = useState<DesireCard \| null>\(null\)/);
   assert.match(matchScreen, /const listedMatches = hasHiddenReveal \? revealedMatches : matches/);
   assert.match(matchScreen, /const hasSecondaryMatchContent = hasHiddenReveal \? revealedMatches\.length > 0 : listedMatches\.length > 0/);
+  assert.match(matchScreen, /const inlineRevealMatch = spotlightMatch \?\? \(isNewestOpening \? newestHiddenMatch \?\? null : null\)/);
+  assert.match(matchScreen, /const showInlineReveal = Boolean\(inlineRevealMatch\)/);
   assert.doesNotMatch(matchScreen, /const revealedMatchPageMode/);
   assert.doesNotMatch(matchScreen, /revealedMatchPageMode/);
   assert.match(matchScreen, /<Text style=\{styles\.matchScreenTitle\}>Matchs<\/Text>/);
-  assert.match(matchScreen, /hasHiddenReveal \|\| !hasAnyMatch \? \(/);
-  assert.match(matchScreen, /hasHiddenReveal \? \(\s*<HiddenMatchRevealPanel/);
+  assert.match(matchScreen, /showInlineReveal \|\| hasHiddenReveal \|\| !hasAnyMatch \? \(/);
+  assert.match(matchScreen, /showInlineReveal \? \(\s*<MatchRevealTheater/);
+  assert.match(matchScreen, /onDismiss=\{closeInlineReveal\}/);
+  assert.doesNotMatch(matchScreen, /setSelectedMatch\(newestHiddenMatch\)/);
   assert.match(matchScreen, /<Text style=\{styles\.matchListTitle\}>Tous vos matchs<\/Text>/);
   assert.match(matchScreen, /listedMatches\.map\(\(card, index\) => \(/);
   assert.match(matchScreen, /<MatchListItem card=\{card\} index=\{index\} key=\{card\.id\} onOpen=\{\(\) => setSelectedMatch\(card\)\} \/>/);
-  assert.doesNotMatch(matchScreen, /<MatchRevealedPanel\s+couple=\{couple\}/);
+  assert.match(app, /function MatchRevealTheater/);
+  assert.match(app, /matchRevealTheaterBackdrop/);
+  assert.match(app, /matchRevealedPanelInline/);
   assert.match(app, /matchListItem: \{[\s\S]{0,120}backgroundColor: "rgba\(255,255,255,0\.76\)"/);
 });
 
@@ -754,8 +819,8 @@ test("opened match detail uses the dark revealed-match layout", () => {
   assert.match(matchDetailModal, /const detailSideInset = viewportWidth >= 700 \? 22 : viewportWidth >= 520 \? 20 : 18/);
   assert.match(matchDetailModal, /const detailStageMaxWidth = Math\.min\(334, Math\.max\(0, viewportWidth - detailSideInset \* 2\)\)/);
   assert.match(matchDetailModal, /const detailContentMinHeight = Math\.max\(0, viewportHeight - safeAreaInsets\.top - safeAreaInsets\.bottom\)/);
-  assert.match(matchDetailModal, /const detailTopPadding = Math\.round\(Math\.max\(safeAreaInsets\.top \+ 28, Math\.min\(96, Math\.max\(44, viewportHeight \* 0\.075\)\)\)\)/);
-  assert.match(matchDetailModal, /const detailActionTopGap = Math\.round\(Math\.min\(168, Math\.max\(72, viewportHeight \* 0\.105\)\)\)/);
+  assert.match(matchDetailModal, /const detailVerticalPadding = Math\.round\(Math\.min\(54, Math\.max\(20, viewportHeight \* 0\.045\)\)\)/);
+  assert.match(matchDetailModal, /const detailActionTopGap = Math\.round\(Math\.min\(46, Math\.max\(26, viewportHeight \* 0\.035\)\)\)/);
   assert.match(matchDetailModal, /colors=\{\[candy\.darkColor, "#210D27", "#16051A"\]\}/);
   assert.match(matchDetailModal, /C'est un match/);
   assert.match(matchDetailModal, /Vous avez r.pondu oui, tous les deux/);
@@ -772,7 +837,8 @@ test("opened match detail uses the dark revealed-match layout", () => {
   assert.doesNotMatch(matchDetailModal, /styles\.matchDetailTopBar/);
   assert.match(app, /matchDetailContent: \{[\s\S]{0,90}alignItems: "center"/);
   assert.match(matchDetailModal, /styles\.matchDetailActions, \{ marginTop: detailActionTopGap, maxWidth: detailStageMaxWidth \}/);
-  assert.match(app, /matchDetailContent: \{[\s\S]{0,140}justifyContent: "flex-start"/);
+  assert.match(app, /matchDetailContent: \{[\s\S]{0,140}justifyContent: "center"/);
+  assert.doesNotMatch(app, /matchDetailContent: \{[\s\S]{0,140}justifyContent: "flex-start"/);
   assert.match(app, /matchDetailStage: \{[\s\S]{0,140}maxWidth: 334/);
   assert.match(app, /matchDetailPrimaryAction: \{[\s\S]{0,140}backgroundColor: candy\.red/);
   assert.match(app, /matchDetailSecondaryAction: \{[\s\S]{0,140}backgroundColor: "transparent"/);
@@ -781,16 +847,19 @@ test("opened match detail uses the dark revealed-match layout", () => {
 test("hidden match reveal uses the mystery card layout", () => {
   assert.match(matchScreen, /const hasSecondaryMatchContent = hasHiddenReveal/);
   assert.match(matchScreen, /const centerPrimaryMatchStage = hasHiddenReveal && !hasSecondaryMatchContent/);
-  assert.match(matchScreen, /styles\.matchPrimaryStage[\s\S]{0,140}centerPrimaryMatchStage && styles\.matchPrimaryStageCentered[\s\S]{0,140}!hasAnyMatch && styles\.matchPrimaryStageEmpty/);
+  assert.match(matchScreen, /styles\.matchPrimaryStage[\s\S]{0,180}showInlineReveal && styles\.matchPrimaryStageReveal[\s\S]{0,180}centerPrimaryMatchStage && styles\.matchPrimaryStageCentered/);
   assert.match(matchScreen, /hasHiddenReveal \? \(\s*<HiddenMatchRevealPanel/);
   assert.match(matchScreen, /hiddenMatchCount=\{hiddenMatchCount\}/);
   assert.match(matchScreen, /revealAnim=\{revealAnim\}/);
   assert.match(matchScreen, /function HiddenMatchRevealPanel/);
+  assert.match(app, /revealedOpacity = revealAnim\.interpolate/);
+  assert.match(app, /actionsMotionStyle = revealAnim \? \{/);
   assert.match(app, /hiddenMatchPatternDots/);
   assert.match(app, /Match cach./);
   assert.match(app, /Ni titre, ni indice/);
   assert.match(app, /Z.ro pub/);
   assert.match(app, /matchPrimaryStageCentered: \{[\s\S]{0,80}flexGrow: 1,[\s\S]{0,80}justifyContent: "center"/);
+  assert.match(app, /matchScreenRevealMode: \{[\s\S]{0,80}justifyContent: "center"/);
   assert.match(app, /hiddenRevealMysteryCard: \{[\s\S]{0,120}backgroundColor: candy\.black/);
   assert.match(app, /hiddenRevealButton: \{[\s\S]{0,140}backgroundColor: candy\.cream/);
 });
@@ -819,7 +888,7 @@ test("store uses the responsive boutique layout", () => {
   assert.doesNotMatch(app, /STORE_FEATURED_PACK_CATEGORIES/);
   assert.match(storeScreen, /<Text style=\{styles\.storeTitle\}>Boutique<\/Text>/);
   assert.match(storeScreen, /Des extensions de jeu, pas des murs\./);
-  assert.match(storeScreen, /Am.liorer le jeu/);
+  assert.match(storeScreen, /Am.liorer l'exp.rience/);
   assert.match(storeScreen, /const storeBottomPadding = Math\.max\(18, safeAreaInsets\.bottom \+ 12\)/);
   assert.match(storeScreen, /const storeSurface = fullScreenSurfaceMetrics\(viewportWidth\)/);
   assert.match(storeScreen, /const storePackColumns = 3/);
@@ -834,7 +903,7 @@ test("store uses the responsive boutique layout", () => {
   assert.match(storeScreen, /price=\{customUnlimited \? "Actif" : CUSTOM_CARDS_UNLIMITED_PRICE\}/);
   assert.match(storeScreen, /title="Z.ro pub"/);
   assert.match(storeScreen, /price=\{noAdsUnlocked \? "Actif" : NO_ADS_PRICE\}/);
-  assert.match(storeScreen, /Nouveaux univers/);
+  assert.match(storeScreen, /Pack d'envies/);
   assert.doesNotMatch(storeScreen, /Tout voir/);
   assert.doesNotMatch(storeScreen, /maxWidth: storeContentMaxWidth/);
   assert.match(storeScreen, /minHeight: storeContentMinHeight/);
@@ -1138,6 +1207,8 @@ test("expo push receipts are stored and checked after push send", () => {
 test("queued chat photos use bubble-level delivery feedback instead of a global sync banner", () => {
   assert.match(app, /deliveryStatus: "sending"/);
   assert.match(app, /withChatMessageDeliveryStatus\(current, messageId, queued \? "queued" : "failed"\)/);
+  assert.match(app, /const remoteChatMessages = await chatMessagesFromRemote\(remoteMessages\)/);
+  assert.match(app, /const messages = mergePendingChatMessages\(remoteChatMessages, cleanCouple\)/);
   assert.match(app, /En attente d'envoi/);
   assert.match(app, /result\.sentChatMessages > 0/);
   assert.match(app, /refreshRemoteChatMessages\(preferredCoupleId, \{ force: true \}\)/);

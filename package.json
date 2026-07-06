@@ -60,6 +60,8 @@
     "submit:android": "npx eas-cli@latest submit -p android --profile production --latest",
     "cards:generate": "node scripts/generate-desires.js",
     "cards:check": "node scripts/generate-desires.js --check",
+    "db:admin": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/db-admin.ps1",
+    "db:admin:web": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/user-admin.ps1",
     "test": "node --test tests/*.test.mjs"
   },
   "private": true

@@ -1,0 +1,17 @@
+C:\Users\ThomasFugier\Documents\Repositories\VoodooStudios\Cocoon\node_modules\expo\node_modules\@expo\cli\build\src\utils\errors.js:130
+    throw error;
+    ^
+
+Error: UNKNOWN: unknown error, lstat 'C:\Users\ThomasFugier\Documents\Repositories\VoodooStudios\Cocoon\node_modules\expo-dev-launcher\android\?\C:\Users\ThomasFugier\Documents\Repositories\VoodooStudios\Cocoon\node_modules\expo-dev-launcher\android'
+    at async Object.lstat (node:internal/fs/promises:1022:18)
+    at async #processChange (C:\Users\ThomasFugier\Documents\Repositories\VoodooStudios\Cocoon\node_modules\@expo\metro-file-map\build\watchers\FallbackWatcher.js:257:26)
+Emitted 'error' event at:
+    at FallbackWatcher.emitError (C:\Users\ThomasFugier\Documents\Repositories\VoodooStudios\Cocoon\node_modules\@expo\metro-file-map\build\watchers\AbstractWatcher.js:92:23)
+    at C:\Users\ThomasFugier\Documents\Repositories\VoodooStudios\Cocoon\node_modules\@expo\metro-file-map\build\watchers\FallbackWatcher.js:245:22 {
+  errno: -4094,
+  code: 'UNKNOWN',
+  syscall: 'lstat',
+  path: 'C:\\Users\\ThomasFugier\\Documents\\Repositories\\VoodooStudios\\Cocoon\\node_modules\\expo-dev-launcher\\android\\?\\C:\\Users\\ThomasFugier\\Documents\\Repositories\\VoodooStudios\\Cocoon\\node_modules\\expo-dev-launcher\\android'
+}
+
+Node.js v22.15.0
