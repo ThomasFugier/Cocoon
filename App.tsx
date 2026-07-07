@@ -1887,7 +1887,7 @@ function categoryChipTextColor(category: DesireCategory, active = false, unlocke
 }
 
 function partnerPackOwnershipLabel(couple: CoupleState, category: DesireCategory) {
-  return isCategoryUnlocked(couple, category) ? "Partenaire l'a" : "Partenaire ne l'a pas";
+  return isCategoryUnlocked(couple, category) ? "Partenaire l'a" : undefined;
 }
 
 function categoryCardTone(category: DesireCategory) {
@@ -4784,6 +4784,7 @@ function MainShell({
   const [tabBarHeight, setTabBarHeight] = useState(DEFAULT_TAB_DOCK_HEIGHT);
   const [tabDockOverlayHeight, setTabDockOverlayHeight] = useState(DEFAULT_TAB_DOCK_HEIGHT);
   const [androidKeyboardVisible, setAndroidKeyboardVisible] = useState(false);
+  const [matchRevealDockDark, setMatchRevealDockDark] = useState(false);
   const appLayout = useAppLayout({
     bottomInteractiveGap: CHAT_COMPOSER_NAV_GAP,
     tabDockHeight: tabBarHeight,
@@ -4809,7 +4810,8 @@ function MainShell({
   const visibleBottomInteractiveInset = tabDockHiddenForKeyboard ? keyboardBottomInset : bottomInteractiveInset;
   const visibleBottomContentInset = tabDockHiddenForKeyboard ? keyboardBottomInset : bottomContentInset;
   const visibleTabDockHeight = tabDockHiddenForKeyboard ? 0 : appLayout.tabDockHeight;
-  const tabDockFadeColors: readonly [string, string, string] = tab === "chat"
+  const darkTabDock = tab === "chat" || (tab === "match" && matchRevealDockDark);
+  const tabDockFadeColors: readonly [string, string, string] = darkTabDock
     ? ["rgba(38,18,46,0)", "rgba(38,18,46,0.72)", candy.darkColor]
     : ["rgba(245,40,110,0)", "rgba(245,40,110,0.72)", "rgba(245,40,110,0.98)"];
   const handleTabBarLayout = useCallback((event: LayoutChangeEvent) => {
@@ -4894,6 +4896,7 @@ function MainShell({
               couple={couple}
               revealedMatchIds={revealedMatchIds}
               tabDockHeight={appLayout.tabDockHeight}
+              onRevealModeChange={setMatchRevealDockDark}
               onOpenGameMode={onOpenEnviesGameMode}
               onOpenChat={onOpenChat}
               onBeforeRevealMatch={onBeforeRevealMatch}
@@ -4967,6 +4970,7 @@ function MainShell({
           <Entrance delay={0} style={styles.flex}>
             {hasLinkedPartner(couple) ? (
               <ChatScreen
+                bottomContentInset={visibleBottomContentInset}
                 bottomInteractiveInset={visibleBottomInteractiveInset}
                 bottomNavInset={visibleBottomNavInset}
                 contextCardId={chatContextCardId}
@@ -4996,7 +5000,7 @@ function MainShell({
         <View
           onLayout={handleTabDockLayout}
           pointerEvents="box-none"
-          style={[styles.tabDock, tab === "chat" && styles.tabDockDark, { paddingBottom: tabDockPaddingBottom }]}
+          style={[styles.tabDock, darkTabDock && styles.tabDockDark, { paddingBottom: tabDockPaddingBottom }]}
         >
           <LinearGradient
             colors={tabDockFadeColors}
@@ -6236,7 +6240,7 @@ function CategoryPickerModal({
                 </SpringPressable>
               </View>
               <LinearGradient
-                colors={[candy.red, "rgba(245,40,110,0.18)", "rgba(245,40,110,0)"]}
+                colors={[candy.red, "rgba(245,40,110,0.96)", "rgba(245,40,110,0.5)", "rgba(245,40,110,0)"]}
                 pointerEvents="none"
                 style={styles.categoryPickerHeaderFade}
               />
@@ -6253,7 +6257,7 @@ function CategoryPickerModal({
                   selected,
                 });
                 const { countLabel, personal, unlocked } = pack;
-                const showPartnerPackStatus = pack.locked;
+                const showPartnerPackStatus = Boolean(pack.partnerStatusLabel);
                 const badgeLabel = pack.statusLabel;
                 const creamCard = category === "Vanille" || personal;
                 const tileTitleColor = categoryTileTitleText(category);
@@ -6309,31 +6313,39 @@ function CategoryPickerModal({
                       >
                         {countLabel}
                       </Text>
-                      <View
-                        style={[
-                          styles.categoryPickerLock,
-                          personal && !selected && styles.categoryPickerBadgeCreate,
-                          selected && styles.categoryPickerBadgeActive,
-                        ]}
-                      >
-                        <Text
-                          numberOfLines={1}
+                      <View style={styles.categoryPickerBadgeRow}>
+                        <View
                           style={[
-                            styles.categoryPickerBadgeText,
-                            personal && !selected && styles.categoryPickerBadgeTextCreate,
-                            selected && styles.categoryPickerBadgeTextActive,
+                            styles.categoryPickerLock,
+                            styles.categoryPickerLockInline,
+                            personal && !selected && styles.categoryPickerBadgeCreate,
+                            selected && styles.categoryPickerBadgeActive,
                           ]}
                         >
-                          {badgeLabel}
-                        </Text>
-                      </View>
-                      {showPartnerPackStatus ? (
-                        <View style={styles.categoryPickerPartnerTag}>
-                          <Text numberOfLines={1} style={styles.categoryPickerPartnerTagText}>
-                            {pack.partnerStatusLabel}
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.categoryPickerBadgeText,
+                              personal && !selected && styles.categoryPickerBadgeTextCreate,
+                              selected && styles.categoryPickerBadgeTextActive,
+                            ]}
+                          >
+                            {badgeLabel}
                           </Text>
                         </View>
-                      ) : null}
+                        {showPartnerPackStatus ? (
+                          <View style={styles.categoryPickerPartnerTag}>
+                            <Text
+                              adjustsFontSizeToFit
+                              minimumFontScale={0.72}
+                              numberOfLines={1}
+                              style={styles.categoryPickerPartnerTagText}
+                            >
+                              {pack.partnerStatusLabel}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
                     </View>
                     {!unlocked && !personal ? (
                       <View style={styles.categoryPickerLockIcon}>
@@ -7083,6 +7095,7 @@ function MatchScreen({
   couple,
   revealedMatchIds,
   tabDockHeight,
+  onRevealModeChange,
   onOpenGameMode,
   onOpenChat,
   onBeforeRevealMatch,
@@ -7091,6 +7104,7 @@ function MatchScreen({
   couple: CoupleState;
   revealedMatchIds: string[];
   tabDockHeight: number;
+  onRevealModeChange?: (active: boolean) => void;
   onOpenGameMode: () => void;
   onOpenChat: (cardId?: string) => void;
   onBeforeRevealMatch: () => Promise<boolean>;
@@ -7127,7 +7141,7 @@ function MatchScreen({
   const centerPrimaryMatchStage = hasHiddenReveal && !hasSecondaryMatchContent;
   const inlineRevealMatch = spotlightMatch ?? (isNewestOpening ? newestHiddenMatch ?? null : null);
   const showInlineReveal = Boolean(inlineRevealMatch);
-  const inlineRevealStageHeight = Math.max(620, matchLayout.frameHeight - matchLayout.bottomPadding);
+  const inlineRevealStageHeight = Math.max(620, matchLayout.frameHeight);
   const matchContentStyle = useMemo<ViewStyle>(() => ({
     gap: showInlineReveal ? 0 : hasAnyMatch ? Math.max(14, matchLayout.rhythm * 0.62) : 0,
     minHeight: matchLayout.frameHeight,
@@ -7135,6 +7149,12 @@ function MatchScreen({
     paddingHorizontal: showInlineReveal ? 0 : Math.max(10, 14 * matchLayout.widthScale),
     paddingTop: showInlineReveal ? 0 : Math.max(12, matchLayout.rhythm),
   }), [hasAnyMatch, matchLayout.bottomPadding, matchLayout.frameHeight, matchLayout.rhythm, matchLayout.widthScale, showInlineReveal]);
+
+  useEffect(() => {
+    onRevealModeChange?.(showInlineReveal);
+
+    return () => onRevealModeChange?.(false);
+  }, [onRevealModeChange, showInlineReveal]);
 
   useEffect(() => {
     if (spotlightMatch) {
@@ -7160,35 +7180,43 @@ function MatchScreen({
     await Haptics.selectionAsync();
 
     Animated.timing(revealAnim, {
-      toValue: 1,
-      duration: 1050,
+      toValue: 0.58,
+      duration: 360,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: useNativeAnimations,
-    }).start(({ finished }) => {
-      if (!finished) {
-        return;
+    }).start();
+
+    void (async () => {
+      let nextSpotlightMatch: DesireCard | null = null;
+      try {
+        const revealedMatch = await onRevealMatch(newestHiddenMatch?.id);
+        nextSpotlightMatch = newestHiddenMatch ?? revealedMatch;
+      } catch {
+        nextSpotlightMatch = null;
+      } finally {
+        setRevealingMatchId(null);
       }
 
-      void (async () => {
-        let nextSpotlightMatch: DesireCard | null = null;
-        try {
-          const revealedMatch = await onRevealMatch(newestHiddenMatch?.id);
-          nextSpotlightMatch = newestHiddenMatch ?? revealedMatch;
-        } catch {
-          nextSpotlightMatch = null;
-        } finally {
-          setRevealingMatchId(null);
-        }
-
-        if (nextSpotlightMatch) {
-          setSpotlightMatch(nextSpotlightMatch);
-          revealAnim.setValue(1);
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } else {
-          revealAnim.setValue(0);
-        }
-      })();
-    });
+      if (nextSpotlightMatch) {
+        setSpotlightMatch(nextSpotlightMatch);
+        revealAnim.stopAnimation(() => {
+          Animated.spring(revealAnim, {
+            friction: 7,
+            tension: 118,
+            toValue: 1,
+            useNativeDriver: useNativeAnimations,
+          }).start();
+        });
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        Animated.timing(revealAnim, {
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
+          toValue: 0,
+          useNativeDriver: useNativeAnimations,
+        }).start();
+      }
+    })();
   }
 
   function closeInlineReveal() {
@@ -7325,28 +7353,28 @@ function MatchRevealTheater({
     outputRange: [0, 0.56, 1],
   });
   const hiddenOpacity = revealAnim.interpolate({
-    inputRange: [0, 0.34, 0.62, 1],
-    outputRange: [1, 0.82, 0, 0],
+    inputRange: [0, 0.24, 0.56, 1],
+    outputRange: [1, 0.9, 0, 0],
   });
   const hiddenScale = revealAnim.interpolate({
     inputRange: [0, 0.58, 1],
-    outputRange: [1, 0.92, 0.88],
+    outputRange: [1, 0.94, 0.86],
   });
   const hiddenLift = revealAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -26],
+    outputRange: [0, -44],
   });
   const revealedOpacity = revealAnim.interpolate({
-    inputRange: [0, 0.36, 0.68, 1],
-    outputRange: [0, 0, 0.92, 1],
+    inputRange: [0, 0.34, 0.58, 1],
+    outputRange: [0, 0, 0.96, 1],
   });
   const revealedScale = revealAnim.interpolate({
-    inputRange: [0, 0.44, 1],
-    outputRange: [0.9, 0.9, 1],
+    inputRange: [0, 0.48, 0.78, 1],
+    outputRange: [0.82, 0.82, 1.045, 1],
   });
   const revealedLift = revealAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [30, 0],
+    outputRange: [54, 0],
   });
 
   return (
@@ -7491,42 +7519,42 @@ function MatchRevealedPanel({
   const partnerVoteText = isFlameVote(partnerVote) ? "Très envie 🔥" : voteRevealLabel(partnerVote);
   const heroMotionStyle = revealAnim ? {
     opacity: revealAnim.interpolate({
-      inputRange: [0, 0.52, 0.78, 1],
+      inputRange: [0, 0.42, 0.66, 1],
       outputRange: [0, 0, 1, 1],
     }),
     transform: [
       {
         translateY: revealAnim.interpolate({
           inputRange: [0, 1],
-          outputRange: [18, 0],
+          outputRange: [22, 0],
         }),
       },
     ],
   } : null;
   const cardMotionStyle = revealAnim ? {
     opacity: revealAnim.interpolate({
-      inputRange: [0, 0.42, 0.7, 1],
+      inputRange: [0, 0.34, 0.58, 1],
       outputRange: [0, 0, 1, 1],
     }),
     transform: [
       {
         translateY: revealAnim.interpolate({
           inputRange: [0, 1],
-          outputRange: [34, 0],
+          outputRange: [58, 0],
         }),
       },
       {
         scale: revealAnim.interpolate({
-          inputRange: [0, 0.66, 1],
-          outputRange: [0.86, 1.035, 1],
+          inputRange: [0, 0.58, 0.84, 1],
+          outputRange: [0.78, 1.08, 0.985, 1],
         }),
       },
     ],
   } : null;
   const actionsMotionStyle = revealAnim ? {
     opacity: revealAnim.interpolate({
-      inputRange: [0, 0.7, 1],
-      outputRange: [0, 0, 1],
+      inputRange: [0, 0.62, 0.9, 1],
+      outputRange: [0, 0, 1, 1],
     }),
     transform: [
       {
@@ -7543,11 +7571,27 @@ function MatchRevealedPanel({
       },
     ],
   } : null;
+  const burstMotionStyle = revealAnim ? {
+    opacity: revealAnim.interpolate({
+      inputRange: [0, 0.42, 0.72, 1],
+      outputRange: [0, 0, 1, 0.78],
+    }),
+    transform: [
+      {
+        scale: revealAnim.interpolate({
+          inputRange: [0, 0.58, 1],
+          outputRange: [0.7, 1.12, 1],
+        }),
+      },
+    ],
+  } : null;
 
   return (
     <LinearGradient colors={[candy.darkColor, "#210D27", "#16051A"]} style={[styles.matchRevealedPanel, inline && styles.matchRevealedPanelInline]}>
       <View pointerEvents="none" style={styles.matchRevealedDecor}>
         <View style={styles.matchRevealedAura} />
+        <Animated.View style={[styles.matchRevealedOrbit, burstMotionStyle]} />
+        <Animated.View style={[styles.matchRevealedOrbitInner, burstMotionStyle]} />
         <View style={[styles.matchRevealedSparkDot, styles.matchRevealedSparkDotOne]} />
         <View style={[styles.matchRevealedSparkDot, styles.matchRevealedSparkDotTwo]} />
         <View style={[styles.matchRevealedSparkDash, styles.matchRevealedSparkDashOne]} />
@@ -7555,6 +7599,10 @@ function MatchRevealedPanel({
       </View>
 
       <Animated.View style={[styles.matchRevealedHeroCopy, heroMotionStyle]}>
+        <View style={styles.matchRevealedHeroBadge}>
+          <Sparkles size={15} color={candy.yellow} strokeWidth={3} />
+          <Text style={styles.matchRevealedHeroBadgeText}>Match révélé</Text>
+        </View>
         <Text style={styles.matchRevealedHeadline}>
           C'est un match<Text style={styles.matchRevealedHeadlineDot}>.</Text>
         </Text>
@@ -7565,20 +7613,13 @@ function MatchRevealedPanel({
       </Animated.View>
 
       <Animated.View style={[styles.matchRevealedCardMotion, cardMotionStyle]}>
-        <SpringPressable onPress={onOpenDetail} style={styles.matchRevealedCardShell}>
-          <View pointerEvents="none" style={styles.matchRevealedCardGlow} />
-          <View pointerEvents="none" style={styles.matchRevealedSidePeek} />
-          <View pointerEvents="none" style={styles.matchRevealedTopDot} />
-          <View style={styles.matchRevealedBigCard}>
-            <Text style={styles.matchRevealedCategory}>{categoryLabel(match.category)}</Text>
-            <View style={styles.matchRevealedCornerDot} />
-            <Text numberOfLines={5} style={styles.matchRevealedCardTitle}>{match.title}</Text>
-            <View style={styles.matchRevealedAnswerRow}>
-              <MatchAnswerPill label="Toi" mine value={activeVoteText} />
-              <MatchAnswerPill label={partnerName} value={partnerVoteText} />
-            </View>
-          </View>
-        </SpringPressable>
+        <MatchRevealedCardVisual
+          activeVoteText={activeVoteText}
+          match={match}
+          onPress={onOpenDetail}
+          partnerName={partnerName}
+          partnerVoteText={partnerVoteText}
+        />
       </Animated.View>
 
       <Animated.View style={[styles.matchRevealedActionBlock, actionsMotionStyle]}>
@@ -7590,6 +7631,60 @@ function MatchRevealedPanel({
         </SpringPressable>
       </Animated.View>
     </LinearGradient>
+  );
+}
+
+function MatchRevealedCardVisual({
+  activeVoteText,
+  detail,
+  match,
+  onPress,
+  partnerName,
+  partnerVoteText,
+}: {
+  activeVoteText: string;
+  detail?: boolean;
+  match: DesireCard;
+  onPress?: () => void;
+  partnerName: string;
+  partnerVoteText: string;
+}) {
+  const card = (
+    <>
+      <View pointerEvents="none" style={[styles.matchRevealedCardBackPlate, styles.matchRevealedCardBackPlateOne]} />
+      <View pointerEvents="none" style={[styles.matchRevealedCardBackPlate, styles.matchRevealedCardBackPlateTwo]} />
+      <View pointerEvents="none" style={styles.matchRevealedCardGlow} />
+      <View pointerEvents="none" style={styles.matchRevealedTopDot} />
+      <View style={styles.matchRevealedBigCard}>
+        <View style={styles.matchRevealedCardTopRow}>
+          <Text numberOfLines={1} style={styles.matchRevealedCategory}>{categoryLabel(match.category)}</Text>
+          <View style={styles.matchRevealedMatchBadge}>
+            <Text style={styles.matchRevealedMatchBadgeText}>Match</Text>
+          </View>
+        </View>
+        <View style={styles.matchRevealedStickerSeal}>
+          <Text style={styles.matchRevealedStickerEmoji}>{cardStickerEmoji(match)}</Text>
+        </View>
+        <Text numberOfLines={3} style={styles.matchRevealedCardTitle}>{match.title}</Text>
+        <Text numberOfLines={3} style={styles.matchRevealedCardBlurb}>{match.blurb}</Text>
+        <View style={styles.matchRevealedAnswerRow}>
+          <MatchAnswerPill label="Toi" mine value={activeVoteText} />
+          <MatchAnswerPill label={partnerName} value={partnerVoteText} />
+        </View>
+      </View>
+    </>
+  );
+
+  const shellStyle = [styles.matchRevealedCardShell, detail && styles.matchRevealedCardShellDetail];
+
+  return onPress ? (
+    <SpringPressable onPress={onPress} style={shellStyle}>
+      {card}
+    </SpringPressable>
+  ) : (
+    <View style={shellStyle}>
+      {card}
+    </View>
   );
 }
 
@@ -7778,6 +7873,10 @@ function MatchDetailModal({
           >
             <View style={[styles.matchDetailStage, { maxWidth: detailStageMaxWidth }]}>
               <View style={styles.matchRevealedHeroCopy}>
+                <View style={styles.matchRevealedHeroBadge}>
+                  <Sparkles size={15} color={candy.yellow} strokeWidth={3} />
+                  <Text style={styles.matchRevealedHeroBadgeText}>Match révélé</Text>
+                </View>
                 <Text style={styles.matchRevealedHeadline}>
                   C'est un match<Text style={styles.matchRevealedHeadlineDot}>.</Text>
                 </Text>
@@ -7787,20 +7886,13 @@ function MatchDetailModal({
                 </View>
               </View>
 
-              <View style={styles.matchRevealedCardShell}>
-                <View pointerEvents="none" style={styles.matchRevealedCardGlow} />
-                <View pointerEvents="none" style={styles.matchRevealedSidePeek} />
-                <View pointerEvents="none" style={styles.matchRevealedTopDot} />
-                <View style={styles.matchRevealedBigCard}>
-                  <Text style={styles.matchRevealedCategory}>{categoryLabel(match.category)}</Text>
-                  <View style={styles.matchRevealedCornerDot} />
-                  <Text numberOfLines={5} style={styles.matchRevealedCardTitle}>{match.title}</Text>
-                  <View style={styles.matchRevealedAnswerRow}>
-                    <MatchAnswerPill label="Toi" mine value={activeVoteText} />
-                    <MatchAnswerPill label={partnerName} value={partnerVoteText} />
-                  </View>
-                </View>
-              </View>
+              <MatchRevealedCardVisual
+                activeVoteText={activeVoteText}
+                detail
+                match={match}
+                partnerName={partnerName}
+                partnerVoteText={partnerVoteText}
+              />
             </View>
 
             <View style={[styles.matchDetailActions, { marginTop: detailActionTopGap, maxWidth: detailStageMaxWidth }]}>
@@ -7950,6 +8042,7 @@ function MatchListItem({ card, index, onOpen }: { card: DesireCard; index: numbe
 }
 
 function ChatScreen({
+  bottomContentInset,
   bottomInteractiveInset,
   bottomNavInset,
   contextCardId,
@@ -7960,6 +8053,7 @@ function ChatScreen({
   onQueuePhotoConsumption,
   onSendMessage,
 }: {
+  bottomContentInset: number;
   bottomInteractiveInset: number;
   bottomNavInset: number;
   contextCardId?: string;
@@ -8003,7 +8097,7 @@ function ChatScreen({
   const hasMessages = messages.length > 0;
   const hasMessageContent = draft.trim().length > 0 || pendingAttachments.length > 0;
   const canSendMessage = hasMessageContent && !photoOptimizing;
-  const composerBottomPadding = Math.max(bottomInteractiveInset, bottomNavInset, appLayout.bottomInteractiveInset);
+  const composerBottomPadding = Math.max(bottomContentInset, bottomInteractiveInset, bottomNavInset, appLayout.bottomInteractiveInset);
   const scrollBottomPadding = Math.max(22, appLayout.safeBottom + 14);
   const quickPrompts = useMemo(() => chatSuggestionPrompts({
     contextCard,
@@ -8621,7 +8715,7 @@ function homeLayoutMetrics(
   const targetRhythm = compactHome ? 24 : 42;
   const minimumRhythm = compactHome ? 6 : 8;
   const headerHeight = 57 * scale;
-  const navVisibleHeight = tabDockHeight;
+  const navVisibleHeight = tabDockHeight + 32;
   const titleLineHeight = 59 * scale;
   const moodButtonHeight = 47 * scale;
   const adviceHeight = compactHome
@@ -8765,6 +8859,7 @@ function HomeScreen({
     [homeScrollY],
   );
   const homeContentStyle = useMemo<ViewStyle>(() => ({
+    alignSelf: "stretch",
     flexGrow: 1,
     gap: homeSectionGap,
     justifyContent: "flex-start",
@@ -8772,6 +8867,7 @@ function HomeScreen({
     paddingBottom: homeBottomScrollPadding,
     paddingHorizontal: 14 * homeWidthScale,
     paddingTop: homeTopPadding,
+    width: "100%",
   }), [homeBottomScrollPadding, homeFrameHeight, homeSectionGap, homeTopPadding, homeWidthScale]);
   const handleHomeScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const scrollY = Math.max(0, event.nativeEvent.contentOffset.y);
@@ -8794,7 +8890,7 @@ function HomeScreen({
           scrollEnabled={homeScrollFallback}
           showsVerticalScrollIndicator={homeScrollFallback}
         >
-          <Entrance delay={40}>
+          <Entrance delay={40} style={styles.homeSectionEntrance}>
             <HomeMoodHero
               couple={couple}
               onChange={onMoodChange}
@@ -8804,7 +8900,7 @@ function HomeScreen({
               scale={homeScale}
             />
           </Entrance>
-          <Entrance delay={100}>
+          <Entrance delay={100} style={styles.homeSectionEntrance}>
             <HomeSurpriseDeck
               couple={couple}
               compact={compactHome}
@@ -8815,10 +8911,10 @@ function HomeScreen({
               verticalScale={homeVerticalScale}
             />
           </Entrance>
-          <Entrance delay={160}>
+          <Entrance delay={160} style={styles.homeSectionEntrance}>
             <HomeDailyAdvice couple={couple} targetHeight={homeAdviceHeight} scale={homeScale} verticalScale={homeVerticalScale} />
           </Entrance>
-          <Entrance delay={220}>
+          <Entrance delay={220} style={styles.homeSectionEntrance}>
             <HomeStoreModule
               couple={couple}
               compact={compactHome}
@@ -8938,7 +9034,7 @@ function HomeMoodHero({
   const heroMaxHeight = Math.max(heroMinHeight, targetHeight * 1.28);
 
   return (
-    <View style={[styles.homeHero, { aspectRatio: 1.92, gap: rhythm, maxHeight: heroMaxHeight, minHeight: heroMinHeight, paddingBottom: 0, width: "100%" }]}>
+    <View style={[styles.homeHero, { gap: rhythm, maxHeight: heroMaxHeight, minHeight: heroMinHeight, paddingBottom: 0, width: "100%" }]}>
       <Text
         adjustsFontSizeToFit
         minimumFontScale={0.78}
@@ -9270,7 +9366,6 @@ function HomeDailyAdvice({ couple, targetHeight, scale, verticalScale }: { coupl
       style={[
         styles.dailyAdviceCard,
         {
-          aspectRatio: 4.15,
           borderRadius: 22 * adviceScale,
           gap: 14 * adviceScale,
           justifyContent: "center",
@@ -9471,7 +9566,6 @@ function HomeStoreModule({
   const packMaxHeight = Math.max(packMinHeight, packTargetHeight * (compact ? 1.08 : 1.22));
   const storeMinHeight = Math.max(targetHeight * 0.92, storeHeaderLineHeight + storeGap + packMinHeight);
   const storeMaxHeight = Math.max(storeMinHeight, targetHeight * (compact ? 1.08 : 1.24));
-  const packAspectRatio = compact ? 2.62 : 2.18;
   const packPadding = (compact ? 10 : 13) * storeScale;
 
   return (
@@ -9487,7 +9581,7 @@ function HomeStoreModule({
       <View style={[styles.homeStorePackRow, { gap: 9 * storeScale }]}>
         <SpringPressable
           onPress={featuredPack.unlocked ? onGoEnvies : onOpenStore}
-          style={[styles.homeStorePack, styles.homeStorePackFeatured, { aspectRatio: packAspectRatio, borderRadius: 18 * storeScale, maxHeight: packMaxHeight, minHeight: packMinHeight, padding: packPadding }]}
+          style={[styles.homeStorePack, styles.homeStorePackFeatured, { borderRadius: 18 * storeScale, maxHeight: packMaxHeight, minHeight: packMinHeight, padding: packPadding }]}
         >
           <Text numberOfLines={1} style={[styles.homeStorePackTitle, { fontSize: 19 * storeScale, lineHeight: 21 * storeScale }]}>
             {featuredPack.title}
@@ -9496,7 +9590,7 @@ function HomeStoreModule({
             {featuredPack.countLabel} · {featuredPack.statusLabel}
           </Text>
         </SpringPressable>
-        <View style={[styles.homeStorePack, styles.homeStorePackSoon, { aspectRatio: packAspectRatio, borderRadius: 18 * storeScale, maxHeight: packMaxHeight, minHeight: packMinHeight, padding: packPadding }]}>
+        <View style={[styles.homeStorePack, styles.homeStorePackSoon, { borderRadius: 18 * storeScale, maxHeight: packMaxHeight, minHeight: packMinHeight, padding: packPadding }]}>
           <Text numberOfLines={1} style={[styles.homeStorePackTitle, styles.homeStorePackTitleSoon, { fontSize: 19 * storeScale, lineHeight: 21 * storeScale }]}>
             Scénarios
           </Text>
@@ -9685,6 +9779,7 @@ function StoreFeaturedPackCard({
   const visual = categoryVisual(category);
   const pack = packPresentation(category, couple);
   const unlocked = pack.unlocked;
+  const showPartnerPackStatus = Boolean(pack.partnerStatusLabel);
 
   return (
     <SpringPressable
@@ -9715,14 +9810,28 @@ function StoreFeaturedPackCard({
         <Text numberOfLines={1} style={[styles.storePackTitle, { color: visual.tileTitleText }]}>
           {pack.title}
         </Text>
-        <Text numberOfLines={1} style={[styles.storePackPrice, { color: visual.tileMetaText }]}>
-          {pack.countLabel} · {pack.statusLabel}
+        <Text numberOfLines={1} style={[styles.storePackCount, { color: visual.tileMetaText }]}>
+          {pack.countLabel}
         </Text>
-        {!unlocked ? (
-          <View style={styles.storePackPartnerTag}>
-            <Text numberOfLines={1} style={styles.storePackPartnerTagText}>{pack.partnerStatusLabel}</Text>
+        <View style={styles.storePackMetaRow}>
+          <View style={styles.storePackPricePill}>
+            <Text numberOfLines={1} style={styles.storePackPrice}>
+              {pack.statusLabel}
+            </Text>
           </View>
-        ) : null}
+          {showPartnerPackStatus ? (
+            <View style={styles.storePackPartnerTag}>
+              <Text
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+                numberOfLines={1}
+                style={styles.storePackPartnerTagText}
+              >
+                {pack.partnerStatusLabel}
+              </Text>
+            </View>
+          ) : null}
+        </View>
       </View>
     </SpringPressable>
   );
@@ -9744,7 +9853,7 @@ function StoreCategoryOffer({
   const tone = categoryCardTone(category);
   const pack = packPresentation(category, couple, { included });
   const { description, unlocked } = pack;
-  const showPartnerPackStatus = pack.locked;
+  const showPartnerPackStatus = Boolean(pack.partnerStatusLabel);
 
   return (
     <LinearGradient colors={unlocked ? tone.colors : [candy.cream, candy.roseSoft, "#EBD8C0"]} style={styles.storeOfferCard}>
@@ -9770,11 +9879,16 @@ function StoreCategoryOffer({
         </Text>
       </View>
       <View style={styles.storeOfferFooter}>
-        <View style={styles.storeOfferPriceStack}>
+        <View style={styles.storeOfferPriceRow}>
           <Text style={styles.storeOfferPrice}>{pack.statusLabel}</Text>
           {showPartnerPackStatus ? (
             <View style={styles.storeOfferPartnerTag}>
-              <Text numberOfLines={1} style={styles.storeOfferPartnerTagText}>
+              <Text
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+                numberOfLines={1}
+                style={styles.storeOfferPartnerTagText}
+              >
                 {pack.partnerStatusLabel}
               </Text>
             </View>
@@ -10150,7 +10264,7 @@ function CoupleScreen({
   const coupleSurface = fullScreenSurfaceMetrics(viewportWidth);
   const coupleContentWidth = coupleSurface.contentWidth;
   const coupleContentMinHeight = Math.max(0, viewportHeight - safeAreaInsets.top - coupleLayout.bottomPadding);
-  const coupleContentGap = Math.round(Math.min(18, Math.max(11, viewportHeight * 0.012)));
+  const coupleContentGap = Math.round(Math.min(22, Math.max(14, viewportHeight * 0.015)));
   const soloContentStyle = useMemo<ViewStyle>(() => ({
     alignSelf: "center",
     minHeight: coupleLayout.frameHeight,
@@ -10163,7 +10277,7 @@ function CoupleScreen({
     gap: coupleContentGap,
     minHeight: coupleContentMinHeight,
     paddingBottom: coupleLayout.bottomPadding + 18,
-    paddingTop: Math.max(10, coupleLayout.rhythm),
+    paddingTop: Math.max(16, coupleLayout.rhythm + 4),
     width: coupleContentWidth,
   }), [
     coupleContentGap,
@@ -10283,9 +10397,9 @@ function CoupleScreen({
           </View>
           <WsIconButton
             accessibilityLabel="Copier le code partenaire"
-            icon={<Copy size={18} color={candy.white} />}
+            icon={<Copy size={20} color={candy.white} />}
             onPress={onCopyInvite}
-            size={46}
+            size={52}
             style={styles.coupleReconnectButton}
             variant="hot"
           />
@@ -13883,7 +13997,6 @@ const styles = StyleSheet.create({
   },
   enviesStickyHeader: {
     backgroundColor: candy.red,
-    elevation: 24,
     marginHorizontal: -14,
     overflow: "visible",
     paddingBottom: 10,
@@ -14199,9 +14312,8 @@ const styles = StyleSheet.create({
     paddingTop: 18,
   },
   categoryPickerHeaderShell: {
-    elevation: 18,
     position: "relative",
-    zIndex: 18,
+    zIndex: 30,
   },
   categoryPickerHeader: {
     alignItems: "flex-start",
@@ -14211,11 +14323,12 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   categoryPickerHeaderFade: {
-    bottom: -10,
-    height: 18,
+    bottom: -48,
+    height: 60,
     left: -18,
     position: "absolute",
     right: -18,
+    zIndex: 24,
   },
   categoryPickerHeaderCopy: {
     flex: 1,
@@ -14369,6 +14482,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 17,
     justifyContent: "center",
   },
+  categoryPickerBadgeRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "space-between",
+    marginTop: 13,
+    width: "100%",
+  },
+  categoryPickerLockInline: {
+    marginTop: 0,
+  },
   categoryPickerBadgeActive: {
     backgroundColor: candy.red,
   },
@@ -14388,20 +14512,20 @@ const styles = StyleSheet.create({
     color: candy.white,
   },
   categoryPickerPartnerTag: {
-    alignSelf: "flex-start",
+    alignItems: "center",
     backgroundColor: "rgba(255,249,240,0.92)",
     borderRadius: 999,
-    marginTop: 7,
-    maxWidth: "100%",
-    minHeight: 24,
-    paddingHorizontal: 9,
+    flexShrink: 1,
     justifyContent: "center",
+    maxWidth: "56%",
+    minHeight: 38,
+    paddingHorizontal: 12,
   },
   categoryPickerPartnerTagText: {
     color: candy.red,
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: "900",
-    lineHeight: 13,
+    lineHeight: 14,
   },
   categoryPickerComingSoonBadge: {
     backgroundColor: "rgba(38,18,46,0.88)",
@@ -15599,6 +15723,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   matchScreenRevealMode: {
+    backgroundColor: candy.darkColor,
     justifyContent: "center",
   },
   matchScreenEmptyMode: {
@@ -15624,6 +15749,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   matchPrimaryStageReveal: {
+    backgroundColor: candy.darkColor,
     flexGrow: 1,
     overflow: "hidden",
   },
@@ -15791,7 +15917,7 @@ const styles = StyleSheet.create({
   },
   matchRevealedPanel: {
     flexGrow: 1,
-    gap: 22,
+    gap: 18,
     justifyContent: "space-between",
     minHeight: 704,
     overflow: "hidden",
@@ -15802,12 +15928,12 @@ const styles = StyleSheet.create({
   },
   matchRevealedPanelInline: {
     flex: 1,
-    gap: 28,
+    gap: 20,
     justifyContent: "center",
     minHeight: 0,
-    paddingBottom: 30,
-    paddingHorizontal: 30,
-    paddingTop: 30,
+    paddingBottom: 26,
+    paddingHorizontal: 26,
+    paddingTop: 26,
   },
   matchRevealedDecor: {
     bottom: 0,
@@ -15817,14 +15943,36 @@ const styles = StyleSheet.create({
     top: 0,
   },
   matchRevealedAura: {
-    backgroundColor: "rgba(245,40,110,0.14)",
+    backgroundColor: "rgba(245,40,110,0.16)",
     borderRadius: 999,
-    height: 360,
+    height: 430,
     left: "50%",
-    marginLeft: -180,
+    marginLeft: -215,
     position: "absolute",
-    top: 126,
-    width: 360,
+    top: 138,
+    width: 430,
+  },
+  matchRevealedOrbit: {
+    borderColor: "rgba(255,210,63,0.24)",
+    borderRadius: 999,
+    borderWidth: 2,
+    height: 354,
+    left: "50%",
+    marginLeft: -177,
+    position: "absolute",
+    top: 190,
+    width: 354,
+  },
+  matchRevealedOrbitInner: {
+    borderColor: "rgba(255,249,240,0.12)",
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 268,
+    left: "50%",
+    marginLeft: -134,
+    position: "absolute",
+    top: 232,
+    width: 268,
   },
   matchRevealedSparkDot: {
     borderRadius: 999,
@@ -15861,16 +16009,38 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "-20deg" }],
   },
   matchRevealedHeroCopy: {
+    alignItems: "center",
     alignSelf: "center",
-    maxWidth: 334,
+    maxWidth: 358,
     width: "100%",
+  },
+  matchRevealedHeroBadge: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "rgba(255,249,240,0.1)",
+    borderColor: "rgba(255,249,240,0.18)",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 7,
+    minHeight: 34,
+    paddingHorizontal: 13,
+  },
+  matchRevealedHeroBadgeText: {
+    color: candy.cream,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase",
   },
   matchRevealedHeadline: {
     color: candy.cream,
     fontFamily: displayFont,
-    fontSize: 41,
+    fontSize: 39,
     fontWeight: "900",
-    lineHeight: 44,
+    lineHeight: 42,
+    marginTop: 10,
+    textAlign: "center",
   },
   matchRevealedHeadlineDot: {
     color: candy.yellow,
@@ -15879,6 +16049,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     gap: 5,
+    justifyContent: "center",
     marginTop: 4,
   },
   matchRevealedSubDot: {
@@ -15889,105 +16060,151 @@ const styles = StyleSheet.create({
   },
   matchRevealedSubtitle: {
     color: "rgba(255,249,240,0.76)",
-    flex: 1,
     fontSize: 13,
     fontWeight: "900",
     lineHeight: 17,
+    textAlign: "center",
   },
   matchRevealedCardShell: {
     alignSelf: "center",
-    maxWidth: 326,
+    maxWidth: 356,
     position: "relative",
-    transform: [{ rotate: "-2.8deg" }],
     width: "100%",
+  },
+  matchRevealedCardShellDetail: {
+    maxWidth: "100%",
   },
   matchRevealedCardMotion: {
     alignSelf: "center",
-    maxWidth: 326,
+    maxWidth: 356,
     width: "100%",
   },
-  matchRevealedCardGlow: {
-    backgroundColor: "rgba(255,210,63,0.14)",
+  matchRevealedCardBackPlate: {
     borderRadius: 34,
-    bottom: -7,
-    left: 13,
+    bottom: -9,
     position: "absolute",
-    right: -13,
-    top: 15,
-    transform: [{ rotate: "4deg" }],
+    top: 16,
   },
-  matchRevealedSidePeek: {
-    backgroundColor: candy.yellow,
-    borderRadius: 999,
-    height: 18,
+  matchRevealedCardBackPlateOne: {
+    backgroundColor: "rgba(255,210,63,0.32)",
+    left: 20,
+    right: -14,
+    transform: [{ rotate: "3.2deg" }],
+  },
+  matchRevealedCardBackPlateTwo: {
+    backgroundColor: "rgba(255,249,240,0.14)",
+    left: -13,
+    right: 22,
+    transform: [{ rotate: "-2.4deg" }],
+  },
+  matchRevealedCardGlow: {
+    backgroundColor: "rgba(255,210,63,0.18)",
+    borderRadius: 36,
+    bottom: -13,
+    left: 18,
     position: "absolute",
-    right: -8,
-    top: 154,
-    width: 18,
+    right: 18,
+    top: 38,
   },
   matchRevealedTopDot: {
     backgroundColor: candy.red,
     borderRadius: 999,
-    height: 8,
+    height: 10,
     position: "absolute",
-    right: 28,
-    top: -18,
-    width: 8,
+    right: 34,
+    top: -16,
+    width: 10,
   },
   matchRevealedBigCard: {
     backgroundColor: candy.cream,
-    borderRadius: 31,
-    minHeight: 400,
+    borderColor: "rgba(255,255,255,0.88)",
+    borderRadius: 34,
+    borderWidth: 2,
+    minHeight: 372,
     overflow: "hidden",
-    paddingBottom: 26,
-    paddingHorizontal: 25,
-    paddingTop: 31,
+    paddingBottom: 22,
+    paddingHorizontal: 22,
+    paddingTop: 22,
     position: "relative",
-    shadowColor: "rgba(0,0,0,0.28)",
-    shadowOffset: { width: 0, height: 22 },
-    shadowOpacity: 1,
-    shadowRadius: 30,
+    boxShadow: "0 24px 42px rgba(0,0,0,0.28)",
+  },
+  matchRevealedCardTopRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 30,
   },
   matchRevealedCategory: {
     color: candy.red,
+    flex: 1,
     fontSize: 11,
     fontWeight: "900",
-    letterSpacing: 2.2,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
   },
-  matchRevealedCornerDot: {
+  matchRevealedMatchBadge: {
+    alignItems: "center",
     backgroundColor: candy.yellow,
     borderRadius: 999,
-    height: 28,
-    position: "absolute",
-    right: 24,
-    top: 23,
-    width: 28,
+    justifyContent: "center",
+    minHeight: 30,
+    paddingHorizontal: 12,
+  },
+  matchRevealedMatchBadgeText: {
+    color: candy.ink,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  matchRevealedStickerSeal: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "rgba(245,40,110,0.1)",
+    borderColor: "rgba(245,40,110,0.12)",
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 82,
+    justifyContent: "center",
+    marginTop: 24,
+    width: 82,
+  },
+  matchRevealedStickerEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 43,
+    lineHeight: 52,
   },
   matchRevealedCardTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 27,
+    fontSize: 29,
     fontWeight: "900",
-    lineHeight: 30,
-    marginTop: 94,
+    lineHeight: 31,
+    marginTop: 18,
+    textAlign: "center",
+  },
+  matchRevealedCardBlurb: {
+    color: "rgba(38,18,46,0.62)",
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 18,
+    marginTop: 9,
+    textAlign: "center",
   },
   matchRevealedAnswerRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: 8,
     marginTop: "auto",
+    paddingTop: 20,
   },
   matchAnswerPill: {
-    borderRadius: 14,
+    borderRadius: 18,
     flex: 1,
     justifyContent: "center",
-    minHeight: 70,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
+    minHeight: 68,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   matchAnswerPillMine: {
     backgroundColor: candy.black,
-    transform: [{ rotate: "-0.8deg" }],
   },
   matchAnswerPillPartner: {
     backgroundColor: candy.yellow,
@@ -16004,9 +16221,9 @@ const styles = StyleSheet.create({
   matchAnswerValue: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "900",
-    lineHeight: 18,
+    lineHeight: 19,
     marginTop: 2,
   },
   matchAnswerValueMine: {
@@ -17684,21 +17901,43 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     lineHeight: 22,
   },
-  storePackPrice: {
+  storePackCount: {
     fontSize: 13,
     fontWeight: "900",
     lineHeight: 16,
     marginTop: 1,
   },
+  storePackMetaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "space-between",
+    marginTop: 8,
+    width: "100%",
+  },
+  storePackPricePill: {
+    alignItems: "center",
+    backgroundColor: "rgba(38,18,46,0.9)",
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 24,
+    paddingHorizontal: 9,
+  },
+  storePackPrice: {
+    color: candy.cream,
+    fontSize: 11,
+    fontWeight: "900",
+    lineHeight: 13,
+  },
   storePackPartnerTag: {
-    alignSelf: "flex-start",
+    alignItems: "center",
     backgroundColor: "rgba(255,249,240,0.92)",
     borderRadius: 999,
-    marginTop: 6,
-    maxWidth: "100%",
-    minHeight: 22,
-    paddingHorizontal: 8,
+    flexShrink: 1,
     justifyContent: "center",
+    maxWidth: "58%",
+    minHeight: 24,
+    paddingHorizontal: 9,
   },
   storePackPartnerTagText: {
     color: candy.red,
@@ -17785,9 +18024,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginTop: 14,
   },
-  storeOfferPriceStack: {
+  storeOfferPriceRow: {
+    alignItems: "center",
+    flexDirection: "row",
     flexShrink: 1,
-    gap: 6,
+    gap: 8,
     minWidth: 0,
   },
   storeOfferPrice: {
@@ -17797,12 +18038,13 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   storeOfferPartnerTag: {
-    alignSelf: "flex-start",
+    alignItems: "center",
     backgroundColor: "rgba(245,40,110,0.12)",
     borderRadius: 999,
-    minHeight: 24,
-    paddingHorizontal: 9,
     justifyContent: "center",
+    maxWidth: 118,
+    minHeight: 28,
+    paddingHorizontal: 10,
   },
   storeOfferPartnerTagText: {
     color: candy.red,
@@ -17856,6 +18098,10 @@ const styles = StyleSheet.create({
   homeScreen: {
     gap: 12,
     paddingTop: 20,
+  },
+  homeSectionEntrance: {
+    alignSelf: "stretch",
+    width: "100%",
   },
   homeFrame: {
     flex: 1,
@@ -18383,44 +18629,44 @@ const styles = StyleSheet.create({
   coupleScreenTitle: {
     color: candy.white,
     fontFamily: displayFont,
-    fontSize: 34,
+    fontSize: 38,
     fontWeight: "900",
-    lineHeight: 36,
+    lineHeight: 40,
   },
   coupleScreenSubtitle: {
     color: "rgba(255,249,240,0.68)",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "900",
-    lineHeight: 14,
+    lineHeight: 15,
     marginTop: 1,
-    maxWidth: 210,
+    maxWidth: 250,
   },
   coupleSettingsButton: {
     alignItems: "center",
     backgroundColor: "rgba(255,249,240,0.18)",
     borderRadius: 999,
     justifyContent: "center",
-    minHeight: 34,
-    paddingHorizontal: 16,
+    minHeight: 40,
+    paddingHorizontal: 18,
   },
   coupleSettingsText: {
     color: candy.cream,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "900",
   },
   coupleProfileGrid: {
     flexDirection: "row",
-    gap: 10,
+    gap: 12,
     width: "100%",
   },
   coupleProfileCard: {
     alignItems: "center",
     backgroundColor: candy.cream,
-    borderRadius: 18,
+    borderRadius: 22,
     flex: 1,
-    minHeight: 150,
-    paddingHorizontal: 10,
-    paddingVertical: 13,
+    minHeight: 174,
+    paddingHorizontal: 12,
+    paddingVertical: 16,
   },
   coupleProfileCardHighlight: {
     backgroundColor: candy.yellow,
@@ -18429,83 +18675,83 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: candy.black,
     borderRadius: 999,
-    height: 46,
+    height: 56,
     justifyContent: "center",
-    width: 46,
+    width: 56,
   },
   coupleProfileEmoji: {
     fontFamily: emojiFont,
-    fontSize: 25,
-    lineHeight: 31,
+    fontSize: 30,
+    lineHeight: 36,
   },
   coupleProfileName: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: "900",
-    lineHeight: 20,
-    marginTop: 9,
+    lineHeight: 23,
+    marginTop: 10,
   },
   coupleProfileVibe: {
     color: candy.red,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
     letterSpacing: 0,
-    lineHeight: 12,
+    lineHeight: 13,
     marginTop: 1,
     textTransform: "uppercase",
   },
   coupleProfileMoodRow: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 5,
-    marginTop: 7,
+    gap: 6,
+    marginTop: 9,
   },
   coupleProfileMoodDot: {
     backgroundColor: candy.red,
     borderRadius: 999,
-    height: 7,
-    width: 7,
+    height: 8,
+    width: 8,
   },
   coupleProfileMoodDotHot: {
     backgroundColor: candy.pink,
   },
   coupleProfileMoodText: {
     color: candy.text,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
-    lineHeight: 12,
+    lineHeight: 13,
   },
   coupleProfilePackRow: {
     alignItems: "center",
     backgroundColor: "rgba(245,40,110,0.08)",
     borderRadius: 999,
     justifyContent: "center",
-    marginTop: 8,
-    minHeight: 24,
-    paddingHorizontal: 10,
+    marginTop: 10,
+    minHeight: 30,
+    paddingHorizontal: 12,
     width: "100%",
   },
   coupleProfilePackText: {
     color: candy.ink,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
-    lineHeight: 12,
+    lineHeight: 13,
   },
   coupleCodePill: {
     alignItems: "center",
     backgroundColor: "rgba(255,102,158,0.62)",
     borderRadius: 20,
     flexDirection: "row",
-    gap: 8,
-    minHeight: 46,
-    paddingHorizontal: 15,
+    gap: 10,
+    minHeight: 56,
+    paddingHorizontal: 18,
     width: "100%",
   },
   coupleCodeText: {
     color: candy.cream,
     flex: 1,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "900",
   },
   coupleCodeStrong: {
@@ -18513,12 +18759,12 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   coupleCodeCopyButton: {
-    minHeight: 30,
+    minHeight: 36,
     justifyContent: "center",
   },
   coupleCodeCopyText: {
     color: candy.cream,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "900",
     textDecorationLine: "underline",
   },
@@ -18584,31 +18830,32 @@ const styles = StyleSheet.create({
   },
   coupleStats: {
     flexDirection: "row",
-    gap: 8,
+    gap: 10,
     width: "100%",
   },
   coupleStatPill: {
     alignItems: "center",
     backgroundColor: candy.black,
-    borderRadius: 15,
+    borderRadius: 18,
     flex: 1,
-    minHeight: 74,
+    minHeight: 88,
     justifyContent: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 9,
+    paddingHorizontal: 9,
+    paddingVertical: 11,
   },
   coupleStatValue: {
     color: candy.yellow,
     fontFamily: displayFont,
-    fontSize: 28,
+    fontSize: 33,
     fontWeight: "900",
-    lineHeight: 30,
+    lineHeight: 35,
   },
   coupleStatLabel: {
     color: candy.cream,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
-    marginTop: 2,
+    lineHeight: 13,
+    marginTop: 3,
     opacity: 0.88,
     textAlign: "center",
   },
@@ -18619,8 +18866,8 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     flexDirection: "row",
-    gap: 12,
-    padding: 11,
+    gap: 14,
+    padding: 14,
     width: "100%",
   },
   coupleReconnectCopy: {
@@ -18629,7 +18876,7 @@ const styles = StyleSheet.create({
   },
   coupleReconnectLabel: {
     color: "rgba(255,249,240,0.72)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
     opacity: 0.74,
     textTransform: "uppercase",
@@ -18637,16 +18884,16 @@ const styles = StyleSheet.create({
   coupleReconnectCode: {
     color: candy.cream,
     fontFamily: displayFont,
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "900",
-    lineHeight: 23,
+    lineHeight: 27,
   },
   coupleReconnectText: {
     color: "rgba(255,249,240,0.66)",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "800",
-    lineHeight: 15,
-    marginTop: 3,
+    lineHeight: 16,
+    marginTop: 4,
   },
   coupleReconnectButton: {
   },
@@ -18735,7 +18982,7 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
     borderRadius: 0,
     borderWidth: 0,
-    gap: 9,
+    gap: 12,
     paddingHorizontal: 0,
     paddingVertical: 0,
     width: "100%",
@@ -18749,9 +18996,9 @@ const styles = StyleSheet.create({
   coupleSectionTitle: {
     color: candy.cream,
     fontFamily: displayFont,
-    fontSize: 18,
+    fontSize: 21,
     fontWeight: "900",
-    lineHeight: 22,
+    lineHeight: 25,
   },
   coupleInsightCard: {
     backgroundColor: "rgba(255,255,255,0.76)",
@@ -18782,18 +19029,18 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   coupleRecentList: {
-    gap: 8,
+    gap: 10,
     width: "100%",
   },
   coupleRecentMatch: {
     alignItems: "center",
     backgroundColor: candy.cream,
-    borderRadius: 16,
+    borderRadius: 18,
     flexDirection: "row",
-    gap: 8,
-    minHeight: 43,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
+    gap: 10,
+    minHeight: 58,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     width: "100%",
   },
   coupleRecentEmojiBubble: {
@@ -18801,15 +19048,15 @@ const styles = StyleSheet.create({
     borderColor: "rgba(245,40,110,0.12)",
     borderRadius: 999,
     borderWidth: 1,
-    height: 28,
+    height: 34,
     justifyContent: "center",
     overflow: "hidden",
-    width: 28,
+    width: 34,
   },
   coupleRecentEmoji: {
     fontFamily: emojiFont,
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 20,
+    lineHeight: 25,
     textAlign: "center",
   },
   coupleRecentCopy: {
@@ -18820,7 +19067,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     backgroundColor: "transparent",
     borderRadius: 0,
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: "900",
     overflow: "hidden",
     paddingHorizontal: 0,
@@ -18830,20 +19077,20 @@ const styles = StyleSheet.create({
   coupleRecentTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "900",
-    lineHeight: 16,
+    lineHeight: 18,
     marginTop: 0,
   },
   coupleRecentText: {
     color: candy.text,
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: "800",
-    lineHeight: 12,
+    lineHeight: 13,
   },
   coupleRecentOpenText: {
     color: candy.red,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "900",
   },
   coupleEmptyMatches: {
@@ -18852,33 +19099,33 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderStyle: "dashed",
     borderWidth: 1.5,
-    minHeight: 82,
+    minHeight: 96,
     justifyContent: "center",
-    padding: 14,
+    padding: 16,
     width: "100%",
   },
   coupleEmptyMatchesTitle: {
     color: candy.cream,
     fontFamily: displayFont,
-    fontSize: 17,
+    fontSize: 19,
     fontWeight: "900",
   },
   coupleEmptyMatchesText: {
     color: "rgba(255,249,240,0.72)",
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "800",
-    lineHeight: 16,
-    marginTop: 3,
+    lineHeight: 17,
+    marginTop: 4,
   },
   couplePackSummary: {
     alignItems: "center",
     backgroundColor: "rgba(255,102,158,0.62)",
-    borderRadius: 20,
+    borderRadius: 24,
     flexDirection: "row",
-    gap: 12,
-    minHeight: 66,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
+    gap: 14,
+    minHeight: 80,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     width: "100%",
   },
   couplePackSummaryCopy: {
@@ -18888,28 +19135,28 @@ const styles = StyleSheet.create({
   couplePackSummaryTitle: {
     color: candy.cream,
     fontFamily: displayFont,
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: "900",
-    lineHeight: 21,
+    lineHeight: 25,
   },
   couplePackSummaryText: {
     color: "rgba(255,249,240,0.78)",
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "900",
-    lineHeight: 15,
-    marginTop: 1,
+    lineHeight: 16,
+    marginTop: 2,
   },
   coupleBoutiqueButton: {
     alignItems: "center",
     backgroundColor: candy.yellow,
     borderRadius: 999,
     justifyContent: "center",
-    minHeight: 37,
-    paddingHorizontal: 17,
+    minHeight: 46,
+    paddingHorizontal: 22,
   },
   coupleBoutiqueText: {
     color: candy.ink,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "900",
   },
   coupleCategoryCard: {
