@@ -44,6 +44,32 @@ function notificationProjectId() {
   );
 }
 
+function nativeNotificationErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return typeof error === "string" ? error : "";
+}
+
+function notificationTokenFailure(error: unknown): PushRegistrationResult {
+  const message = nativeNotificationErrorMessage(error);
+
+  if (/firebase|messaging|fcm|google-?services|initializeapp/i.test(message)) {
+    return {
+      reason: "Notifications indisponibles sur ce build Android. Il manque la configuration Firebase/FCM.",
+      status: "misconfigured",
+    };
+  }
+
+  return {
+    reason: message
+      ? `Notifications indisponibles sur ce build: ${message}`
+      : "Notifications indisponibles sur ce build.",
+    status: "unavailable",
+  };
+}
+
 async function deviceId() {
   if (Platform.OS === "web") {
     return "web";
@@ -75,14 +101,22 @@ export async function configureNotificationChannel() {
   });
 }
 
-async function expoPushToken() {
+async function expoPushToken(): Promise<PushRegistrationResult> {
   const projectId = notificationProjectId();
 
   if (!projectId) {
-    return null;
+    return { reason: "Project ID EAS manquant.", status: "misconfigured" };
   }
 
-  return (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+  try {
+    const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+
+    return token
+      ? { status: "registered", token }
+      : { reason: "Token push Expo vide.", status: "unavailable" };
+  } catch (error) {
+    return notificationTokenFailure(error);
+  }
 }
 
 async function registerCurrentDevice(token: string) {
@@ -106,14 +140,14 @@ export async function syncPushTokenIfAlreadyGranted(): Promise<PushRegistrationR
     return { reason: "Permission non accordée.", status: "denied" };
   }
 
-  const token = await expoPushToken();
-  if (!token) {
-    return { reason: "Project ID EAS manquant.", status: "misconfigured" };
+  const tokenResult = await expoPushToken();
+  if (tokenResult.status !== "registered" || !tokenResult.token) {
+    return tokenResult;
   }
 
-  await registerCurrentDevice(token);
+  await registerCurrentDevice(tokenResult.token);
 
-  return { status: "registered", token };
+  return tokenResult;
 }
 
 export async function requestPushPermissionAndRegister(): Promise<PushRegistrationResult> {
@@ -130,12 +164,12 @@ export async function requestPushPermissionAndRegister(): Promise<PushRegistrati
     return { reason: "Permission refusée.", status: "denied" };
   }
 
-  const token = await expoPushToken();
-  if (!token) {
-    return { reason: "Project ID EAS manquant.", status: "misconfigured" };
+  const tokenResult = await expoPushToken();
+  if (tokenResult.status !== "registered" || !tokenResult.token) {
+    return tokenResult;
   }
 
-  await registerCurrentDevice(token);
+  await registerCurrentDevice(tokenResult.token);
 
-  return { status: "registered", token };
+  return tokenResult;
 }

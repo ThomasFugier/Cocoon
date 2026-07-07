@@ -47,10 +47,10 @@ import {
   Animated,
   Easing,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   PanResponder,
-  PixelRatio,
   Platform,
   Pressable,
   ScrollView,
@@ -63,12 +63,13 @@ import {
   View,
   ViewStyle,
   type AppStateStatus,
+  type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   type TextProps,
   type TextStyle,
 } from "react-native";
-import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   ProfileAccountPanel,
@@ -77,8 +78,10 @@ import {
   type AuthAccountInfo,
 } from "./src/components/AuthStatus";
 import { DESIRE_CATEGORIES, DESIRE_PACKS, desireCards } from "./src/data/desires";
+import { packThemeForCategory } from "./src/data/pack-themes";
 import { AuthGate, OnboardingScreen } from "./src/features/onboarding";
 import { AuthProvider, signInWithProvider, signOut } from "./src/lib/auth";
+import { DEFAULT_TAB_DOCK_HEIGHT, useAppLayout } from "./src/ui/use-app-layout";
 import {
   createSignedChatAttachmentUrl,
   compressChatAttachmentForUpload,
@@ -103,6 +106,7 @@ import {
   subscribeToCoupleRealtime,
   type RemoteChatMessage,
   type RemoteCoupleState,
+  type RemoteMatch,
 } from "./src/lib/coupleApi";
 import {
   categoryPurchaseConfig,
@@ -126,6 +130,7 @@ import {
 import {
   enqueueRemoteChatAttachmentConsumption,
   enqueueRemoteChatMessage,
+  enqueueRemoteVote,
   clearVisibleOfflineQueue,
   flushRemoteQueue,
   loadOfflineQueueCount,
@@ -233,7 +238,7 @@ const PAID_FEATURES: UnlockedFeature[] = [
   CUSTOM_CARDS_UNLIMITED_FEATURE,
   NO_ADS_FEATURE,
 ];
-const GAME_CARD_CONFIRM_MS = 260;
+const GAME_CARD_CONFIRM_MS = 160;
 const GAME_CARD_EXIT_MS = 260;
 const GAME_CARD_TOTAL_TRANSITION_MS = GAME_CARD_CONFIRM_MS + GAME_CARD_EXIT_MS;
 const AD_REVEAL_COOLDOWN_MS = 30000;
@@ -279,13 +284,57 @@ function desireCardCount(category: DesireCategory) {
   return desireCardCountsByCategory.get(category) ?? 0;
 }
 
+function friendlyKnownErrorMessage(message: string) {
+  const normalized = message.trim();
+
+  if (/42702|ambiguous|ambigu/i.test(normalized) && /couple_id/i.test(normalized)) {
+    return "Le serveur n'est pas encore à jour pour rejoindre cet espace. Réessaie après la mise à jour.";
+  }
+
+  return normalized;
+}
+
+function isSilentConnectivityNotice(message: string) {
+  return /hors ligne|offline|network|failed to fetch|network request failed|fetch failed|time.?out|connexion|reconnexion|v.rifie ta connexion|synchro serveur|synchronisation|r.essaie avec une connexion stable/i.test(message);
+}
+
+function errorSignalText(error: unknown, fallback = "") {
+  const parts: string[] = [];
+  const pushText = (value: unknown) => {
+    if (typeof value === "string" && value.trim()) {
+      parts.push(value.trim());
+    }
+  };
+
+  pushText(fallback);
+
+  if (error instanceof Error) {
+    pushText(error.message);
+  } else {
+    pushText(error);
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    ["message", "details", "hint", "code", "readableErrorCode", "underlyingErrorMessage"].forEach((key) => {
+      pushText(record[key]);
+    });
+
+    if (record.userInfo && typeof record.userInfo === "object") {
+      pushText((record.userInfo as Record<string, unknown>).readableErrorCode);
+    }
+  }
+
+  return parts.join(" ");
+}
+
 function errorMessage(error: unknown, fallback = "erreur inconnue") {
   if (error instanceof Error && error.message) {
-    return error.message;
+    return friendlyKnownErrorMessage(error.message);
   }
 
   if (typeof error === "string" && error.trim()) {
-    return error;
+    return friendlyKnownErrorMessage(error);
   }
 
   if (error && typeof error === "object") {
@@ -295,15 +344,63 @@ function errorMessage(error: unknown, fallback = "erreur inconnue") {
       .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
 
     if (messageParts.length) {
-      return messageParts.join(" ");
+      return friendlyKnownErrorMessage(messageParts.join(" "));
     }
   }
 
   return fallback;
 }
 
+function purchaseFailureNotice(error: unknown, action: "purchase" | "restore" = "purchase") {
+  const signal = errorSignalText(error);
+  const friendlyFallback = action === "restore" ? "Restauration impossible." : "Achat non validé.";
+  const haystack = `${signal} ${errorMessage(error, "achat impossible")}`;
+
+  if (/PURCHASE_CANCELLED|cancelled|canceled|annul/i.test(haystack) || /\b1\b/.test(haystack)) {
+    return action === "restore" ? "Restauration annulée." : "";
+  }
+
+  if (/RevenueCat n.est pas configur|not configured|CONFIGURATION_ERROR|UNSUPPORTED_ERROR|TEST_STORE_SIMULATED_PURCHASE_ERROR|UninitializedPurchases|UnsupportedPlatform|Expo Go|Preview API|purchase.*not.*allowed|billing.*unavailable|store.*unavailable|\b23\b|\b24\b|\b42\b|\b3\b/i.test(haystack)) {
+    return "Achats de test indisponibles sur ce build. Utilise un build de développement/TestFlight/Play Console, ou active le mode bypass pour tester sans passer par le store.";
+  }
+
+  if (/Produit RevenueCat introuvable|PRODUCT_NOT_AVAILABLE_FOR_PURCHASE_ERROR|not available for purchase|product.*not.*available|offerings?.*empty|no products|couldn.?t find.*product|\b5\b/i.test(haystack)) {
+    return "Produit non disponible sur ce build. Vérifie que l'offre RevenueCat et le produit Google Play/App Store sont publiés avant de retenter.";
+  }
+
+  if (/PAYMENT_PENDING|payment.*pending|paiement.*attente|\b20\b/i.test(haystack)) {
+    return "Paiement en attente. Le contenu se débloquera dès que le store confirme l'achat.";
+  }
+
+  if (/PRODUCT_ALREADY_PURCHASED|already purchased|d.j. achet|\b6\b/i.test(haystack)) {
+    return "Achat déjà actif. Restaure tes achats depuis Profil si le contenu reste verrouillé.";
+  }
+
+  if (/NETWORK_ERROR|OFFLINE_CONNECTION|network|offline|failed to fetch|fetch failed|time.?out|\b10\b|\b35\b/i.test(haystack)) {
+    return `${friendlyFallback} Réessaie dans un instant.`;
+  }
+
+  if (/verify-purchase|Functions|Supabase|receipt|INVALID_RECEIPT|MISSING_RECEIPT|backend|server|\b8\b|\b9\b|\b12\b|\b16\b/i.test(haystack)) {
+    return "Achat reçu par le store, mais pas encore confirmé dans WeSpice. Restaure tes achats depuis Profil si le contenu reste verrouillé.";
+  }
+
+  return `${friendlyFallback} Réessaie dans un instant.`;
+}
+
 function userFacingSyncNotice(message: string) {
   if (!message) {
+    return "";
+  }
+
+  if (/connecte-toi/i.test(message)) {
+    return message;
+  }
+
+  if (/firebase|fcm|messaging|google-?services|initializeapp/i.test(message)) {
+    return "Notifications indisponibles sur ce build Android. Il manque la configuration Firebase/FCM.";
+  }
+
+  if (isSilentConnectivityNotice(message)) {
     return "";
   }
 
@@ -320,34 +417,45 @@ function userFacingSyncNotice(message: string) {
       return "Notifications pas encore configurées pour ce build. Il manque le Project ID EAS.";
     }
 
-    if (/préférence|preference|synchron/i.test(message)) {
-      return "Ta préférence est gardée ici. La synchro serveur réessaiera dès que possible.";
-    }
-
     return message;
   }
 
-  if (/achat/i.test(message)) {
-    return "Achat impossible pour le moment. Réessaie dans un instant.";
-  }
-
-  if (/connecte-toi|connexion/i.test(message)) {
+  if (/achat|achats|paiement|produit non disponible|store|RevenueCat|Google Play|App Store|build|bypass/i.test(message)) {
     return message;
   }
 
-  return "Hors ligne. Vos réponses sont gardées au chaud et repartiront toutes seules.";
+  if (/mode test|d.bloqu.|restaur.|d.j. actif|tout est d.j. actif/i.test(message)) {
+    return message;
+  }
+
+  return "";
 }
 
 const weSpiceLogoAsset = require("./assets/wespice-logo.png");
 
-function Text({ style, ...props }: TextProps) {
-  return <RNText {...props} style={[wsType.app, style]} />;
+const appTextBaseStyles = StyleSheet.create({
+  androidLabel: {
+    includeFontPadding: false,
+  },
+  text: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+});
+
+function Text({ minimumFontScale = 0.78, style, ...props }: TextProps) {
+  return (
+    <RNText
+      minimumFontScale={minimumFontScale}
+      {...props}
+      style={[appTextBaseStyles.text, wsType.app, Platform.OS === "android" && appTextBaseStyles.androidLabel, style]}
+    />
+  );
 }
 
 const PROFILE_SHORTCUT_TOP = 14;
 const PROFILE_SHORTCUT_SIZE = 54;
 const APP_HEADER_TOP_SPACE = PROFILE_SHORTCUT_TOP + PROFILE_SHORTCUT_SIZE + 8;
-const TAB_DOCK_VISIBLE_HEIGHT = 76;
 const CHAT_COMPOSER_NAV_GAP = 12;
 
 function fullScreenSurfaceMetrics(viewportWidth: number) {
@@ -369,8 +477,12 @@ const stickers = {
   wand: "🪄",
 };
 
-const statusEmojiPresets = ["🍒", "🔥", "💋", "🍆", "👀", "😇", "🫦", "🖤", "🫧", "✨"];
-const customDesireEmojiPresets = ["🍑", "🍆", "💖", "🔥", "💋", "👀", "🫦", "✨", "🖤", "🌶️", "🍒", "🔐"];
+const emojiFallbackAliases: Record<string, string> = {
+  ["\u{1FAE6}"]: "👄",
+};
+
+const statusEmojiPresets = ["🍒", "🔥", "💋", "🍆", "👀", "😇", "👄", "🖤", "🫧", "✨"];
+const customDesireEmojiPresets = ["🍑", "🍆", "💖", "🔥", "💋", "👀", "👄", "✨", "🖤", "🌶️", "🍒", "🔐"];
 const customDesireQuickEmojis = ["💫", "🔥", "🍒", "🎲", "🖤"];
 const customDesireAmbianceOptions = ["Complice", "Tendre", "Chaud", "Discussion"] as const;
 
@@ -658,6 +770,23 @@ function availableDesireCards(couple: CoupleState) {
 
 function matchedCards(couple: CoupleState) {
   return availableDesireCards(couple).filter((card) => isCardMatch(couple, card.id));
+}
+
+function desireCardFromRemoteMatch(match: RemoteMatch): DesireCard | null {
+  if (!isKnownCategory(match.category)) {
+    return null;
+  }
+
+  return {
+    id: match.card_id,
+    blurb: match.blurb,
+    category: match.category,
+    emoji: match.emoji ?? undefined,
+    kind: match.kind,
+    mood: match.mood,
+    safety: match.safety ?? undefined,
+    title: match.title,
+  };
 }
 
 function hiddenMatchCountForCouple(couple: CoupleState, matches: DesireCard[], revealedMatchSet: Set<string>) {
@@ -1017,11 +1146,118 @@ function normalizeEmoji(value: string, fallback = stickers.heart) {
     return fallback;
   }
 
-  return Array.from(trimmed).slice(0, 4).join("");
+  const normalized = Array.from(trimmed).slice(0, 4).join("");
+
+  return emojiFallbackAliases[normalized] ?? normalized;
+}
+
+function isVariationSelector(value: string) {
+  return /^[\uFE00-\uFE0F]$/u.test(value);
+}
+
+function isEmojiModifier(value: string) {
+  return /^[\u{1F3FB}-\u{1F3FF}]$/u.test(value);
+}
+
+function isRegionalIndicator(value: string) {
+  return /^[\u{1F1E6}-\u{1F1FF}]$/u.test(value);
+}
+
+function isTextSymbolEmoji(value: string) {
+  return value.replace(/\uFE0F/g, "") === "©"
+    || value.replace(/\uFE0F/g, "") === "®"
+    || value.replace(/\uFE0F/g, "") === "™";
+}
+
+function isStandardEmojiBase(value: string) {
+  if (isRegionalIndicator(value)) {
+    return true;
+  }
+
+  return /^\p{Emoji_Presentation}$/u.test(value) || (/^\p{Emoji}$/u.test(value) && /^\p{Extended_Pictographic}$/u.test(value));
+}
+
+function firstEmojiGrapheme(value: string) {
+  const chars = Array.from(value);
+  const first = chars[0] ?? "";
+  let cluster = first;
+  let index = 1;
+
+  while (index < chars.length) {
+    const current = chars[index];
+    const previous = chars[index - 1];
+
+    if (isVariationSelector(current) || isEmojiModifier(current) || current === "\u20E3") {
+      cluster += current;
+      index += 1;
+      continue;
+    }
+
+    if (isRegionalIndicator(first) && isRegionalIndicator(current) && Array.from(cluster).length === 1) {
+      cluster += current;
+      index += 1;
+      continue;
+    }
+
+    if (current === "\u200D" && index + 1 < chars.length) {
+      cluster += current + chars[index + 1];
+      index += 2;
+      continue;
+    }
+
+    if (previous === "\u200D") {
+      cluster += current;
+      index += 1;
+      continue;
+    }
+
+    break;
+  }
+
+  return cluster;
+}
+
+function isStandardEmojiGrapheme(value: string) {
+  if (!value || value.includes("\uFE0E") || isTextSymbolEmoji(value)) {
+    return false;
+  }
+
+  const baseCharacters = Array.from(value).filter((char) =>
+    char !== "\u200D"
+    && char !== "\u20E3"
+    && !isVariationSelector(char)
+    && !isEmojiModifier(char)
+  );
+
+  if (!baseCharacters.length || baseCharacters.some((char) => /[\p{Letter}\p{Number}]/u.test(char))) {
+    return false;
+  }
+
+  if (baseCharacters.some(isRegionalIndicator)) {
+    return baseCharacters.length === 2 && baseCharacters.every(isRegionalIndicator);
+  }
+
+  return baseCharacters.some(isStandardEmojiBase);
+}
+
+function standardEmojiFromValue(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const firstGrapheme = firstEmojiGrapheme(trimmed);
+  const normalized = emojiFallbackAliases[firstGrapheme] ?? firstGrapheme;
+
+  return isStandardEmojiGrapheme(normalized) ? normalized : null;
+}
+
+function normalizeSingleEmoji(value: string, fallback = stickers.heart) {
+  return standardEmojiFromValue(value) ?? fallback;
 }
 
 function normalizeStatusEmoji(value: string) {
-  return normalizeEmoji(value, stickers.heart);
+  return normalizeSingleEmoji(value, stickers.heart);
 }
 
 function normalizeProfileDisplayName(value: string, fallback = "Moi") {
@@ -1038,7 +1274,7 @@ function randomCustomDesireEmoji() {
 function profileEmoji(profile: PartnerProfile) {
   const first = normalizeStatusEmoji(profile.statusEmoji || profile.vibe);
 
-  if (!first || /[a-z0-9]/i.test(first)) {
+  if (!isStandardEmojiGrapheme(first)) {
     return stickers.heart;
   }
 
@@ -1305,10 +1541,39 @@ function areChatMessagesEqual(left: ChatMessage[], right: ChatMessage[]) {
 
 function mergePendingChatMessages(remoteMessages: ChatMessage[], fallback?: CoupleState | null) {
   const remoteMessageIds = new Set(remoteMessages.map((message) => message.id));
+  const localMessagesById = new Map((fallback?.chat?.messages ?? []).map((message) => [message.id, message]));
+  const preservedRemoteMessages = remoteMessages.map((message) => {
+    const localMessage = localMessagesById.get(message.id);
+
+    if (!localMessage?.attachments.some((attachment) => attachment.disappeared)) {
+      return message;
+    }
+
+    const localAttachmentsById = new Map(localMessage.attachments.map((attachment) => [attachment.id, attachment]));
+
+    return {
+      ...message,
+      attachments: message.attachments.map((attachment) => {
+        const localAttachment = localAttachmentsById.get(attachment.id);
+
+        if (!localAttachment?.disappeared) {
+          return attachment;
+        }
+
+        return {
+          ...attachment,
+          consumedAt: localAttachment.consumedAt ?? attachment.consumedAt,
+          disappeared: true,
+          name: localAttachment.name ?? attachment.name,
+          uri: "",
+        };
+      }),
+    };
+  });
   const pendingMessages = (fallback?.chat?.messages ?? [])
     .filter((message) => message.deliveryStatus && !remoteMessageIds.has(message.id));
 
-  return [...remoteMessages, ...pendingMessages].sort(
+  return [...preservedRemoteMessages, ...pendingMessages].sort(
     (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
   );
 }
@@ -1328,6 +1593,40 @@ function withChatMessageDeliveryStatus(
       ...current.chat,
       messages: current.chat.messages.map((message) =>
         message.id === messageId ? { ...message, deliveryStatus } : message,
+      ),
+    },
+  };
+}
+
+function withChatAttachmentDisappeared(current: CoupleState | null, messageId: string, attachmentId: string) {
+  const consumedAt = new Date().toISOString();
+
+  if (!current?.chat?.messages.some((message) =>
+    message.id === messageId && message.attachments.some((attachment) => attachment.id === attachmentId && !attachment.disappeared)
+  )) {
+    return current;
+  }
+
+  return {
+    ...current,
+    chat: {
+      ...current.chat,
+      messages: current.chat.messages.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              attachments: message.attachments.map((attachment) =>
+                attachment.id === attachmentId
+                  ? {
+                      ...attachment,
+                      consumedAt,
+                      disappeared: true,
+                      uri: "",
+                    }
+                  : attachment,
+              ),
+            }
+          : message,
       ),
     },
   };
@@ -1488,156 +1787,8 @@ function cardResponseStatusLabel(level?: VoteLevel) {
   return typeof level === "undefined" ? "Non répondu" : voteRevealLabel(level);
 }
 
-type CategoryCardTone = {
-  accent: string;
-  bodyText: string;
-  chipBg: string;
-  colors: readonly [string, string, string];
-  glow: string;
-  patternEmoji: string;
-  sticker: string;
-  tagBg: string;
-  tagText: string;
-  titleText: string;
-};
-
-const categoryVisuals: Partial<Record<DesireCategory, CategoryCardTone>> = {
-  Vanille: {
-    accent: "#FFF4E8",
-    bodyText: "#5A3E24",
-    chipBg: "#FFF4E8",
-    colors: ["#FFF4E8", "#F1E2CF", "#E6D1B6"],
-    glow: "rgba(255,210,63,0.28)",
-    patternEmoji: "🍦",
-    sticker: "🍦",
-    tagBg: "rgba(255,249,240,0.72)",
-    tagText: "#7E5932",
-    titleText: "#2B1735",
-  },
-  Sensuel: {
-    accent: "#FB7AAA",
-    bodyText: "#4D193A",
-    chipBg: "#FFD6E6",
-    colors: ["#FF86B7", "#F85B98", "#F5286E"],
-    glow: "rgba(245,40,110,0.34)",
-    patternEmoji: "🫧",
-    sticker: "🧴",
-    tagBg: "rgba(255,249,240,0.62)",
-    tagText: "#F5286E",
-    titleText: "#FFF9F0",
-  },
-  Séduction: {
-    accent: candy.red,
-    bodyText: "#FFE7EF",
-    chipBg: "#FCE0EA",
-    colors: ["#F5286E", "#D9165B", "#B90D4D"],
-    glow: "rgba(245,40,110,0.38)",
-    patternEmoji: "💋",
-    sticker: "😏",
-    tagBg: "rgba(255,249,240,0.18)",
-    tagText: candy.white,
-    titleText: candy.white,
-  },
-  Hot: {
-    accent: candy.yellow,
-    bodyText: candy.ink,
-    chipBg: candy.yellowSoft,
-    colors: ["#FFD84D", "#FFD23F", "#F9B928"],
-    glow: "rgba(255,210,63,0.42)",
-    patternEmoji: "🌶️",
-    sticker: "🌶️",
-    tagBg: "rgba(38,18,46,0.88)",
-    tagText: candy.yellow,
-    titleText: candy.ink,
-  },
-  "Jeux & Défis": {
-    accent: "#8E4BA0",
-    bodyText: "#FFEAF4",
-    chipBg: "#4A2857",
-    colors: ["#32183D", "#42224F", "#24102C"],
-    glow: "rgba(38,18,46,0.46)",
-    patternEmoji: "🎲",
-    sticker: "🎲",
-    tagBg: "rgba(255,210,63,0.95)",
-    tagText: candy.ink,
-    titleText: candy.white,
-  },
-  Scénarios: {
-    accent: "#4E2A5E",
-    bodyText: "#F7E8D7",
-    chipBg: "#4A2857",
-    colors: ["#26122E", "#4A1F50", "#F5286E"],
-    glow: "rgba(38,18,46,0.42)",
-    patternEmoji: "🎭",
-    sticker: "🎭",
-    tagBg: "rgba(255,249,240,0.16)",
-    tagText: candy.white,
-    titleText: candy.white,
-  },
-  "Kinky Soft": {
-    accent: "#D9165B",
-    bodyText: "#F7E8D7",
-    chipBg: "#FCE0EA",
-    colors: ["#F5286E", "#C90E52", "#9C0A43"],
-    glow: "rgba(245,40,110,0.34)",
-    patternEmoji: "👑",
-    sticker: "👑",
-    tagBg: "rgba(255,249,240,0.18)",
-    tagText: candy.white,
-    titleText: candy.white,
-  },
-  BDSM: {
-    accent: "#6B3B78",
-    bodyText: "rgba(255,249,240,0.84)",
-    chipBg: "#4A2857",
-    colors: ["#32183D", "#25112D", "#150A1A"],
-    glow: "rgba(21,10,26,0.46)",
-    patternEmoji: "🎭",
-    sticker: stickers.lock,
-    tagBg: "rgba(255,210,63,0.9)",
-    tagText: candy.ink,
-    titleText: candy.white,
-  },
-  "Plaisirs explicites": {
-    accent: "#F5286E",
-    bodyText: "#FFE7EF",
-    chipBg: "#FCE0EA",
-    colors: ["#F94D86", "#D9165B", "#8E0A3C"],
-    glow: "rgba(245,40,110,0.34)",
-    patternEmoji: "💦",
-    sticker: "💦",
-    tagBg: "rgba(255,249,240,0.18)",
-    tagText: candy.white,
-    titleText: candy.white,
-  },
-  Tabous: {
-    accent: candy.black,
-    bodyText: candy.white,
-    chipBg: "#4A2857",
-    colors: ["#26122E", "#4A1F50", "#120815"],
-    glow: "rgba(18,8,21,0.46)",
-    patternEmoji: "🗝️",
-    sticker: "🗝️",
-    tagBg: "rgba(255,249,240,0.18)",
-    tagText: candy.white,
-    titleText: candy.white,
-  },
-  Perso: {
-    accent: candy.red,
-    bodyText: candy.text,
-    chipBg: "#F7E8D7",
-    colors: ["#FFF4E8", "#F7E8D7", "#EBD8C0"],
-    glow: "rgba(38,18,46,0.18)",
-    patternEmoji: "🪄",
-    sticker: stickers.wand,
-    tagBg: "rgba(245,40,110,0.12)",
-    tagText: candy.red,
-    titleText: candy.ink,
-  },
-};
-
 function categoryVisual(category: DesireCategory) {
-  return categoryVisuals[category] ?? categoryVisuals.Vanille!;
+  return packThemeForCategory(category);
 }
 
 function categoryLabel(category: DesireCategory) {
@@ -1646,6 +1797,55 @@ function categoryLabel(category: DesireCategory) {
 
 function categoryDescription(category: DesireCategory) {
   return desirePackByCategory.get(category)?.description ?? "";
+}
+
+type PackPresentationOptions = {
+  countOverride?: number;
+  customCount?: number;
+  customUnlimited?: boolean;
+  included?: boolean;
+  selected?: boolean;
+};
+
+function packPresentation(category: DesireCategory, couple: CoupleState, options: PackPresentationOptions = {}) {
+  const personal = category === PERSONAL_CATEGORY;
+  const included = options.included ?? (category === "Vanille");
+  const unlocked = included || isCategoryUnlocked(couple, category);
+  const price = included ? "Inclus" : CATEGORY_PRICES[category] ?? "4,99 €";
+  const customCount = options.customCount ?? customDesireCount(couple);
+  const count = personal ? customCount : options.countOverride ?? desireCardCount(category);
+  const countLabel = personal
+    ? options.customUnlimited
+      ? "Illimité"
+      : `${Math.min(customCount, CUSTOM_CARD_FREE_LIMIT)} / ${CUSTOM_CARD_FREE_LIMIT} cartes`
+    : `${count} cartes`;
+  const statusLabel = options.selected
+    ? "Actif"
+    : personal
+      ? "Choisir"
+      : included
+        ? "Inclus"
+        : unlocked
+          ? "Disponible"
+          : price;
+  const title = categoryLabel(category);
+  const description = categoryDescription(category);
+
+  return {
+    count,
+    countLabel,
+    description,
+    detailTitle: `Pack ${title}`,
+    included,
+    locked: !unlocked && !personal,
+    partnerStatusLabel: partnerPackOwnershipLabel(couple, category),
+    personal,
+    price,
+    purchasePreviewLabel: `Contenu masqué jusqu'au déblocage · 18+ · ${countLabel}`,
+    statusLabel,
+    title,
+    unlocked,
+  };
 }
 
 function categoryTone(category: DesireCategory) {
@@ -1683,11 +1883,27 @@ function categoryChipTextColor(category: DesireCategory, active = false, unlocke
     return candy.ink;
   }
 
-  return category === "Vanille" ? candy.ink : candy.white;
+  return categoryVisual(category).tileTitleText;
+}
+
+function partnerPackOwnershipLabel(couple: CoupleState, category: DesireCategory) {
+  return isCategoryUnlocked(couple, category) ? "Partenaire l'a" : "Partenaire ne l'a pas";
 }
 
 function categoryCardTone(category: DesireCategory) {
   return categoryVisual(category);
+}
+
+function categoryTileTitleText(category: DesireCategory) {
+  return categoryVisual(category).tileTitleText;
+}
+
+function categoryTileMetaText(category: DesireCategory) {
+  return categoryVisual(category).tileMetaText;
+}
+
+function categoryTileIconText(category: DesireCategory) {
+  return categoryVisual(category).tileIconText;
 }
 
 function cardStickerEmoji(card: DesireCard) {
@@ -1861,13 +2077,10 @@ function Root() {
   const [enviesFocusCardId, setEnviesFocusCardId] = useState<string | null>(null);
   const [enviesGameModeRequest, setEnviesGameModeRequest] = useState(0);
   const [revealedMatchIds, setRevealedMatchIds] = useState<string[]>([]);
-  const [secretToastVisible, setSecretToastVisible] = useState(false);
-  const [secretToastNonce, setSecretToastNonce] = useState(0);
   const [responseLimitPromptVisible, setResponseLimitPromptVisible] = useState(false);
   const [fakeAd, setFakeAd] = useState<FakeAdRequest | null>(null);
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
   const [appForeground, setAppForeground] = useState(() => AppState.currentState === "active");
-  const secretToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fakeAdResolver = useRef<(() => void) | null>(null);
   const fakeAdLastShownAt = useRef(0);
   const fakeAdScheduleTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
@@ -2147,8 +2360,8 @@ function Root() {
         await refreshRemoteChatMessages(preferredCoupleId, { force: true });
       }
 
-      if (result.visiblePending > 0) {
-        setSyncError(`${result.visiblePending} action${result.visiblePending > 1 ? "s" : ""} en attente de reconnexion.`);
+      if (result.visiblePending === 0 && result.pending === 0) {
+        setSyncError("");
       }
     },
     [refreshRemoteChatMessages, refreshRemoteCoupleState, remoteAccountReady, session],
@@ -2419,9 +2632,6 @@ function Root() {
 
   useEffect(() => {
     return () => {
-      if (secretToastTimer.current) {
-        clearTimeout(secretToastTimer.current);
-      }
       if (fakeAdResolver.current) {
         fakeAdResolver.current();
         fakeAdResolver.current = null;
@@ -2593,6 +2803,7 @@ function Root() {
       const activeId = couple.activePartnerId;
       const coupleId = couple.id;
       const partnerId = otherPartnerId(activeId);
+      const votedCard = allDesireCards(couple).find((card) => card.id === cardId);
       const previousActiveVote = couple.votes[activeId][cardId];
       const isVoteChange = previousActiveVote !== level;
       const writeKey = `${coupleId}:${cardId}`;
@@ -2623,6 +2834,8 @@ function Root() {
       const newMatchCreated = becomesMatch && !wasAlreadyMatch;
       const responseCountBeforeVote = activeResponseCount(couple);
 
+      void Haptics.selectionAsync();
+
       if (!canWriteRemote) {
         setCouple((current) => (current?.id === coupleId ? withLocalDesireVote(current, cardId, level) : current));
         setSyncError("");
@@ -2637,6 +2850,12 @@ function Root() {
           setSyncError("");
         } catch (error) {
           const message = errorMessage(error, "");
+          const failureSignal = errorSignalText(error, message);
+          const localPaidPackVote =
+            votedCard
+            && PAID_PACK_CATEGORIES.includes(votedCard.category)
+            && isCategoryUnlocked(couple, votedCard.category);
+
           if (message.includes("daily_limit_reached") && localModeEnabled && hasUnlimitedResponses(couple)) {
             setCouple((current) => (current?.id === coupleId ? withLocalDesireVote(current, cardId, level) : current));
             setResponseLimitPromptVisible(false);
@@ -2647,6 +2866,14 @@ function Root() {
             void refreshRemoteCoupleState(coupleId, { force: true });
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             return false;
+          } else if (isSilentConnectivityNotice(failureSignal)) {
+            setCouple((current) => (current?.id === coupleId ? withLocalDesireVote(current, cardId, level) : current));
+            await enqueueRemoteVote({ cardId, coupleId, level }).catch(() => undefined);
+            await loadOfflineQueueCount().then(setOfflineQueueCount).catch(() => undefined);
+            setSyncError("");
+          } else if (localPaidPackVote && localModeEnabled && /unknown_card|card_available|not.*available/i.test(failureSignal)) {
+            setCouple((current) => (current?.id === coupleId ? withLocalDesireVote(current, cardId, level) : current));
+            setSyncError("");
           } else {
             setSyncError("Réponse non enregistrée. Vérifie ta connexion et réessaie.");
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -2656,17 +2883,6 @@ function Root() {
           voteWriteKeys.current.delete(writeKey);
         }
       }
-
-      setSecretToastVisible(true);
-      setSecretToastNonce((current) => current + 1);
-      if (secretToastTimer.current) {
-        clearTimeout(secretToastTimer.current);
-      }
-      secretToastTimer.current = setTimeout(() => {
-        setSecretToastVisible(false);
-      }, 1150);
-
-      await Haptics.selectionAsync();
 
       fakeAdStats.current.votesSinceAd += 1;
       if (newMatchCreated) {
@@ -2998,9 +3214,11 @@ function Root() {
           setPurchaseSuccess(success);
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (error) {
-          const message = errorMessage(error, "achat impossible");
-          setSyncError(`Achat non validé: ${message}`);
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          const message = purchaseFailureNotice(error);
+          setSyncError(message);
+          if (message) {
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          }
         }
         return;
       }
@@ -3204,8 +3422,8 @@ function Root() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSyncError("Achats restaurés.");
     } catch (error) {
-      const message = errorMessage(error, "restauration impossible");
-      setSyncError(`Restauration impossible: ${message}`);
+      const message = purchaseFailureNotice(error, "restore");
+      setSyncError(message);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   }, [canWriteRemoteCouple, completeFakeAd, couple, refreshRemoteCoupleState, session]);
@@ -3357,6 +3575,8 @@ function Root() {
       if (!targetAttachment || targetAttachment.disappeared) {
         return;
       }
+
+      setCouple((current) => withChatAttachmentDisappeared(current, messageId, attachmentId));
 
       await queueChatAttachmentConsumption({
         attachmentId,
@@ -3911,26 +4131,40 @@ function Root() {
         onProvider={handleProvider}
         onRevealMatch={async (cardId) => {
           if (!canWriteRemoteCouple(couple)) {
+            if (cardId) {
+              setRevealedMatchIds((current) => (current.includes(cardId) ? current : [...current, cardId]));
+              setSyncError("");
+              return allDesireCards(couple).find((card) => card.id === cardId) ?? null;
+            }
+
             setSyncError("Attends que ton espace soit synchronisé avant de révéler un match.");
-            return;
+            return null;
           }
 
           try {
+            let revealedMatch: RemoteMatch | null = null;
             if (cardId) {
               await markRemoteMatchRevealed(couple.id, cardId);
             } else {
-              await markRemoteNextMatchRevealed(couple.id);
+              revealedMatch = await markRemoteNextMatchRevealed(couple.id);
             }
 
             await refreshRemoteCoupleState(couple.id, { force: true });
 
             if (cardId) {
               setRevealedMatchIds((current) => (current.includes(cardId) ? current : [...current, cardId]));
+            } else if (revealedMatch?.card_id) {
+              setRevealedMatchIds((current) => (current.includes(revealedMatch.card_id) ? current : [...current, revealedMatch.card_id]));
             }
 
             setSyncError("");
-          } catch {
-            setSyncError("La révélation du match n'a pas pu être enregistrée.");
+            return revealedMatch ? desireCardFromRemoteMatch(revealedMatch) : null;
+          } catch (error) {
+            const message = errorMessage(error, "La révélation du match n'a pas pu être enregistrée.");
+            const failureSignal = errorSignalText(error, message);
+            setSyncError(isSilentConnectivityNotice(failureSignal) ? "" : "La révélation du match n'a pas pu être enregistrée.");
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            return null;
           }
         }}
         onRequestLeaveCouple={handleRequestLeaveCouple}
@@ -3958,7 +4192,6 @@ function Root() {
         partnerName={couple?.profiles[otherPartnerId(couple.activePartnerId)].displayName}
         visible={responseLimitPromptVisible}
       />
-      <SecretVoteToast nonce={secretToastNonce} visible={secretToastVisible} />
       <FakeInterstitialAd ad={fakeAd} onComplete={completeFakeAd} />
     </CandyFrame>
   );
@@ -3973,7 +4206,7 @@ function CandyFrame({ children, dark = false, hideDoodles = false }: { children:
           <View style={styles.doodleTwo} />
         </>
       ) : null}
-      <SafeAreaView style={[styles.safeArea, dark && styles.safeAreaDark]}>{children}</SafeAreaView>
+      <View style={[styles.safeArea, dark && styles.safeAreaDark]}>{children}</View>
       <StatusBar style="light" />
     </LinearGradient>
   );
@@ -4033,46 +4266,10 @@ function ServerNoticeToast({ message, onDismiss }: { message: string; onDismiss:
   );
 }
 
-function SecretVoteToast({ nonce, visible }: { nonce: number; visible: boolean }) {
-  const progress = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (visible) {
-      progress.setValue(0);
-    }
-
-    Animated.timing(progress, {
-      toValue: visible ? 1 : 0,
-      duration: visible ? 180 : 140,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: useNativeAnimations,
-    }).start();
-  }, [nonce, progress, visible]);
-
-  if (!visible) {
-    return null;
-  }
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.secretToast,
-        {
-          opacity: progress,
-          transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
-        },
-      ]}
-    >
-      <Sparkles size={14} color={candy.white} />
-      <Text style={styles.secretToastText}>Choix enregistré</Text>
-    </Animated.View>
-  );
-}
-
 function FakeInterstitialAd({ ad, onComplete }: { ad: FakeAdRequest | null; onComplete: () => void }) {
   const entrance = useRef(new Animated.Value(0)).current;
   const pulse = useLoop(1500);
+  const safeAreaInsets = useSafeAreaInsets();
   const [canContinue, setCanContinue] = useState(false);
 
   useEffect(() => {
@@ -4112,7 +4309,15 @@ function FakeInterstitialAd({ ad, onComplete }: { ad: FakeAdRequest | null; onCo
       }
     }}>
       <LinearGradient colors={[candy.cream, candy.roseSoft]} style={styles.fakeAdScreen}>
-        <SafeAreaView style={styles.fakeAdSafe}>
+        <View
+          style={[
+            styles.fakeAdSafe,
+            {
+              paddingBottom: Math.max(20, safeAreaInsets.bottom + 20),
+              paddingTop: Math.max(20, safeAreaInsets.top + 20),
+            },
+          ]}
+        >
           <Animated.View
             style={[
               styles.fakeAdCard,
@@ -4149,7 +4354,7 @@ function FakeInterstitialAd({ ad, onComplete }: { ad: FakeAdRequest | null; onCo
               Placeholder interne. Le pack No Ads retire ces écrans.
             </Text>
           </Animated.View>
-        </SafeAreaView>
+        </View>
       </LinearGradient>
     </Modal>
   );
@@ -4376,7 +4581,7 @@ function DebugPreviewShell({ children, onClose }: { children: React.ReactNode; o
     <View style={styles.debugPreviewShell}>
       {children}
       <SpringPressable onPress={onClose} style={styles.debugPreviewBackButton}>
-        <ArrowLeft size={18} color={candy.white} />
+        <ArrowLeft size={20} color={candy.white} strokeWidth={3} />
         <Text style={styles.debugPreviewBackText}>Debug</Text>
       </SpringPressable>
     </View>
@@ -4540,7 +4745,7 @@ function MainShell({
   onApplyDebugPreset: (preset: DebugPresetId) => void;
   onBeforeRevealMatch: () => Promise<boolean>;
   onConsumeChatAttachment: (payload: { attachmentId: string; messageId: string }) => void | Promise<void>;
-  onQueueChatAttachmentConsumption: (payload: { attachmentId: string; messageId: string }) => void | Promise<void>;
+  onQueueChatAttachmentConsumption: (payload: { attachmentId: string; delayMs?: number; messageId: string }) => void | Promise<void>;
   onCopyInvite: () => void;
   onDebugFakeAd: () => void;
   onDebugUnlockAllPurchases: () => void;
@@ -4558,7 +4763,7 @@ function MainShell({
   onOpenChat: (cardId?: string) => void;
   onJoinPartner: () => void;
   onProvider: (provider: AuthProvider) => void;
-  onRevealMatch: (cardId?: string) => Promise<void>;
+  onRevealMatch: (cardId?: string) => Promise<DesireCard | null>;
   onRequestLeaveCouple: () => void;
   onReplayTutorial: () => void;
   onRestorePurchases: () => void;
@@ -4576,20 +4781,69 @@ function MainShell({
   onUnlockUnlimitedResponses: () => void;
   onVote: (cardId: string, level: VoteLevel) => Promise<boolean>;
 }) {
-  const mainSafeAreaInsets = useSafeAreaInsets();
-  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
+  const [tabBarHeight, setTabBarHeight] = useState(DEFAULT_TAB_DOCK_HEIGHT);
+  const [tabDockOverlayHeight, setTabDockOverlayHeight] = useState(DEFAULT_TAB_DOCK_HEIGHT);
+  const [androidKeyboardVisible, setAndroidKeyboardVisible] = useState(false);
+  const appLayout = useAppLayout({
+    bottomInteractiveGap: CHAT_COMPOSER_NAV_GAP,
+    tabDockHeight: tabBarHeight,
+  });
   const syncNotice = userFacingSyncNotice(syncError);
   const [dismissedSyncNotice, setDismissedSyncNotice] = useState("");
-  const chatNotificationsEnabled = isNotificationPreferenceEnabled(couple, couple.activePartnerId, "chatMessageEnabled");
   const visibleSyncNotice = syncNotice && syncNotice !== dismissedSyncNotice ? syncNotice : "";
   const dismissSyncNotice = useCallback(() => setDismissedSyncNotice(syncNotice), [syncNotice]);
   const tabBarActive: VisibleTabKey | null =
     tab === "profil" || tab === "rules" || (!debugEnabled && tab === "debug") ? null : tab;
-  const tabDockPaddingBottom = homeLayoutMetrics(viewportHeight, viewportWidth, mainSafeAreaInsets).rhythm;
-  const chatBottomNavInset = tabDockPaddingBottom + TAB_DOCK_VISIBLE_HEIGHT + CHAT_COMPOSER_NAV_GAP;
+  const tabDockPaddingBottom = homeLayoutMetrics(
+    appLayout.viewportHeight,
+    appLayout.viewportWidth,
+    { bottom: appLayout.safeBottom, top: appLayout.safeTop },
+    appLayout.tabDockHeight,
+  ).rhythm;
+  const bottomNavInset = tabDockPaddingBottom + appLayout.tabDockHeight + CHAT_COMPOSER_NAV_GAP;
+  const bottomInteractiveInset = Math.max(bottomNavInset, appLayout.bottomInteractiveInset);
+  const bottomContentInset = Math.max(bottomNavInset, tabDockOverlayHeight + CHAT_COMPOSER_NAV_GAP);
+  const tabDockHiddenForKeyboard = Platform.OS === "android" && androidKeyboardVisible;
+  const keyboardBottomInset = appLayout.safeBottom + CHAT_COMPOSER_NAV_GAP;
+  const visibleBottomNavInset = tabDockHiddenForKeyboard ? keyboardBottomInset : bottomNavInset;
+  const visibleBottomInteractiveInset = tabDockHiddenForKeyboard ? keyboardBottomInset : bottomInteractiveInset;
+  const visibleBottomContentInset = tabDockHiddenForKeyboard ? keyboardBottomInset : bottomContentInset;
+  const visibleTabDockHeight = tabDockHiddenForKeyboard ? 0 : appLayout.tabDockHeight;
   const tabDockFadeColors: readonly [string, string, string] = tab === "chat"
     ? ["rgba(38,18,46,0)", "rgba(38,18,46,0.72)", candy.darkColor]
     : ["rgba(245,40,110,0)", "rgba(245,40,110,0.72)", "rgba(245,40,110,0.98)"];
+  const handleTabBarLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+
+    if (nextHeight <= 0) {
+      return;
+    }
+
+    setTabBarHeight((current) => (Math.abs(current - nextHeight) < 1 ? current : nextHeight));
+  }, []);
+  const handleTabDockLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+
+    if (nextHeight <= 0) {
+      return;
+    }
+
+    setTabDockOverlayHeight((current) => (Math.abs(current - nextHeight) < 1 ? current : nextHeight));
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") {
+      return undefined;
+    }
+
+    const showSubscription = Keyboard.addListener("keyboardDidShow", () => setAndroidKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setAndroidKeyboardVisible(false));
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (!syncNotice) {
@@ -4602,6 +4856,7 @@ function MainShell({
       <View style={styles.content}>
         {tab === "home" ? (
           <HomeScreen
+            tabDockHeight={appLayout.tabDockHeight}
             couple={couple}
             onGoEnvies={() => onTabChange("envies")}
             onMoodChange={onMoodChange}
@@ -4617,10 +4872,12 @@ function MainShell({
         ) : null}
         {tab === "envies" ? (
           <EnviesScreen
+            bottomContentInset={visibleBottomContentInset}
             couple={couple}
             focusCardId={enviesFocusCardId}
             focusCategory={enviesFocusCategory}
             startInGameRequest={enviesGameModeRequest}
+            tabDockHeight={appLayout.tabDockHeight}
             onAddCustomDesire={onAddCustomDesire}
             onStartInGameRequestHandled={onEnviesGameModeRequestHandled}
             onUnlockCustomCards={onUnlockCustomCards}
@@ -4636,6 +4893,7 @@ function MainShell({
             <MatchScreen
               couple={couple}
               revealedMatchIds={revealedMatchIds}
+              tabDockHeight={appLayout.tabDockHeight}
               onOpenGameMode={onOpenEnviesGameMode}
               onOpenChat={onOpenChat}
               onBeforeRevealMatch={onBeforeRevealMatch}
@@ -4648,6 +4906,7 @@ function MainShell({
             <CoupleScreen
               couple={couple}
               revealedMatchIds={revealedMatchIds}
+              tabDockHeight={appLayout.tabDockHeight}
               onCopyInvite={onCopyInvite}
               onGoEnvies={() => onTabChange("envies")}
               onGoMatch={() => onTabChange("match")}
@@ -4665,6 +4924,7 @@ function MainShell({
           <Entrance delay={0} style={styles.flex}>
             <ProfileScreen
               authError={authError}
+              bottomContentInset={visibleBottomContentInset}
               couple={couple}
               providerLoading={providerLoading}
               session={session}
@@ -4686,6 +4946,7 @@ function MainShell({
         {debugEnabled && tab === "debug" ? (
           <Entrance delay={0} style={styles.flex}>
             <DebugScreen
+              bottomContentInset={visibleBottomContentInset}
               couple={couple}
               onActorChange={onActorChange}
               onApplyPreset={onApplyDebugPreset}
@@ -4706,9 +4967,11 @@ function MainShell({
           <Entrance delay={0} style={styles.flex}>
             {hasLinkedPartner(couple) ? (
               <ChatScreen
-                bottomNavInset={chatBottomNavInset}
+                bottomInteractiveInset={visibleBottomInteractiveInset}
+                bottomNavInset={visibleBottomNavInset}
                 contextCardId={chatContextCardId}
                 couple={couple}
+                tabDockHeight={visibleTabDockHeight}
                 onConsumePhoto={onConsumeChatAttachment}
                 onBack={() => onTabChange("home")}
                 onQueuePhotoConsumption={onQueueChatAttachmentConsumption}
@@ -4716,7 +4979,7 @@ function MainShell({
               />
             ) : (
               <ChatUnavailableScreen
-                bottomNavInset={chatBottomNavInset}
+                bottomNavInset={visibleBottomNavInset}
                 onBack={() => onTabChange("home")}
                 onGoCouple={() => onTabChange("couple")}
               />
@@ -4729,19 +4992,25 @@ function MainShell({
           </Entrance>
         ) : null}
       </View>
-      <View pointerEvents="box-none" style={[styles.tabDock, tab === "chat" && styles.tabDockDark, { paddingBottom: tabDockPaddingBottom }]}>
-        <LinearGradient
-          colors={tabDockFadeColors}
-          pointerEvents="none"
-          style={styles.tabDockFade}
-        />
-        <CandyTabs
-          active={tabBarActive}
-          chatNotificationsEnabled={chatNotificationsEnabled}
-          showDebug={debugEnabled}
-          onChange={onTabChange}
-        />
-      </View>
+      {tabDockHiddenForKeyboard ? null : (
+        <View
+          onLayout={handleTabDockLayout}
+          pointerEvents="box-none"
+          style={[styles.tabDock, tab === "chat" && styles.tabDockDark, { paddingBottom: tabDockPaddingBottom }]}
+        >
+          <LinearGradient
+            colors={tabDockFadeColors}
+            pointerEvents="none"
+            style={styles.tabDockFade}
+          />
+          <CandyTabs
+            active={tabBarActive}
+            showDebug={debugEnabled}
+            onLayout={handleTabBarLayout}
+            onChange={onTabChange}
+          />
+        </View>
+      )}
       <ServerNoticeToast
         message={visibleSyncNotice}
         onDismiss={dismissSyncNotice}
@@ -4804,13 +5073,13 @@ function WeSpiceLogo({
 
 function CandyTabs({
   active,
-  chatNotificationsEnabled,
   onChange,
+  onLayout,
   showDebug,
 }: {
   active: VisibleTabKey | null;
-  chatNotificationsEnabled: boolean;
   onChange: (tab: TabKey) => void;
+  onLayout?: (event: LayoutChangeEvent) => void;
   showDebug: boolean;
 }) {
   const allItems: Array<{ key: VisibleTabKey; label: string; icon: React.ReactNode }> = [
@@ -4824,28 +5093,13 @@ function CandyTabs({
   const items = showDebug ? allItems : allItems.filter((item) => item.key !== "debug");
 
   return (
-    <View style={styles.tabs}>
+    <View onLayout={onLayout} style={styles.tabs}>
       {items.map((item) => {
         const isActive = item.key === active;
         return (
           <SpringPressable key={item.key} onPress={() => onChange(item.key)} style={[styles.tab, isActive && styles.tabActive]}>
             <View style={styles.tabIconWrap}>
               {React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: isActive ? candy.red : candy.muted })}
-              {item.key === "chat" ? (
-                <View
-                  style={[
-                    styles.tabNotificationBadge,
-                    chatNotificationsEnabled && styles.tabNotificationBadgeOn,
-                    chatNotificationsEnabled && isActive && styles.tabNotificationBadgeActive,
-                  ]}
-                >
-                  {chatNotificationsEnabled ? (
-                    <Bell size={8} color={isActive ? candy.white : candy.red} />
-                  ) : (
-                    <BellOff size={8} color="rgba(35,18,36,0.55)" />
-                  )}
-                </View>
-              ) : null}
             </View>
             <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.tabText, isActive && styles.tabTextActive]}>
               {item.label}
@@ -4858,10 +5112,12 @@ function CandyTabs({
 }
 
 function EnviesScreen({
+  bottomContentInset,
   couple,
   focusCardId,
   focusCategory,
   startInGameRequest,
+  tabDockHeight,
   onAddCustomDesire,
   onStartInGameRequestHandled,
   onUnlockCustomCards,
@@ -4871,10 +5127,12 @@ function EnviesScreen({
   onRestorePurchases,
   onVote,
 }: {
+  bottomContentInset: number;
   couple: CoupleState;
   focusCardId: string | null;
   focusCategory: DesireCategory | null;
   startInGameRequest: number;
+  tabDockHeight: number;
   onAddCustomDesire: (desire: CustomDesireDraft) => void;
   onStartInGameRequestHandled: () => void;
   onUnlockCustomCards: () => void;
@@ -4896,6 +5154,7 @@ function EnviesScreen({
   const [exitingGameCardId, setExitingGameCardId] = useState<string | null>(null);
   const [replayDeckIds, setReplayDeckIds] = useState<string[]>([]);
   const [purchaseCategory, setPurchaseCategory] = useState<DesireCategory | null>(null);
+  const [purchaseCategorySource, setPurchaseCategorySource] = useState<"picker" | "store" | null>(null);
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [customPurchaseOpen, setCustomPurchaseOpen] = useState(false);
   const [noAdsPurchaseOpen, setNoAdsPurchaseOpen] = useState(false);
@@ -4903,6 +5162,8 @@ function EnviesScreen({
   const [storeOpen, setStoreOpen] = useState(false);
   const enviesHeaderScrollY = useRef(new Animated.Value(0)).current;
   const gameTransitionTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const gameTransitionActive = useRef(false);
+  const gameTransitionNonce = useRef(0);
   const ownVotes = couple.votes[couple.activePartnerId] ?? {};
   const [answeredInSession, setAnsweredInSession] = useState<Record<string, boolean>>({});
   const allCards = useMemo(() => allDesireCards(couple), [couple]);
@@ -5018,7 +5279,10 @@ function EnviesScreen({
   const canCreateCustom = customUnlimited || customSlotsLeft > 0;
   const gameProgressLabel = `${Math.max(0, categoryCards.length - unansweredCards.length)}/${Math.max(1, categoryCards.length)}`;
   const compactEnviesLayout = width < 620;
-  const enviesHeaderTopSpace = homeLayoutMetrics(viewportHeight, width, safeAreaInsets).rhythm;
+  const enviesHeaderTopSpace = homeLayoutMetrics(viewportHeight, width, safeAreaInsets, tabDockHeight).rhythm;
+  const enviesBottomInsetStyle = useMemo<ViewStyle>(() => ({
+    paddingBottom: bottomContentInset,
+  }), [bottomContentInset]);
   const enviesHeaderPaddingTop = useMemo(
     () => enviesHeaderScrollY.interpolate({
       extrapolate: "clamp",
@@ -5061,11 +5325,26 @@ function EnviesScreen({
   };
   const requestCategoryPurchase = (nextCategory: DesireCategory) => {
     setCategoryPickerOpen(false);
+    setPurchaseCategorySource("picker");
     setPurchaseCategory(nextCategory);
+  };
+  const requestStoreCategoryPurchase = (nextCategory: DesireCategory) => {
+    setPurchaseCategorySource("store");
+    setPurchaseCategory(nextCategory);
+  };
+  const closeCategoryPurchase = () => {
+    const shouldReturnToPicker = purchaseCategorySource === "picker";
+    setPurchaseCategory(null);
+    setPurchaseCategorySource(null);
+    if (shouldReturnToPicker) {
+      setCategoryPickerOpen(true);
+    }
   };
   const clearGameTransitionTimers = () => {
     gameTransitionTimers.current.forEach((timer) => clearTimeout(timer));
     gameTransitionTimers.current = [];
+    gameTransitionActive.current = false;
+    gameTransitionNonce.current += 1;
   };
   const changeCategory = (nextCategory: DesireCategory) => {
     setCategory(nextCategory);
@@ -5080,32 +5359,75 @@ function EnviesScreen({
     },
     [enviesHeaderScrollY],
   );
-  const voteInGame = async (cardId: string, level: VoteLevel) => {
-    if (gameTransitionCardId) {
+  const voteInGame = (cardId: string, level: VoteLevel) => {
+    if (gameTransitionActive.current || gameTransitionCardId) {
       return;
     }
 
     const replaySameVote = replayAnsweredCards && ownVotes[cardId] === level;
-    const accepted = replaySameVote || (await onVote(cardId, level));
-    if (!accepted) {
-      return;
-    }
+    const transitionNonce = gameTransitionNonce.current + 1;
+    const transitionTimers: Array<ReturnType<typeof setTimeout>> = [];
+    const isCurrentTransition = () => gameTransitionNonce.current === transitionNonce;
+    const removeTransitionTimers = () => {
+      transitionTimers.forEach((timer) => clearTimeout(timer));
+      gameTransitionTimers.current = gameTransitionTimers.current.filter((timer) => !transitionTimers.includes(timer));
+    };
+    const cancelTransition = () => {
+      if (!isCurrentTransition()) {
+        return;
+      }
+      removeTransitionTimers();
+      setAnsweredInSession((current) => {
+        if (!current[cardId]) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[cardId];
+        return next;
+      });
+      setExitingGameCardId((current) => (current === cardId ? null : current));
+      setGameTransitionCardId((current) => (current === cardId ? null : current));
+      setGameTransitionVoteLevel(null);
+      gameTransitionActive.current = false;
+    };
 
+    gameTransitionActive.current = true;
+    gameTransitionNonce.current = transitionNonce;
     setGameTransitionCardId(cardId);
     setGameTransitionVoteLevel(level);
+    if (replaySameVote) {
+      void Haptics.selectionAsync();
+    }
 
     const exitTimer = setTimeout(() => {
+      if (!isCurrentTransition()) {
+        return;
+      }
       setExitingGameCardId(cardId);
     }, GAME_CARD_CONFIRM_MS);
     const nextTimer = setTimeout(() => {
+      if (!isCurrentTransition()) {
+        return;
+      }
       setAnsweredInSession((current) => ({ ...current, [cardId]: true }));
       setExitingGameCardId(null);
       setGameTransitionCardId(null);
       setGameTransitionVoteLevel(null);
-      gameTransitionTimers.current = gameTransitionTimers.current.filter((timer) => timer !== exitTimer && timer !== nextTimer);
+      gameTransitionActive.current = false;
+      gameTransitionTimers.current = gameTransitionTimers.current.filter((timer) => !transitionTimers.includes(timer));
     }, GAME_CARD_TOTAL_TRANSITION_MS);
 
+    transitionTimers.push(exitTimer, nextTimer);
     gameTransitionTimers.current.push(exitTimer, nextTimer);
+
+    const acceptedPromise = replaySameVote ? Promise.resolve(true) : onVote(cardId, level);
+    void acceptedPromise
+      .then((accepted) => {
+        if (!accepted) {
+          cancelTransition();
+        }
+      })
+      .catch(cancelTransition);
   };
   const addDesireButton = (
     <SpringPressable
@@ -5167,11 +5489,7 @@ function EnviesScreen({
 
   const enviesHeader = (
     <Animated.View style={[styles.enviesStickyHeader, { paddingTop: enviesHeaderPaddingTop }]}>
-      <LinearGradient
-        colors={["rgba(245,40,110,0.98)", "rgba(245,40,110,0.74)", "rgba(245,40,110,0)"]}
-        pointerEvents="none"
-        style={styles.enviesStickyFade}
-      />
+      <View pointerEvents="none" style={styles.enviesStickyBackdrop} />
       <Entrance delay={0} style={styles.enviesStickyContent}>
         <View style={styles.enviesGamePanel}>
           {libraryOpen ? (
@@ -5193,13 +5511,13 @@ function EnviesScreen({
             <>
               <View style={styles.enviesTopGameBar}>
                 <SpringPressable onPress={openLibrary} style={[styles.enviesGalleryBackButton, styles.enviesGameBackButton]}>
-                  <ArrowLeft size={15} color={candy.red} />
+                  <ArrowLeft size={20} color={candy.red} strokeWidth={3} />
                   <Text style={styles.enviesGalleryBackText}>Galerie</Text>
                 </SpringPressable>
                 <SpringPressable onPress={() => setCategoryPickerOpen(true)} style={[styles.enviesPackPill, styles.enviesGamePackPill]}>
                   <View style={styles.enviesPackPillDot} />
                   <Text style={styles.enviesPackPillText}>{categoryLabel(category)}</Text>
-                  <ChevronRight size={15} color={candy.text} style={styles.enviesPackPillChevron} />
+                  <ChevronRight size={16} color={candy.text} style={styles.enviesPackPillChevron} />
                 </SpringPressable>
                 <Text style={styles.enviesGameProgress}>{gameProgressLabel}</Text>
               </View>
@@ -5221,7 +5539,7 @@ function EnviesScreen({
       <View style={styles.enviesScreenFrame}>
         {libraryOpen ? (
           <ScrollView
-            contentContainerStyle={[styles.screen, styles.enviesScreenContent]}
+            contentContainerStyle={[styles.screen, styles.enviesScreenContent, enviesBottomInsetStyle]}
             onScroll={handleEnviesScroll}
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={false}
@@ -5243,7 +5561,7 @@ function EnviesScreen({
           </ScrollView>
         ) : (
           <ScrollView
-            contentContainerStyle={[styles.screen, styles.enviesGameContent]}
+            contentContainerStyle={[styles.screen, styles.enviesGameContent, enviesBottomInsetStyle]}
             onScroll={handleEnviesScroll}
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={false}
@@ -5319,11 +5637,13 @@ function EnviesScreen({
       />
       <CategoryPurchaseModal
         category={purchaseCategory}
-        onClose={() => setPurchaseCategory(null)}
+        couple={couple}
+        onClose={closeCategoryPurchase}
         onUnlock={(nextCategory) => {
           onUnlockCategory(nextCategory);
           setCategory(nextCategory);
           setPurchaseCategory(null);
+          setPurchaseCategorySource(null);
           setStoreOpen(false);
         }}
       />
@@ -5334,7 +5654,7 @@ function EnviesScreen({
         onOpenCustomPack={() => setCustomPurchaseOpen(true)}
         onOpenNoAds={() => setNoAdsPurchaseOpen(true)}
         onOpenUnlimitedResponses={() => setUnlimitedPurchaseOpen(true)}
-        onOpenPack={setPurchaseCategory}
+        onOpenPack={requestStoreCategoryPurchase}
         onRestorePurchases={onRestorePurchases}
         visible={storeOpen}
       />
@@ -5383,22 +5703,16 @@ function CustomDesireEditor({
   const cleanBlurb = blurb.trim();
   const previewEmoji = normalizeEmoji(emoji, stickers.heart);
   const canSave = cleanTitle.length >= 3 && cleanBlurb.length >= 8;
-  const freeSlotsLeft = Math.max(0, CUSTOM_CARD_FREE_LIMIT - customCount);
   const quotaLabel = customUnlimited
     ? "Illimité actif"
     : `${Math.min(customCount, CUSTOM_CARD_FREE_LIMIT)} / ${CUSTOM_CARD_FREE_LIMIT} gratuites`;
-  const footerCopy = customUnlimited
-    ? "Cartes perso illimitées actives"
-    : freeSlotsLeft === 1
-      ? `Plus que 1 carte gratuite · Illimitées pour ${CUSTOM_CARDS_UNLIMITED_PRICE}`
-      : `${freeSlotsLeft} cartes gratuites restantes · Illimitées pour ${CUSTOM_CARDS_UNLIMITED_PRICE}`;
   const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
   const editorSurface = fullScreenSurfaceMetrics(viewportWidth);
   const editorSideInset = editorSurface.sideInset;
   const editorContentWidth = editorSurface.contentWidth;
   const editorLayoutRhythm = Math.round(Math.min(34, Math.max(18, viewportHeight * 0.02)));
   const editorPreviewMinHeight = Math.round(Math.min(306, Math.max(226, viewportHeight * 0.2)));
-  const editorBottomReserve = Math.max(136, safeAreaInsets.bottom + 118);
+  const editorBottomReserve = Math.max(116, safeAreaInsets.bottom + 104);
   const editorContentMinHeight = Math.max(0, viewportHeight - safeAreaInsets.top - editorBottomReserve);
   const editorWebInputReset = Platform.OS === "web" ? ({ outlineStyle: "none" } as never) : null;
 
@@ -5431,7 +5745,7 @@ function CustomDesireEditor({
     <Modal animationType="slide" visible={visible} onRequestClose={onClose}>
       <LinearGradient colors={[candy.red, candy.red]} style={styles.editorScreen}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.editorOverlay}>
-          <SafeAreaView style={styles.editorSafe}>
+          <View style={styles.editorSafe}>
             <ScrollView
               contentContainerStyle={[
                 styles.editorScrollContent,
@@ -5446,7 +5760,7 @@ function CustomDesireEditor({
               <View style={[styles.editorContent, { minHeight: editorContentMinHeight, width: editorContentWidth }]}>
                 <View style={styles.editorTopBar}>
                   <SpringPressable onPress={onClose} style={styles.editorBackButton}>
-                    <ArrowLeft size={20} color={candy.white} />
+                    <ArrowLeft size={22} color={candy.white} strokeWidth={3} />
                   </SpringPressable>
                   <Text style={styles.editorQuota}>{quotaLabel}</Text>
                 </View>
@@ -5556,10 +5870,9 @@ function CustomDesireEditor({
                 >
                   <Text style={styles.editorSubmitText}>Ajouter à notre jeu</Text>
                 </SpringPressable>
-                <Text style={styles.editorFooterText}>{footerCopy}</Text>
               </View>
             </View>
-          </SafeAreaView>
+          </View>
         </KeyboardAvoidingView>
         <StatusBar style="light" />
       </LinearGradient>
@@ -5850,6 +6163,12 @@ function PackSelectorCard({
     () => allDesireCards(couple).filter((card) => card.category === active).length,
     [active, couple],
   );
+  const pack = packPresentation(active, couple, {
+    countOverride: count,
+    customCount: customDesireCount(couple),
+    customUnlimited: hasCustomCardsUnlimited(couple),
+    selected: true,
+  });
 
   return (
     <SpringPressable
@@ -5861,8 +6180,8 @@ function PackSelectorCard({
       </View>
       <View style={styles.packSelectorCopy}>
         <Text style={styles.packSelectorKicker}>Pack actif</Text>
-        <Text numberOfLines={1} style={styles.packSelectorTitle}>{categoryLabel(active)}</Text>
-        <Text numberOfLines={1} style={styles.packSelectorText}>{count} cartes dans ce pack</Text>
+        <Text numberOfLines={1} style={styles.packSelectorTitle}>{pack.title}</Text>
+        <Text numberOfLines={1} style={styles.packSelectorText}>{pack.countLabel} dans ce pack</Text>
       </View>
       <View style={styles.packSelectorAction}>
         <Text style={styles.packSelectorActionText}>Changer</Text>
@@ -5905,39 +6224,41 @@ function CategoryPickerModal({
         <Pressable style={styles.categoryPickerBackdrop} onPress={onClose} />
         <Entrance delay={30} style={styles.categoryPickerSheetWrap}>
           <View style={styles.categoryPickerSheet}>
-            <View style={styles.categoryPickerHeader}>
-              <View style={styles.categoryPickerHeaderCopy}>
-                <Text style={styles.categoryPickerTitle}>Packs</Text>
-                <Text style={styles.categoryPickerText}>Des univers à explorer, à deux.</Text>
+            <View style={styles.categoryPickerHeaderShell}>
+              <View style={styles.categoryPickerHeader}>
+                <View style={styles.categoryPickerHeaderCopy}>
+                  <Text style={styles.categoryPickerTitle}>Packs</Text>
+                  <Text style={styles.categoryPickerText}>Des univers à explorer, à deux.</Text>
+                </View>
+                <SpringPressable onPress={onClose} style={styles.categoryPickerClose}>
+                  <ArrowLeft size={20} color={candy.red} strokeWidth={3} />
+                  <Text numberOfLines={1} style={styles.categoryPickerCloseText}>Retour</Text>
+                </SpringPressable>
               </View>
-              <SpringPressable onPress={onClose} style={styles.categoryPickerClose}>
-                <X size={20} color={candy.red} />
-              </SpringPressable>
+              <LinearGradient
+                colors={[candy.red, "rgba(245,40,110,0.18)", "rgba(245,40,110,0)"]}
+                pointerEvents="none"
+                style={styles.categoryPickerHeaderFade}
+              />
             </View>
             <ScrollView contentContainerStyle={styles.categoryPickerGrid} showsVerticalScrollIndicator={false}>
               {PACK_PICKER_CATEGORIES.map((category) => {
                 const visual = categoryVisual(category);
-                const unlocked = isCategoryUnlocked(couple, category);
                 const selected = category === active;
-                const personal = category === PERSONAL_CATEGORY;
-                const count = personal ? customCount : categoryCounts.get(category) ?? desireCardCount(category);
-                const countLabel = personal
-                  ? customUnlimited
-                    ? "Illimité"
-                    : `${Math.min(customCount, CUSTOM_CARD_FREE_LIMIT)} / ${CUSTOM_CARD_FREE_LIMIT} cartes`
-                  : `${count} cartes`;
-                const badgeLabel = selected
-                  ? "Actif"
-                  : personal
-                    ? "Choisir"
-                    : category === "Vanille"
-                      ? "Inclus"
-                      : unlocked
-                        ? "Ouvert"
-                        : CATEGORY_PRICES[category] ?? "4,99 €";
-                const darkCard = ["Jeux & Défis", "Scénarios", "BDSM", "Tabous"].includes(category);
+                const count = category === PERSONAL_CATEGORY ? customCount : categoryCounts.get(category) ?? desireCardCount(category);
+                const pack = packPresentation(category, couple, {
+                  countOverride: count,
+                  customCount,
+                  customUnlimited,
+                  selected,
+                });
+                const { countLabel, personal, unlocked } = pack;
+                const showPartnerPackStatus = pack.locked;
+                const badgeLabel = pack.statusLabel;
                 const creamCard = category === "Vanille" || personal;
-                const hotCard = category === "Hot";
+                const tileTitleColor = categoryTileTitleText(category);
+                const tileMetaColor = categoryTileMetaText(category);
+                const tileIconColor = categoryTileIconText(category);
                 const action = unlocked ? () => onSelect(category) : () => onLockedCategory(category);
 
                 return (
@@ -5959,23 +6280,31 @@ function CategoryPickerModal({
                       <LinearGradient colors={visual.colors} pointerEvents="none" style={styles.categoryPickerCardFill} />
                     ) : null}
                     <CategoryPickerPattern category={category} />
+                    <Text
+                      numberOfLines={1}
+                      pointerEvents="none"
+                      style={[
+                        styles.categoryPickerPackEmoji,
+                        { color: tileIconColor },
+                      ]}
+                    >
+                      {visual.sticker}
+                    </Text>
                     <View style={styles.categoryPickerCardCopy}>
                       <Text
                         numberOfLines={1}
                         style={[
                           styles.categoryPickerCardTitle,
-                          darkCard && styles.categoryPickerCardTitleLight,
-                          hotCard && styles.categoryPickerCardTitleDark,
+                          { color: tileTitleColor },
                         ]}
                       >
-                        {categoryLabel(category)}
+                        {pack.title}
                       </Text>
                       <Text
                         numberOfLines={1}
                         style={[
                           styles.categoryPickerCardText,
-                          darkCard && styles.categoryPickerCardTextLight,
-                          hotCard && styles.categoryPickerCardTextDark,
+                          { color: tileMetaColor },
                         ]}
                       >
                         {countLabel}
@@ -5983,31 +6312,61 @@ function CategoryPickerModal({
                       <View
                         style={[
                           styles.categoryPickerLock,
+                          personal && !selected && styles.categoryPickerBadgeCreate,
                           selected && styles.categoryPickerBadgeActive,
-                          personal && styles.categoryPickerBadgeCreate,
                         ]}
                       >
                         <Text
                           numberOfLines={1}
                           style={[
                             styles.categoryPickerBadgeText,
+                            personal && !selected && styles.categoryPickerBadgeTextCreate,
                             selected && styles.categoryPickerBadgeTextActive,
-                            hotCard && !selected && !unlocked && styles.categoryPickerBadgeTextHot,
-                            personal && styles.categoryPickerBadgeTextCreate,
                           ]}
                         >
                           {badgeLabel}
                         </Text>
                       </View>
+                      {showPartnerPackStatus ? (
+                        <View style={styles.categoryPickerPartnerTag}>
+                          <Text numberOfLines={1} style={styles.categoryPickerPartnerTagText}>
+                            {pack.partnerStatusLabel}
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
                     {!unlocked && !personal ? (
                       <View style={styles.categoryPickerLockIcon}>
-                        <LockKeyhole size={17} color={hotCard ? candy.black : candy.yellow} />
+                        <LockKeyhole size={22} color={creamCard ? candy.red : candy.white} strokeWidth={2.8} />
                       </View>
                     ) : null}
                   </SpringPressable>
                 );
               })}
+              <View style={[styles.categoryPickerCard, styles.categoryPickerComingSoonCard]} testID="category-picker-card-coming-soon">
+                <LinearGradient
+                  colors={["rgba(255,249,240,0.96)", "rgba(255,185,211,0.94)", "rgba(245,40,110,0.78)"]}
+                  pointerEvents="none"
+                  style={styles.categoryPickerCardFill}
+                />
+                <CategoryPickerPattern category="Sensuel" />
+                <View style={styles.categoryPickerComingSoonIcon}>
+                  <Sparkles size={22} color={candy.white} strokeWidth={3} />
+                </View>
+                <View style={styles.categoryPickerCardCopy}>
+                  <Text numberOfLines={1} style={[styles.categoryPickerCardTitle, styles.categoryPickerComingSoonTitle]}>
+                    Bientôt
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.categoryPickerCardText, styles.categoryPickerComingSoonText]}>
+                    Nouveaux packs
+                  </Text>
+                  <View style={[styles.categoryPickerLock, styles.categoryPickerComingSoonBadge]}>
+                    <Text numberOfLines={1} style={[styles.categoryPickerBadgeText, styles.categoryPickerComingSoonBadgeText]}>
+                      À venir
+                    </Text>
+                  </View>
+                </View>
+              </View>
             </ScrollView>
           </View>
         </Entrance>
@@ -6017,14 +6376,13 @@ function CategoryPickerModal({
 }
 
 function CategoryPickerPattern({ category }: { category: DesireCategory }) {
-  const dotCategories: DesireCategory[] = ["Sensuel", "Hot", "Jeux & Défis", "BDSM"];
-  const stripeCategories: DesireCategory[] = ["Vanille", "Séduction", "Scénarios", "Kinky Soft", "Plaisirs explicites", "Tabous"];
+  const visual = categoryVisual(category);
 
-  if (category === PERSONAL_CATEGORY) {
+  if (visual.pattern === "none") {
     return null;
   }
 
-  if (dotCategories.includes(category)) {
+  if (visual.pattern === "dots") {
     return (
       <View pointerEvents="none" style={styles.categoryPickerPatternLayer}>
         {Array.from({ length: 24 }).map((_, index) => (
@@ -6044,7 +6402,7 @@ function CategoryPickerPattern({ category }: { category: DesireCategory }) {
     );
   }
 
-  if (stripeCategories.includes(category)) {
+  if (visual.pattern === "stripes") {
     return (
       <View pointerEvents="none" style={styles.categoryPickerPatternLayer}>
         {Array.from({ length: 8 }).map((_, index) => (
@@ -6378,19 +6736,19 @@ function GameCardTransition({
   });
   const exitScale = exit.interpolate({
     inputRange: [0, 0.66, 1],
-    outputRange: [1, 0.985, 0.94],
+    outputRange: [1, voteLevel === 2 ? 1.025 : 0.985, voteLevel === 2 ? 1.04 : 0.91],
   });
   const exitRotate = exit.interpolate({
     inputRange: [0, 1],
-    outputRange: ["0deg", voteLevel === 0 ? "-3deg" : voteLevel === 1 ? "3deg" : "1deg"],
+    outputRange: ["0deg", voteLevel === 0 ? "-8deg" : voteLevel === 1 ? "8deg" : "0deg"],
   });
   const exitTranslateX = exit.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, voteLevel === 0 ? -14 : voteLevel === 1 ? 14 : 0],
+    outputRange: [0, voteLevel === 0 ? -154 : voteLevel === 1 ? 154 : 0],
   });
   const exitTranslateY = exit.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 28],
+    outputRange: [0, voteLevel === 2 ? -46 : 34],
   });
 
   return (
@@ -6454,8 +6812,9 @@ function DesireGameCardFace({
 }) {
   return (
     <View style={[styles.desireGameDeck, roomy && styles.desireGameDeckRoomy, deckStyle]}>
-      <View style={[styles.desireGameBackCard, styles.desireGameBackCardLeft]} />
-      <View style={[styles.desireGameBackCard, styles.desireGameBackCardRight]} />
+      <View pointerEvents="none" style={styles.desireGameDeckShadow} />
+      <View pointerEvents="none" style={[styles.desireGameBackCard, styles.desireGameBackCardLeft]} />
+      <View pointerEvents="none" style={[styles.desireGameBackCard, styles.desireGameBackCardRight]} />
       <View
         style={[styles.desireGameCard, roomy && styles.desireGameCardRoomy, cardStyle]}
         testID={testID}
@@ -6467,7 +6826,7 @@ function DesireGameCardFace({
         <View style={[styles.desireGameCopy, roomy && styles.desireGameCopyRoomy, copyStyle]}>
           <Text adjustsFontSizeToFit numberOfLines={5} style={[styles.desireGameTitle, titleStyle]}>{prompt}</Text>
         </View>
-        <Text numberOfLines={2} style={[styles.desireGameText, textStyle]}>{description}</Text>
+        <Text numberOfLines={3} style={[styles.desireGameText, textStyle]}>{description}</Text>
         {overlay}
       </View>
     </View>
@@ -6491,7 +6850,7 @@ function DesireGameCard({
   const roomy = width >= 620;
   const voteGap = roomy ? 12 : 6;
   const desiredSideVoteSize = roomy ? 124 : 106;
-  const desiredFeaturedVoteSize = roomy ? 148 : 130;
+  const desiredFeaturedVoteSize = roomy ? 156 : 140;
   const availableVoteWidth = Math.max(300, width - 36);
   const desiredVoteWidth = desiredSideVoteSize * 2 + desiredFeaturedVoteSize + voteGap * 2;
   const voteScale = Math.min(1, availableVoteWidth / desiredVoteWidth);
@@ -6533,8 +6892,8 @@ function DesireGameCard({
         {
           backgroundColor: validationTone.veilColor,
           opacity: validationProgress.interpolate({
-            inputRange: [0, 0.5, 1],
-            outputRange: [0, 0.78, 0.9],
+            inputRange: [0, 0.32, 1],
+            outputRange: [0, 0.88, 0.74],
           }),
         },
       ]}
@@ -6544,14 +6903,14 @@ function DesireGameCard({
           styles.desireGameValidationPulse,
           {
             opacity: validationProgress.interpolate({
-              inputRange: [0, 0.5, 1],
-              outputRange: [0, 0.42, 0],
+              inputRange: [0, 0.42, 1],
+              outputRange: [0.52, 0.24, 0],
             }),
             transform: [
               {
                 scale: validationProgress.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0.82, 1.55],
+                  outputRange: [0.64, 1.82],
                 }),
               },
             ],
@@ -6564,14 +6923,14 @@ function DesireGameCard({
           { backgroundColor: validationTone.backgroundColor },
           {
             opacity: validationProgress.interpolate({
-              inputRange: [0, 0.34, 1],
+              inputRange: [0, 0.18, 1],
               outputRange: [0, 1, 1],
             }),
             transform: [
               {
                 scale: validationProgress.interpolate({
-                  inputRange: [0, 0.72, 1],
-                  outputRange: [0.82, 1.06, 1],
+                  inputRange: [0, 0.55, 1],
+                  outputRange: [0.72, 1.12, 1],
                 }),
               },
             ],
@@ -6680,13 +7039,13 @@ function VoteButton({
     <SpringPressable
       disabled={disabled}
       onPress={onPress}
-      style={[
-        prominent ? styles.voteButtonProminent : styles.voteButton,
-        prominentSizeStyle,
-        !prominent && flame && styles.voteButtonFire,
-        !prominent && flame && accent ? { backgroundColor: accent } : null,
-        featured && styles.voteButtonFeatured,
-        flame && prominent && styles.voteButtonFireProminent,
+        style={[
+          prominent ? styles.voteButtonProminent : styles.voteButton,
+          !prominent && flame && styles.voteButtonFire,
+          !prominent && flame && accent ? { backgroundColor: accent } : null,
+          featured && styles.voteButtonFeatured,
+          prominentSizeStyle,
+          flame && prominent && styles.voteButtonFireProminent,
         selected && !flame && styles.voteButtonSelected,
         selected && flame && styles.voteButtonFireSelected,
         prominent && selected && !flame && styles.voteButtonProminentSelected,
@@ -6723,6 +7082,7 @@ function VoteButton({
 function MatchScreen({
   couple,
   revealedMatchIds,
+  tabDockHeight,
   onOpenGameMode,
   onOpenChat,
   onBeforeRevealMatch,
@@ -6730,10 +7090,11 @@ function MatchScreen({
 }: {
   couple: CoupleState;
   revealedMatchIds: string[];
+  tabDockHeight: number;
   onOpenGameMode: () => void;
   onOpenChat: (cardId?: string) => void;
   onBeforeRevealMatch: () => Promise<boolean>;
-  onRevealMatch: (cardId?: string) => Promise<void>;
+  onRevealMatch: (cardId?: string) => Promise<DesireCard | null>;
 }) {
   const revealedMatchSet = useMemo(() => new Set(revealedMatchIds), [revealedMatchIds]);
   const remoteCouple = isRemoteCoupleId(couple.id);
@@ -6756,7 +7117,7 @@ function MatchScreen({
   const revealAnim = useRef(new Animated.Value(0)).current;
   const safeAreaInsets = useSafeAreaInsets();
   const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
-  const matchLayout = homeLayoutMetrics(viewportHeight, viewportWidth, safeAreaInsets);
+  const matchLayout = homeLayoutMetrics(viewportHeight, viewportWidth, safeAreaInsets, tabDockHeight);
   const hasHiddenReveal = hiddenMatchCount > 0;
   const hasAnyMatch = matches.length > 0 || hasHiddenReveal;
   const revealToken = newestHiddenMatch?.id ?? "__next-hidden-match__";
@@ -6808,13 +7169,25 @@ function MatchScreen({
         return;
       }
 
-      onRevealMatch(newestHiddenMatch?.id);
-      setRevealingMatchId(null);
-      if (newestHiddenMatch) {
-        setSpotlightMatch(newestHiddenMatch);
-        revealAnim.setValue(1);
-      }
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void (async () => {
+        let nextSpotlightMatch: DesireCard | null = null;
+        try {
+          const revealedMatch = await onRevealMatch(newestHiddenMatch?.id);
+          nextSpotlightMatch = newestHiddenMatch ?? revealedMatch;
+        } catch {
+          nextSpotlightMatch = null;
+        } finally {
+          setRevealingMatchId(null);
+        }
+
+        if (nextSpotlightMatch) {
+          setSpotlightMatch(nextSpotlightMatch);
+          revealAnim.setValue(1);
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else {
+          revealAnim.setValue(0);
+        }
+      })();
     });
   }
 
@@ -7043,7 +7416,6 @@ function HiddenMatchRevealPanel({
   const cardScale = breathing.interpolate({ inputRange: [0, 1], outputRange: [1, 1.025] });
   const cardLift = breathing.interpolate({ inputRange: [0, 1], outputRange: [0, -5] });
   const shineX = revealAnim.interpolate({ inputRange: [0, 1], outputRange: [-260, 320] });
-  const otherHiddenCount = Math.max(0, hiddenMatchCount - 1);
 
   return (
     <View style={styles.hiddenRevealPanel}>
@@ -7089,19 +7461,6 @@ function HiddenMatchRevealPanel({
       >
         <Text style={styles.hiddenRevealButtonText}>{isOpening ? "Révélation..." : "Révéler le match"}</Text>
       </SpringPressable>
-
-      <Text style={styles.hiddenRevealAdText}>
-        Une courte pub avant la révélation · <Text style={styles.hiddenRevealAdLink}>Zéro pub</Text>
-      </Text>
-
-      {otherHiddenCount ? (
-        <View style={styles.hiddenRevealPendingLine}>
-          <View style={styles.hiddenRevealPendingDot} />
-          <Text style={styles.hiddenRevealPendingText}>
-            {otherHiddenCount} autre{otherHiddenCount > 1 ? "s" : ""} envie{otherHiddenCount > 1 ? "s" : ""} en attente d'alignement
-          </Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -7404,7 +7763,7 @@ function MatchDetailModal({
           <View style={[styles.matchRevealedSparkDash, styles.matchRevealedSparkDashOne]} />
           <View style={[styles.matchRevealedSparkDash, styles.matchRevealedSparkDashTwo]} />
         </View>
-        <SafeAreaView style={styles.matchDetailSafe}>
+        <View style={styles.matchDetailSafe}>
           <ScrollView
             contentContainerStyle={[
               styles.matchDetailContent,
@@ -7453,7 +7812,7 @@ function MatchDetailModal({
               </SpringPressable>
             </View>
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </LinearGradient>
     </Modal>
   );
@@ -7550,7 +7909,7 @@ function ChatUnavailableScreen({
       ]}
     >
       <SpringPressable onPress={onBack} style={styles.chatUnavailableBack}>
-        <ArrowLeft size={18} color={candy.cream} />
+        <ArrowLeft size={21} color={candy.cream} strokeWidth={3} />
       </SpringPressable>
 
       <View style={styles.chatUnavailableCenter}>
@@ -7591,28 +7950,37 @@ function MatchListItem({ card, index, onOpen }: { card: DesireCard; index: numbe
 }
 
 function ChatScreen({
+  bottomInteractiveInset,
   bottomNavInset,
   contextCardId,
   couple,
+  tabDockHeight,
   onConsumePhoto,
   onBack,
   onQueuePhotoConsumption,
   onSendMessage,
 }: {
+  bottomInteractiveInset: number;
   bottomNavInset: number;
   contextCardId?: string;
   couple: CoupleState;
+  tabDockHeight: number;
   onConsumePhoto: (payload: { attachmentId: string; messageId: string }) => void | Promise<void>;
   onBack: () => void;
   onQueuePhotoConsumption: (payload: { attachmentId: string; delayMs?: number; messageId: string }) => void | Promise<void>;
   onSendMessage: (message: { attachments: ChatAttachment[]; body: string }) => void;
 }) {
-  const safeAreaInsets = useSafeAreaInsets();
+  const appLayout = useAppLayout({
+    bottomInteractiveGap: CHAT_COMPOSER_NAV_GAP,
+    tabDockHeight,
+  });
   const [draft, setDraft] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [activePhoto, setActivePhoto] = useState<{ attachment: ChatAttachment; messageId: string } | null>(null);
+  const [openedPhotoIds, setOpenedPhotoIds] = useState<Set<string>>(() => new Set());
   const [photoOptimizing, setPhotoOptimizing] = useState(false);
   const activePhotoRef = useRef(activePhoto);
+  const openedPhotoIdsRef = useRef(openedPhotoIds);
   const activeId = couple.activePartnerId;
   const partnerId = otherPartnerId(activeId);
   const partnerName = couple.profiles[partnerId].displayName;
@@ -7635,8 +8003,8 @@ function ChatScreen({
   const hasMessages = messages.length > 0;
   const hasMessageContent = draft.trim().length > 0 || pendingAttachments.length > 0;
   const canSendMessage = hasMessageContent && !photoOptimizing;
-  const composerBottomPadding = Math.max(bottomNavInset, safeAreaInsets.bottom + TAB_DOCK_VISIBLE_HEIGHT + CHAT_COMPOSER_NAV_GAP);
-  const scrollBottomPadding = Math.max(22, safeAreaInsets.bottom + 14);
+  const composerBottomPadding = Math.max(bottomInteractiveInset, bottomNavInset, appLayout.bottomInteractiveInset);
+  const scrollBottomPadding = Math.max(22, appLayout.safeBottom + 14);
   const quickPrompts = useMemo(() => chatSuggestionPrompts({
     contextCard,
     hasMessages,
@@ -7646,6 +8014,10 @@ function ChatScreen({
   useEffect(() => {
     activePhotoRef.current = activePhoto;
   }, [activePhoto]);
+
+  useEffect(() => {
+    openedPhotoIdsRef.current = openedPhotoIds;
+  }, [openedPhotoIds]);
 
   const consumeActivePhoto = useCallback(() => {
     const photo = activePhotoRef.current;
@@ -7661,34 +8033,28 @@ function ChatScreen({
 
   const openPhoto = useCallback(
     (attachment: ChatAttachment, messageId: string) => {
+      if (attachment.disappeared || openedPhotoIdsRef.current.has(attachment.id)) {
+        return;
+      }
+
+      openedPhotoIdsRef.current = new Set([...openedPhotoIdsRef.current, attachment.id]);
+      setOpenedPhotoIds((current) => {
+        if (current.has(attachment.id)) {
+          return current;
+        }
+
+        return new Set([...current, attachment.id]);
+      });
       setActivePhoto({ attachment, messageId });
       void onQueuePhotoConsumption({ attachmentId: attachment.id, delayMs: EPHEMERAL_PHOTO_VIEW_MS, messageId });
     },
     [onQueuePhotoConsumption],
   );
 
-  async function pickPhoto() {
+  async function addPhotoAssets(assets: ImagePicker.ImagePickerAsset[]) {
     const remainingSlots = Math.max(0, 4 - pendingAttachments.length);
 
     if (photoOptimizing || remainingSlots <= 0) {
-      return;
-    }
-
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      Alert.alert("Accès photos", "Autorise l'accès à tes photos pour envoyer une image dans le chat.");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      allowsMultipleSelection: true,
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-      selectionLimit: remainingSlots,
-    });
-
-    if (result.canceled) {
       return;
     }
 
@@ -7696,7 +8062,7 @@ function ChatScreen({
 
     try {
       const pickedAt = Date.now();
-      const nextAttachments = await Promise.all(result.assets.slice(0, remainingSlots).map(async (asset, index) => {
+      const nextAttachments = await Promise.all(assets.slice(0, remainingSlots).map(async (asset, index) => {
         const attachment: ChatAttachment = {
           height: asset.height,
           id: `photo-${pickedAt}-${index}`,
@@ -7723,6 +8089,72 @@ function ChatScreen({
     }
   }
 
+  async function pickPhotoFromLibrary() {
+    const remainingSlots = Math.max(0, 4 - pendingAttachments.length);
+
+    if (photoOptimizing || remainingSlots <= 0) {
+      return;
+    }
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert("Accès photos", "Autorise l'accès à tes photos pour envoyer une image dans le chat.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsMultipleSelection: true,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      selectionLimit: remainingSlots,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    await addPhotoAssets(result.assets);
+  }
+
+  async function takePhotoWithCamera() {
+    const remainingSlots = Math.max(0, 4 - pendingAttachments.length);
+
+    if (photoOptimizing || remainingSlots <= 0) {
+      return;
+    }
+
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert("Accès caméra", "Autorise l'accès à la caméra pour prendre une photo dans le chat.");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    await addPhotoAssets(result.assets);
+  }
+
+  function openPhotoSourcePicker() {
+    if (photoOptimizing || pendingAttachments.length >= 4) {
+      return;
+    }
+
+    Alert.alert("Ajouter une photo", undefined, [
+      { text: "Prendre une photo", onPress: () => void takePhotoWithCamera() },
+      { text: "Choisir depuis la galerie", onPress: () => void pickPhotoFromLibrary() },
+      { style: "cancel", text: "Annuler" },
+    ]);
+  }
+
   async function send() {
     if (!canSendMessage) {
       return;
@@ -7742,7 +8174,7 @@ function ChatScreen({
             styles.chatScreen,
             {
               paddingBottom: scrollBottomPadding,
-              paddingTop: Math.max(14, safeAreaInsets.top + 8),
+              paddingTop: Math.max(14, appLayout.safeTop + 8),
             },
           ]}
           keyboardShouldPersistTaps="handled"
@@ -7752,7 +8184,7 @@ function ChatScreen({
           <View style={styles.chatHero}>
             <View style={styles.chatHeaderIdentity}>
               <SpringPressable onPress={onBack} style={styles.chatBackButton}>
-                <ArrowLeft size={18} color={candy.cream} strokeWidth={3} />
+                <ArrowLeft size={21} color={candy.cream} strokeWidth={3} />
               </SpringPressable>
               <View style={styles.chatHeaderAvatarStack}>
                 <View style={[styles.chatHeaderMiniAvatar, styles.chatHeaderMiniAvatarMine]}>
@@ -7791,6 +8223,7 @@ function ChatScreen({
               messages.map((message, index) => (
                 <Entrance delay={Math.min(index * 55, 260)} key={message.id}>
                   <ChatBubble
+                    openedPhotoIds={openedPhotoIds}
                     message={message}
                     mine={message.authorId === activeId}
                     name={couple.profiles[message.authorId].displayName}
@@ -7851,7 +8284,7 @@ function ChatScreen({
           <View style={[styles.chatComposer, hasMessageContent && styles.chatComposerActive]}>
             <SpringPressable
               disabled={photoOptimizing || pendingAttachments.length >= 4}
-              onPress={pickPhoto}
+              onPress={openPhotoSourcePicker}
               style={[styles.chatIconButton, (photoOptimizing || pendingAttachments.length >= 4) && styles.chatIconButtonDisabled]}
               testID="chat-photo-button"
             >
@@ -7861,15 +8294,17 @@ function ChatScreen({
                 <Camera size={20} color={candy.cream} />
               )}
             </SpringPressable>
-            <TextInput
-              multiline
-              onChangeText={setDraft}
-              placeholder="Message éphémère..."
-              placeholderTextColor="rgba(124,75,105,0.58)"
-              style={[styles.chatInput, Platform.OS === "web" ? ({ outlineStyle: "none" } as never) : null]}
-              testID="chat-input"
-              value={draft}
-            />
+            <View style={styles.chatInputShell}>
+              <TextInput
+                multiline
+                onChangeText={setDraft}
+                placeholder="Message éphémère..."
+                placeholderTextColor="rgba(124,75,105,0.58)"
+                style={[styles.chatInput, Platform.OS === "web" ? ({ outlineStyle: "none" } as never) : null]}
+                testID="chat-input"
+                value={draft}
+              />
+            </View>
             <SpringPressable
               disabled={!canSendMessage}
               onPress={send}
@@ -7953,11 +8388,13 @@ const ChatBubble = React.memo(function ChatBubble({
   mine,
   name,
   onOpenPhoto,
+  openedPhotoIds,
 }: {
   message: ChatMessage;
   mine: boolean;
   name: string;
   onOpenPhoto?: (attachment: ChatAttachment) => void;
+  openedPhotoIds?: ReadonlySet<string>;
 }) {
   const sentAt = new Date(message.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
   const deliveryLabel = message.deliveryStatus === "sending"
@@ -7978,7 +8415,9 @@ const ChatBubble = React.memo(function ChatBubble({
         {message.attachments.length ? (
           <View style={styles.chatBubblePhotos}>
             {message.attachments.map((attachment) => {
-              if (attachment.disappeared) {
+              const opened = openedPhotoIds?.has(attachment.id) ?? false;
+
+              if (attachment.disappeared || opened) {
                 return (
                   <View key={attachment.id} style={[styles.chatBubblePhoto, styles.chatPhotoGone]}>
                     <LockKeyhole size={20} color={mine ? candy.white : candy.red} />
@@ -8128,7 +8567,7 @@ function RulesScreen({ onBack }: { onBack: () => void }) {
   return (
     <ScrollView contentContainerStyle={styles.rulesScreen} showsVerticalScrollIndicator={false}>
       <SpringPressable onPress={onBack} style={styles.rulesBackButton}>
-        <ChevronRight size={18} color={candy.red} style={styles.rulesBackIcon} />
+        <ChevronRight size={20} color={candy.red} style={styles.rulesBackIcon} strokeWidth={3} />
         <Text style={styles.rulesBackText}>Retour</Text>
       </SpringPressable>
 
@@ -8170,24 +8609,37 @@ function homeLayoutMetrics(
   viewportHeight: number,
   viewportWidth: number,
   safeAreaInsets: { bottom: number; top: number },
+  tabDockHeight = DEFAULT_TAB_DOCK_HEIGHT,
 ) {
   const frameHeight = Math.max(0, viewportHeight - safeAreaInsets.top - safeAreaInsets.bottom);
   const widthScale = Math.min(1.12, Math.max(0.88, viewportWidth / 390));
   const verticalScale = Math.min(1.18, Math.max(0.84, frameHeight / 812));
   const scale = Math.min(1.18, Math.max(0.86, widthScale * 0.64 + verticalScale * 0.36));
-  const targetRhythm = 42;
+  const compactHome = frameHeight < 850 || viewportWidth < 700;
+  const homeHorizontalPadding = 14 * widthScale;
+  const contentWidth = Math.max(0, viewportWidth - homeHorizontalPadding * 2);
+  const targetRhythm = compactHome ? 24 : 42;
+  const minimumRhythm = compactHome ? 6 : 8;
   const headerHeight = 57 * scale;
-  const navVisibleHeight = TAB_DOCK_VISIBLE_HEIGHT;
+  const navVisibleHeight = tabDockHeight;
   const titleLineHeight = 59 * scale;
   const moodButtonHeight = 47 * scale;
-  const adviceHeight = Math.min(94, Math.max(78, 92 * verticalScale));
-  const baseStorePackHeight = Math.min(60, Math.max(52, 60 * verticalScale));
-  const storePackHeight = baseStorePackHeight * 1.3;
-  const storeHeaderHeight = 27 * scale;
-  const storeInternalGap = 7 * verticalScale;
+  const adviceHeight = compactHome
+    ? Math.min(88, Math.max(70, contentWidth / 4.15))
+    : Math.min(94, Math.max(78, 92 * verticalScale));
+  const storePackAspectHeight = ((contentWidth - 9 * scale) / 2) / (compactHome ? 2.62 : 2.18);
+  const baseStorePackHeight = compactHome
+    ? Math.min(58, Math.max(44, storePackAspectHeight))
+    : Math.min(60, Math.max(52, 60 * verticalScale));
+  const storePackHeight = baseStorePackHeight * (compactHome ? 1.05 : 1.3);
+  const storeHeaderHeight = (compactHome ? 24 : 27) * scale;
+  const storeInternalGap = (compactHome ? 5 : 7) * verticalScale;
   const storeHeight = storeHeaderHeight + storeInternalGap + storePackHeight;
   const baseStoreHeight = storeHeaderHeight + storeInternalGap + baseStorePackHeight;
-  const baseMinimumCardHeight = 112 * verticalScale;
+  const surpriseAspectRatio = compactHome ? 2.24 : 1.72;
+  const baseMinimumCardHeight = compactHome
+    ? Math.max(132 * verticalScale, contentWidth / surpriseAspectRatio)
+    : Math.max(170 * verticalScale, contentWidth / surpriseAspectRatio);
   const baseMaxRhythm = (
     frameHeight
     - headerHeight
@@ -8198,13 +8650,15 @@ function homeLayoutMetrics(
     - adviceHeight
     - baseStoreHeight
   ) / 7;
-  const baseRhythm = Math.min(targetRhythm, Math.max(8, baseMaxRhythm));
+  const baseRhythm = Math.min(targetRhythm, Math.max(minimumRhythm, baseMaxRhythm));
   const baseTopPadding = baseRhythm + headerHeight + baseRhythm;
   const baseBottomPadding = navVisibleHeight + baseRhythm * 2;
   const baseAvailableHeight = Math.max(0, frameHeight - baseTopPadding - baseBottomPadding - baseRhythm * 3);
   const baseHeroHeight = titleLineHeight * 2 + baseRhythm + moodButtonHeight;
   const baseSurpriseHeight = Math.max(0, baseAvailableHeight - baseHeroHeight - adviceHeight - baseStoreHeight);
-  const targetSurpriseHeight = baseSurpriseHeight * 0.7;
+  const targetSurpriseHeight = compactHome
+    ? Math.min(baseMinimumCardHeight, Math.max(baseSurpriseHeight, 132 * verticalScale))
+    : baseSurpriseHeight * 0.7;
   const maxRhythm = (
     frameHeight
     - headerHeight
@@ -8215,7 +8669,7 @@ function homeLayoutMetrics(
     - adviceHeight
     - storeHeight
   ) / 7;
-  const rhythm = Math.min(targetRhythm, Math.max(8, maxRhythm));
+  const rhythm = Math.min(targetRhythm, Math.max(minimumRhythm, maxRhythm));
   const topPadding = rhythm + headerHeight + rhythm;
   const bottomPadding = navVisibleHeight + rhythm * 2;
   const availableHeight = Math.max(0, frameHeight - topPadding - bottomPadding - rhythm * 3);
@@ -8225,6 +8679,7 @@ function homeLayoutMetrics(
   return {
     adviceHeight,
     bottomPadding,
+    compactHome,
     frameHeight,
     heroHeight,
     rhythm,
@@ -8239,6 +8694,7 @@ function homeLayoutMetrics(
 
 function HomeScreen({
   couple,
+  tabDockHeight,
   onGoEnvies,
   onMoodChange,
   onMoodNotificationPreference,
@@ -8251,6 +8707,7 @@ function HomeScreen({
   onUnlockUnlimitedResponses,
 }: {
   couple: CoupleState;
+  tabDockHeight: number;
   onGoEnvies: () => void;
   onMoodChange: (level: CoupleMoodLevel) => void;
   onMoodNotificationPreference: (enabled: boolean) => void;
@@ -8270,12 +8727,15 @@ function HomeScreen({
   const [moodSheetOpen, setMoodSheetOpen] = useState(false);
   const homeScrollY = useRef(new Animated.Value(0)).current;
   const [homeHeaderDetached, setHomeHeaderDetached] = useState(false);
-  const safeAreaInsets = useSafeAreaInsets();
-  const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
-  const homeFontScale = PixelRatio.getFontScale();
+  const appLayout = useAppLayout();
+  const safeAreaInsets = { bottom: appLayout.safeBottom, top: appLayout.safeTop };
+  const viewportHeight = appLayout.viewportHeight;
+  const viewportWidth = appLayout.viewportWidth;
+  const homeFontScale = appLayout.fontScale;
   const {
     adviceHeight: homeAdviceHeight,
     bottomPadding: homeBottomPadding,
+    compactHome,
     frameHeight: homeFrameHeight,
     heroHeight: homeHeroHeight,
     rhythm: homeRhythm,
@@ -8285,7 +8745,7 @@ function HomeScreen({
     topPadding: homeTopPadding,
     verticalScale: homeVerticalScale,
     widthScale: homeWidthScale,
-  } = homeLayoutMetrics(viewportHeight, viewportWidth, safeAreaInsets);
+  } = homeLayoutMetrics(viewportHeight, viewportWidth, safeAreaInsets, tabDockHeight);
   const homeScrollFallback = (
     homeFontScale > 1.08
     || viewportWidth < 360
@@ -8293,6 +8753,8 @@ function HomeScreen({
     || homeRhythm <= 10
     || homeSurpriseHeight < 132
   );
+  const homeSectionGap = homeScrollFallback ? Math.max(homeRhythm, 14) : homeRhythm;
+  const homeBottomScrollPadding = homeBottomPadding + (homeScrollFallback ? homeSectionGap : 0);
   const activeProfile = couple.profiles[couple.activePartnerId];
   const homeHeaderOpacity = useMemo(
     () => homeScrollY.interpolate({
@@ -8304,15 +8766,13 @@ function HomeScreen({
   );
   const homeContentStyle = useMemo<ViewStyle>(() => ({
     flexGrow: 1,
-    gap: homeRhythm,
+    gap: homeSectionGap,
     justifyContent: "flex-start",
     minHeight: homeFrameHeight,
-    overflow: homeScrollFallback ? "visible" : "hidden",
-    paddingBottom: homeScrollFallback ? homeBottomPadding + homeRhythm : homeBottomPadding,
+    paddingBottom: homeBottomScrollPadding,
     paddingHorizontal: 14 * homeWidthScale,
     paddingTop: homeTopPadding,
-    ...(homeScrollFallback ? {} : { height: homeFrameHeight }),
-  }), [homeBottomPadding, homeFrameHeight, homeRhythm, homeScrollFallback, homeTopPadding, homeWidthScale]);
+  }), [homeBottomScrollPadding, homeFrameHeight, homeSectionGap, homeTopPadding, homeWidthScale]);
   const handleHomeScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const scrollY = Math.max(0, event.nativeEvent.contentOffset.y);
 
@@ -8332,14 +8792,14 @@ function HomeScreen({
           onScroll={handleHomeScroll}
           scrollEventThrottle={16}
           scrollEnabled={homeScrollFallback}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={homeScrollFallback}
         >
           <Entrance delay={40}>
             <HomeMoodHero
               couple={couple}
               onChange={onMoodChange}
               onOpenMoodPanel={() => setMoodSheetOpen(true)}
-              height={homeHeroHeight}
+              targetHeight={homeHeroHeight}
               rhythm={homeRhythm}
               scale={homeScale}
             />
@@ -8347,20 +8807,22 @@ function HomeScreen({
           <Entrance delay={100}>
             <HomeSurpriseDeck
               couple={couple}
+              compact={compactHome}
               onGoEnvies={onGoEnvies}
-              height={homeSurpriseHeight}
+              targetHeight={homeSurpriseHeight}
               onOpenCard={onOpenEnvieCard}
               scale={homeScale}
               verticalScale={homeVerticalScale}
             />
           </Entrance>
           <Entrance delay={160}>
-            <HomeDailyAdvice couple={couple} height={homeAdviceHeight} scale={homeScale} verticalScale={homeVerticalScale} />
+            <HomeDailyAdvice couple={couple} targetHeight={homeAdviceHeight} scale={homeScale} verticalScale={homeVerticalScale} />
           </Entrance>
           <Entrance delay={220}>
             <HomeStoreModule
               couple={couple}
-              height={homeStoreHeight}
+              compact={compactHome}
+              targetHeight={homeStoreHeight}
               onGoEnvies={onGoEnvies}
               onOpenStore={() => setStoreOpen(true)}
               scale={homeScale}
@@ -8415,6 +8877,7 @@ function HomeScreen({
       />
       <CategoryPurchaseModal
         category={purchaseCategory}
+        couple={couple}
         onClose={() => setPurchaseCategory(null)}
         onUnlock={(category) => {
           onUnlockCategory(category);
@@ -8455,25 +8918,27 @@ function HomeScreen({
 
 function HomeMoodHero({
   couple,
-  height,
   onChange,
   onOpenMoodPanel,
   rhythm,
   scale,
+  targetHeight,
 }: {
   couple: CoupleState;
-  height: number;
   onChange: (level: CoupleMoodLevel) => void;
   onOpenMoodPanel: () => void;
   rhythm: number;
   scale: number;
+  targetHeight: number;
 }) {
   const activeId = couple.activePartnerId;
   const activeLevel = moodLevel(couple, activeId);
   const heroScale = scale;
+  const heroMinHeight = Math.max(142 * heroScale, targetHeight * 0.9);
+  const heroMaxHeight = Math.max(heroMinHeight, targetHeight * 1.28);
 
   return (
-    <View style={[styles.homeHero, { gap: rhythm, height, minHeight: height, paddingBottom: 0 }]}>
+    <View style={[styles.homeHero, { aspectRatio: 1.92, gap: rhythm, maxHeight: heroMaxHeight, minHeight: heroMinHeight, paddingBottom: 0, width: "100%" }]}>
       <Text
         adjustsFontSizeToFit
         minimumFontScale={0.78}
@@ -8739,7 +9204,7 @@ function HomeMoodSettingsSheet({
           </View>
 
           <SpringPressable onPress={handleSendSignal} style={styles.homeMoodSendButton}>
-            <Text style={styles.homeMoodSendText}>Envoyer le signal</Text>
+            <Text style={styles.homeMoodSendText}>Valider</Text>
           </SpringPressable>
           <Text style={styles.homeMoodSheetFootnote}>Si vos moods s'alignent, vous serez prévenus tous les deux.</Text>
         </Animated.View>
@@ -8794,22 +9259,26 @@ function HomeStatusTeaser({
   );
 }
 
-function HomeDailyAdvice({ couple, height, scale, verticalScale }: { couple: CoupleState; height: number; scale: number; verticalScale: number }) {
+function HomeDailyAdvice({ couple, targetHeight, scale, verticalScale }: { couple: CoupleState; targetHeight: number; scale: number; verticalScale: number }) {
   const advice = dailyAdviceForCouple(couple);
-  const adviceScale = Math.min(scale * 1.08, Math.max(0.82, height / 92));
+  const adviceScale = Math.min(scale * 1.08, Math.max(0.82, targetHeight / 92));
+  const adviceMinHeight = Math.max(78 * verticalScale, targetHeight * 0.88);
+  const adviceMaxHeight = Math.max(adviceMinHeight, targetHeight * 1.28);
 
   return (
     <View
       style={[
         styles.dailyAdviceCard,
         {
+          aspectRatio: 4.15,
           borderRadius: 22 * adviceScale,
           gap: 14 * adviceScale,
-          height,
           justifyContent: "center",
-          minHeight: height,
+          maxHeight: adviceMaxHeight,
+          minHeight: adviceMinHeight,
           paddingHorizontal: 16 * adviceScale,
           paddingVertical: 12 * verticalScale,
+          width: "100%",
         },
       ]}
     >
@@ -8976,31 +9445,37 @@ function HomeNextStepPanel({
 }
 
 function HomeStoreModule({
+  compact,
   couple,
-  height,
   onGoEnvies,
   onOpenStore,
   scale,
+  targetHeight,
   verticalScale,
 }: {
+  compact: boolean;
   couple: CoupleState;
-  height: number;
   onGoEnvies: () => void;
   onOpenStore: () => void;
   scale: number;
+  targetHeight: number;
   verticalScale: number;
 }) {
   const featuredCategory = dailyStoreCategory(couple);
-  const featuredUnlocked = isCategoryUnlocked(couple, featuredCategory);
-  const featuredCount = desireCardCount(featuredCategory);
-  const featuredPrice = CATEGORY_PRICES[featuredCategory] ?? "4,99 €";
-  const storeScale = Math.min(scale * 1.04, Math.max(0.8, height / 112));
-  const storeGap = 7 * verticalScale;
-  const storeHeaderLineHeight = 27 * storeScale;
-  const packHeight = Math.max(48 * storeScale, height - storeHeaderLineHeight - storeGap);
+  const featuredPack = packPresentation(featuredCategory, couple);
+  const storeScale = Math.min(scale * 1.04, Math.max(compact ? 0.76 : 0.8, targetHeight / 112));
+  const storeGap = (compact ? 5 : 7) * verticalScale;
+  const storeHeaderLineHeight = (compact ? 24 : 27) * storeScale;
+  const packTargetHeight = Math.max((compact ? 40 : 48) * storeScale, targetHeight - storeHeaderLineHeight - storeGap);
+  const packMinHeight = Math.max((compact ? 42 : 52) * storeScale, packTargetHeight * (compact ? 0.86 : 0.92));
+  const packMaxHeight = Math.max(packMinHeight, packTargetHeight * (compact ? 1.08 : 1.22));
+  const storeMinHeight = Math.max(targetHeight * 0.92, storeHeaderLineHeight + storeGap + packMinHeight);
+  const storeMaxHeight = Math.max(storeMinHeight, targetHeight * (compact ? 1.08 : 1.24));
+  const packAspectRatio = compact ? 2.62 : 2.18;
+  const packPadding = (compact ? 10 : 13) * storeScale;
 
   return (
-    <View style={[styles.homeStore, { gap: storeGap, height, minHeight: height, overflow: "hidden" }]}>
+    <View style={[styles.homeStore, { gap: storeGap, maxHeight: storeMaxHeight, minHeight: storeMinHeight }]}>
       <View style={styles.homeStoreTop}>
         <Text adjustsFontSizeToFit minimumFontScale={0.78} numberOfLines={1} style={[styles.homeStoreTitle, { fontSize: 25 * storeScale, lineHeight: storeHeaderLineHeight }]}>Monter d'un cran</Text>
         <SpringPressable onPress={onOpenStore} style={styles.homeStoreLink}>
@@ -9011,17 +9486,17 @@ function HomeStoreModule({
 
       <View style={[styles.homeStorePackRow, { gap: 9 * storeScale }]}>
         <SpringPressable
-          onPress={featuredUnlocked ? onGoEnvies : onOpenStore}
-          style={[styles.homeStorePack, styles.homeStorePackFeatured, { borderRadius: 18 * storeScale, height: packHeight, minHeight: packHeight, padding: 13 * storeScale }]}
+          onPress={featuredPack.unlocked ? onGoEnvies : onOpenStore}
+          style={[styles.homeStorePack, styles.homeStorePackFeatured, { aspectRatio: packAspectRatio, borderRadius: 18 * storeScale, maxHeight: packMaxHeight, minHeight: packMinHeight, padding: packPadding }]}
         >
           <Text numberOfLines={1} style={[styles.homeStorePackTitle, { fontSize: 19 * storeScale, lineHeight: 21 * storeScale }]}>
-            Pack {categoryLabel(featuredCategory)}
+            {featuredPack.title}
           </Text>
           <Text numberOfLines={1} style={[styles.homeStorePackMeta, { fontSize: 12.8 * storeScale, lineHeight: 16 * storeScale, marginTop: 2 * storeScale }]}>
-            {featuredUnlocked ? "Déjà ouvert" : `${featuredCount} cartes · ${featuredPrice}`}
+            {featuredPack.countLabel} · {featuredPack.statusLabel}
           </Text>
         </SpringPressable>
-        <View style={[styles.homeStorePack, styles.homeStorePackSoon, { borderRadius: 18 * storeScale, height: packHeight, minHeight: packHeight, padding: 13 * storeScale }]}>
+        <View style={[styles.homeStorePack, styles.homeStorePackSoon, { aspectRatio: packAspectRatio, borderRadius: 18 * storeScale, maxHeight: packMaxHeight, minHeight: packMinHeight, padding: packPadding }]}>
           <Text numberOfLines={1} style={[styles.homeStorePackTitle, styles.homeStorePackTitleSoon, { fontSize: 19 * storeScale, lineHeight: 21 * storeScale }]}>
             Scénarios
           </Text>
@@ -9077,7 +9552,7 @@ function StoreScreen({
   return (
     <Modal animationType="slide" visible onRequestClose={onClose}>
       <LinearGradient colors={[candy.red, candy.red]} style={styles.storeScreen}>
-        <SafeAreaView style={styles.storeSafe}>
+        <View style={styles.storeSafe}>
           <ScrollView
             contentContainerStyle={[
               styles.storeContent,
@@ -9091,7 +9566,7 @@ function StoreScreen({
           >
             <View style={styles.storeHeader}>
               <SpringPressable onPress={onClose} style={styles.storeCloseButton}>
-                <ArrowLeft size={19} color={candy.white} />
+                <ArrowLeft size={21} color={candy.white} strokeWidth={3} />
               </SpringPressable>
               <View style={styles.storeHeaderCopy}>
                 <Text style={styles.storeTitle}>Boutique</Text>
@@ -9153,7 +9628,7 @@ function StoreScreen({
               <Text style={styles.storeLegalText}>Achats uniques, partagés par le couple. Aucun abonnement.</Text>
             </View>
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </LinearGradient>
     </Modal>
   );
@@ -9208,9 +9683,8 @@ function StoreFeaturedPackCard({
   width: number;
 }) {
   const visual = categoryVisual(category);
-  const unlocked = isCategoryUnlocked(couple, category);
-  const hotCard = category === "Hot";
-  const lightText = ["Scénarios", "Kinky Soft", "Jeux & Défis", "BDSM", "Tabous"].includes(category);
+  const pack = packPresentation(category, couple);
+  const unlocked = pack.unlocked;
 
   return (
     <SpringPressable
@@ -9219,13 +9693,36 @@ function StoreFeaturedPackCard({
     >
       <LinearGradient colors={visual.colors} pointerEvents="none" style={styles.storePackCardFill} />
       <CategoryPickerPattern category={category} />
+      {!unlocked ? (
+        <View style={styles.storePackLockIcon}>
+          <LockKeyhole size={18} color={visual.tileIconText} strokeWidth={2.8} />
+        </View>
+      ) : null}
+      <Text
+        numberOfLines={1}
+        pointerEvents="none"
+        style={[
+          styles.storePackEmoji,
+          {
+            color: visual.tileIconText,
+            top: Math.max(30, height * 0.3),
+          },
+        ]}
+      >
+        {visual.sticker}
+      </Text>
       <View style={styles.storePackCardCopy}>
-        <Text numberOfLines={1} style={[styles.storePackTitle, lightText && styles.storePackTitleLight, hotCard && styles.storePackTitleDark]}>
-          {categoryLabel(category)}
+        <Text numberOfLines={1} style={[styles.storePackTitle, { color: visual.tileTitleText }]}>
+          {pack.title}
         </Text>
-        <Text numberOfLines={1} style={[styles.storePackPrice, lightText && styles.storePackPriceLight, hotCard && styles.storePackPriceDark]}>
-          {unlocked ? "Actif" : CATEGORY_PRICES[category] ?? "4,99 €"}
+        <Text numberOfLines={1} style={[styles.storePackPrice, { color: visual.tileMetaText }]}>
+          {pack.countLabel} · {pack.statusLabel}
         </Text>
+        {!unlocked ? (
+          <View style={styles.storePackPartnerTag}>
+            <Text numberOfLines={1} style={styles.storePackPartnerTagText}>{pack.partnerStatusLabel}</Text>
+          </View>
+        ) : null}
       </View>
     </SpringPressable>
   );
@@ -9245,10 +9742,9 @@ function StoreCategoryOffer({
   onOpenPack: (category: DesireCategory) => void;
 }) {
   const tone = categoryCardTone(category);
-  const unlocked = included || isCategoryUnlocked(couple, category);
-  const cardCount = desireCardCount(category);
-  const price = included ? "Inclus" : CATEGORY_PRICES[category];
-  const description = categoryDescription(category);
+  const pack = packPresentation(category, couple, { included });
+  const { description, unlocked } = pack;
+  const showPartnerPackStatus = pack.locked;
 
   return (
     <LinearGradient colors={unlocked ? tone.colors : [candy.cream, candy.roseSoft, "#EBD8C0"]} style={styles.storeOfferCard}>
@@ -9264,17 +9760,26 @@ function StoreCategoryOffer({
             },
           ]}
         >
-          {categoryLabel(category)}
+          {pack.title}
         </Text>
-        <Text style={[styles.storeOfferTitle, unlocked && { color: tone.titleText }]}>{unlocked ? "Déjà ouvert" : `Pack ${categoryLabel(category)}`}</Text>
+        <Text style={[styles.storeOfferTitle, unlocked && { color: tone.titleText }]}>{pack.title}</Text>
         <Text style={[styles.storeOfferText, unlocked && { color: tone.bodyText }]}>
           {unlocked
-            ? `${cardCount} cartes prêtes à jouer.`
-            : `${cardCount} cartes. ${description || "Un nouveau ton à explorer à deux."}`}
+            ? `${pack.countLabel} · ${pack.statusLabel}.`
+            : `${pack.countLabel}. ${description || "Un nouveau ton à explorer à deux."}`}
         </Text>
       </View>
       <View style={styles.storeOfferFooter}>
-        <Text style={styles.storeOfferPrice}>{unlocked ? "Ouvert" : price}</Text>
+        <View style={styles.storeOfferPriceStack}>
+          <Text style={styles.storeOfferPrice}>{pack.statusLabel}</Text>
+          {showPartnerPackStatus ? (
+            <View style={styles.storeOfferPartnerTag}>
+              <Text numberOfLines={1} style={styles.storeOfferPartnerTagText}>
+                {pack.partnerStatusLabel}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         <WsButton
           label={unlocked ? "Voir" : "Débloquer"}
           onPress={unlocked ? onGoEnvies : () => onOpenPack(category)}
@@ -9408,18 +9913,20 @@ function StoreStat({ label, value }: { label: string; value: string }) {
 }
 
 function HomeSurpriseDeck({
+  compact,
   couple,
-  height,
   onGoEnvies,
   onOpenCard,
   scale,
+  targetHeight,
   verticalScale,
 }: {
+  compact: boolean;
   couple: CoupleState;
-  height: number;
   onGoEnvies: () => void;
   onOpenCard: (card: DesireCard) => void;
   scale: number;
+  targetHeight: number;
   verticalScale: number;
 }) {
   const activeId = couple.activePartnerId;
@@ -9456,23 +9963,39 @@ function HomeSurpriseDeck({
         ? `${partnerName} a répondu.`
         : `${partnerName} n'a pas encore répondu.`
     : "";
+  const emptyCardMinHeight = compact
+    ? Math.max(132 * verticalScale, Math.min(targetHeight * 0.7, 176 * verticalScale))
+    : Math.max(targetHeight * 0.9, 150 * verticalScale);
+  const emptyCardMaxHeight = compact
+    ? Math.max(emptyCardMinHeight, Math.min(targetHeight, 232 * verticalScale))
+    : Math.max(targetHeight * 1.28, 176 * verticalScale);
 
   return (
     <View style={styles.homeSurpriseDeck}>
       {activeCard ? (
         <HomeSurpriseCard
           card={activeCard}
-          height={height}
+          compact={compact}
           partnerHint={partnerHint}
           onOpen={() => onOpenCard(activeCard)}
           scale={scale}
           statusLabel={statusLabel}
+          targetHeight={targetHeight}
           verticalScale={verticalScale}
         />
       ) : (
         <SpringPressable
           onPress={onGoEnvies}
-          style={[styles.homeEmptySurpriseCard, { borderRadius: 24 * scale, height, minHeight: height, padding: 20 * verticalScale }]}
+          style={[
+            styles.homeEmptySurpriseCard,
+            {
+              aspectRatio: compact ? 2.24 : 1.86,
+              borderRadius: 24 * scale,
+              maxHeight: emptyCardMaxHeight,
+              minHeight: emptyCardMinHeight,
+              padding: (compact ? 16 : 20) * verticalScale,
+            },
+          ]}
         >
           <View style={styles.homeEmptySurpriseIcon}>
             <Text style={styles.homeEmptySurpriseEmoji}>🫧</Text>
@@ -9489,48 +10012,62 @@ function HomeSurpriseDeck({
 
 function HomeSurpriseCard({
   card,
-  height,
+  compact,
   partnerHint,
   onOpen,
   scale,
   statusLabel,
+  targetHeight,
   verticalScale,
 }: {
   card: DesireCard;
-  height: number;
+  compact: boolean;
   partnerHint: string;
   onOpen: () => void;
   scale: number;
   statusLabel: "Nouveau" | "Répondu" | "Match";
+  targetHeight: number;
   verticalScale: number;
 }) {
-  const cardScale = Math.min(scale * 1.07, Math.max(0.84, Math.min(verticalScale * 1.08, height / 210)));
+  const compactCard = compact || targetHeight < 176;
+  const cardScale = Math.min(scale * (compactCard ? 0.98 : 1.07), Math.max(compactCard ? 0.76 : 0.84, Math.min(verticalScale * 1.08, targetHeight / (compactCard ? 164 : 210))));
+  const compactCardMinHeight = Math.max(132 * verticalScale, Math.min(targetHeight * 0.72, 176 * verticalScale));
+  const cardMinHeight = compactCard ? compactCardMinHeight : Math.max(170 * verticalScale, targetHeight * 0.92);
+  const cardMaxHeight = compactCard
+    ? Math.max(cardMinHeight, Math.min(targetHeight, 232 * verticalScale))
+    : Math.max(cardMinHeight, targetHeight * 1.32);
+  const cardGap = (compactCard ? 7 : 10) * cardScale;
+  const cardAspectRatio = compactCard ? 2.24 : 1.72;
+  const actionGap = (compactCard ? 6 : 10) * cardScale;
+  const actionButtonHeight = (compactCard ? 49 : 61) * cardScale;
 
   return (
     <View
       style={[
         styles.homeSurpriseCard,
         {
+          aspectRatio: cardAspectRatio,
           borderRadius: 24 * cardScale,
-          gap: 10 * cardScale,
-          height,
+          gap: cardGap,
           justifyContent: "space-between",
-          minHeight: height,
-          paddingHorizontal: 19 * cardScale,
-          paddingBottom: 23 * cardScale,
-          paddingTop: 17 * cardScale,
+          maxHeight: cardMaxHeight,
+          minHeight: cardMinHeight,
+          paddingHorizontal: (compactCard ? 17 : 19) * cardScale,
+          paddingBottom: (compactCard ? 15 : 23) * cardScale,
+          paddingTop: (compactCard ? 14 : 17) * cardScale,
+          width: "100%",
         },
       ]}
     >
-      <View style={[styles.homeSurpriseTop, { minHeight: 30 * cardScale }]}>
+      <View style={[styles.homeSurpriseTop, { minHeight: (compactCard ? 26 : 30) * cardScale }]}>
         <Text style={[styles.homeSurpriseEyebrow, { fontSize: 13 * cardScale, lineHeight: 16 * cardScale }]}>Carte du jour</Text>
-        <View style={[styles.homeSurpriseBadge, { minHeight: 29 * cardScale, paddingHorizontal: 16 * cardScale }]}>
+        <View style={[styles.homeSurpriseBadge, { minHeight: (compactCard ? 25 : 29) * cardScale, paddingHorizontal: 16 * cardScale }]}>
           <Text style={[styles.homeSurpriseBadgeText, { fontSize: 13 * cardScale, lineHeight: 16 * cardScale }]}>{statusLabel}</Text>
         </View>
       </View>
       <Text adjustsFontSizeToFit minimumFontScale={0.76} numberOfLines={3} style={[styles.homeSurpriseTitle, { fontSize: 22.5 * cardScale, lineHeight: 25.5 * cardScale }]}>{card.title}</Text>
-      <View style={[styles.homeSurpriseActionStack, { gap: 10 * cardScale }]}>
-        <SpringPressable onPress={onOpen} style={[styles.homeSurpriseButton, { borderRadius: 18 * cardScale, minHeight: 61 * cardScale, paddingHorizontal: 18 * cardScale }]}>
+      <View style={[styles.homeSurpriseActionStack, { gap: actionGap }]}>
+        <SpringPressable onPress={onOpen} style={[styles.homeSurpriseButton, { borderRadius: 18 * cardScale, minHeight: actionButtonHeight, paddingHorizontal: 18 * cardScale }]}>
           <Text adjustsFontSizeToFit minimumFontScale={0.78} numberOfLines={1} style={[styles.homeSurpriseButtonText, { fontSize: 17.5 * cardScale, lineHeight: 22 * cardScale }]}>Jouer maintenant</Text>
         </SpringPressable>
         <Text numberOfLines={1} style={[styles.homeSurpriseText, { fontSize: 13.3 * cardScale, lineHeight: 17 * cardScale }]}>{partnerHint}</Text>
@@ -9547,6 +10084,7 @@ function dailyStoreCategory(couple: CoupleState) {
 function CoupleScreen({
   couple,
   revealedMatchIds,
+  tabDockHeight,
   onCopyInvite,
   onGoEnvies,
   onGoMatch,
@@ -9560,6 +10098,7 @@ function CoupleScreen({
 }: {
   couple: CoupleState;
   revealedMatchIds: string[];
+  tabDockHeight: number;
   onCopyInvite: () => void;
   onGoEnvies: () => void;
   onGoMatch: () => void;
@@ -9573,7 +10112,7 @@ function CoupleScreen({
 }) {
   const safeAreaInsets = useSafeAreaInsets();
   const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
-  const coupleLayout = homeLayoutMetrics(viewportHeight, viewportWidth, safeAreaInsets);
+  const coupleLayout = homeLayoutMetrics(viewportHeight, viewportWidth, safeAreaInsets, tabDockHeight);
   const [purchaseCategory, setPurchaseCategory] = useState<DesireCategory | null>(null);
   const [customPurchaseOpen, setCustomPurchaseOpen] = useState(false);
   const [noAdsPurchaseOpen, setNoAdsPurchaseOpen] = useState(false);
@@ -9769,6 +10308,7 @@ function CoupleScreen({
       />
       <CategoryPurchaseModal
         category={purchaseCategory}
+        couple={couple}
         onClose={() => setPurchaseCategory(null)}
         onUnlock={(category) => {
           onUnlockCategory(category);
@@ -9886,32 +10426,35 @@ function CoupleInsight({ emoji, text, title }: { emoji: string; text: string; ti
 function CoupleCategoryCard({
   cardCount,
   category,
+  couple,
   customCount,
   onUnlock,
   unlocked,
 }: {
   cardCount: number;
   category: DesireCategory;
+  couple: CoupleState;
   customCount: number;
   onUnlock: () => void;
   unlocked: boolean;
 }) {
   const tone = categoryCardTone(category);
+  const pack = packPresentation(category, couple, { countOverride: cardCount });
   const subtitle = unlocked
-    ? `${cardCount} cartes disponibles${customCount ? `, dont ${customCount} perso` : ""}`
-    : `${cardCount} cartes à débloquer pour vous deux`;
+    ? `${pack.countLabel} · ${pack.statusLabel}${customCount ? `, dont ${customCount} perso` : ""}`
+    : `${pack.countLabel} · ${pack.statusLabel}`;
 
   return (
     <LinearGradient colors={unlocked ? tone.colors : [candy.cream, candy.roseSoft, "#EBD8C0"]} style={[styles.coupleCategoryCard, !unlocked && styles.coupleCategoryCardLocked]}>
       <EmojiSticker emoji={tone.sticker} size={54} style={styles.coupleCategorySticker} />
       <View style={styles.coupleCategoryCopy}>
-        <Text style={[styles.cardTag, { color: tone.tagText }]}>{categoryLabel(category)}</Text>
-        <Text style={styles.coupleCategoryTitle}>{unlocked ? "Disponible" : "Pack verrouillé"}</Text>
+        <Text style={[styles.cardTag, { color: tone.tagText }]}>{pack.title}</Text>
+        <Text style={styles.coupleCategoryTitle}>{pack.title}</Text>
         <Text style={styles.coupleCategoryText}>{subtitle}</Text>
       </View>
       {unlocked ? (
         <View style={styles.coupleCategoryStatusOpen}>
-          <Text style={styles.coupleCategoryStatusText}>Ouvert</Text>
+          <Text style={styles.coupleCategoryStatusText}>{pack.statusLabel}</Text>
         </View>
       ) : (
         <SpringPressable onPress={onUnlock} style={styles.coupleCategoryBuyButton}>
@@ -9925,10 +10468,12 @@ function CoupleCategoryCard({
 
 function CategoryPurchaseModal({
   category,
+  couple,
   onClose,
   onUnlock,
 }: {
   category: DesireCategory | null;
+  couple: CoupleState;
   onClose: () => void;
   onUnlock: (category: DesireCategory) => void;
 }) {
@@ -9936,23 +10481,22 @@ function CategoryPurchaseModal({
     return null;
   }
 
-  const tone = categoryCardTone(category);
-  const price = CATEGORY_PRICES[category] ?? "Inclus";
-  const cardCount = desireCardCount(category);
+  const pack = packPresentation(category, couple);
 
   return (
     <PurchaseLandingModal
       category={category}
-      ctaLabel={`Débloquer · ${price}`}
+      ctaLabel={`Acheter - ${pack.price}`}
       legalText="Achat unique · Pour vous deux · Restaurable"
       onClose={onClose}
       onUnlock={() => onUnlock(category)}
-      subtitle={`Des envies ${categoryLabel(category).toLowerCase()}, à découvrir sans pression. Pour les soirs où votre curiosité ne demande qu'à jouer.`}
-      title={`Pack ${categoryLabel(category)}`}
+      partnerPackStatusLabel={pack.partnerStatusLabel}
+      subtitle={pack.description || `Des envies ${pack.title.toLowerCase()}, à découvrir sans pression.`}
+      title={pack.detailTitle}
       visible
-      previewLabel={`Contenu masqué jusqu'au déblocage · 18+ · ${cardCount} cartes`}
-      visualLabel={categoryLabel(category)}
-      visualMeta={`${cardCount} cartes`}
+      previewLabel={pack.purchasePreviewLabel}
+      visualLabel={pack.title}
+      visualMeta={pack.countLabel}
     />
   );
 }
@@ -9974,7 +10518,7 @@ function CustomCardsPurchaseModal({
 
   return (
     <PurchaseLandingModal
-      ctaLabel={`Débloquer · ${CUSTOM_CARDS_UNLIMITED_PRICE}`}
+      ctaLabel={`Acheter - ${CUSTOM_CARDS_UNLIMITED_PRICE}`}
       featureEmoji={stickers.wand}
       featureKind="custom"
       legalText="Achat unique · Pour vous deux · Restaurable"
@@ -10004,7 +10548,7 @@ function NoAdsPurchaseModal({
 
   return (
     <PurchaseLandingModal
-      ctaLabel={`Débloquer · ${NO_ADS_PRICE}`}
+      ctaLabel={`Acheter - ${NO_ADS_PRICE}`}
       featureEmoji="🚫"
       featureKind="comfort"
       legalText="Achat unique · Pour vous deux · Restaurable"
@@ -10034,17 +10578,25 @@ function UnlimitedResponsesPurchaseModal({
   partnerName?: string;
   visible: boolean;
 }) {
+  const [showPurchaseLanding, setShowPurchaseLanding] = useState(false);
+
+  useEffect(() => {
+    if (!visible || !limitReached) {
+      setShowPurchaseLanding(false);
+    }
+  }, [limitReached, visible]);
+
   if (!visible) {
     return null;
   }
 
   const usedToday = Math.min(dailyUsed, DAILY_FREE_RESPONSE_LIMIT);
 
-  if (limitReached) {
+  if (limitReached && !showPurchaseLanding) {
     return (
       <DailyLimitReachedModal
         onClose={onClose}
-        onUnlock={onUnlock}
+        onUnlock={() => setShowPurchaseLanding(true)}
         partnerName={partnerName}
         usedToday={usedToday}
         visible
@@ -10054,16 +10606,16 @@ function UnlimitedResponsesPurchaseModal({
 
   return (
     <PurchaseLandingModal
-      ctaLabel={`Débloquer · ${UNLIMITED_RESPONSES_PRICE}`}
+      ctaLabel={`Acheter - ${UNLIMITED_RESPONSES_PRICE}`}
       featureEmoji="🎟️"
       featureKind="unlimited"
       legalText="Achat unique · Pour vous deux · Restaurable"
-      onClose={onClose}
+      onClose={limitReached && showPurchaseLanding ? () => setShowPurchaseLanding(false) : onClose}
       onUnlock={onUnlock}
       subtitle={limitReached
         ? `${usedToday}/${DAILY_FREE_RESPONSE_LIMIT} choix utilisés aujourd'hui. Débloquez l'illimité pour continuer la session.`
         : `${DAILY_FREE_RESPONSE_LIMIT} choix gratuits par jour. L'illimité garde la partie ouverte aussi longtemps que vous voulez.`}
-      title={limitReached ? "Continuer ce soir" : "Réponses illimitées"}
+      title="Réponses illimitées"
       visible
       visualLabel="Illimité"
       visualMeta="choix sans limite"
@@ -10136,6 +10688,7 @@ function PurchaseLandingModal({
   legalText,
   onClose,
   onUnlock,
+  partnerPackStatusLabel,
   previewLabel = "Contenu masqué jusqu'au déblocage · 18+",
   subtitle,
   title,
@@ -10150,6 +10703,7 @@ function PurchaseLandingModal({
   legalText: string;
   onClose: () => void;
   onUnlock: () => void;
+  partnerPackStatusLabel?: string;
   previewLabel?: string;
   subtitle: string;
   title: string;
@@ -10180,17 +10734,20 @@ function PurchaseLandingModal({
         ]}
       >
         <SpringPressable onPress={onClose} style={styles.purchaseBackButton}>
-          <ArrowLeft size={18} color={candy.white} />
+          <ArrowLeft size={21} color={candy.white} strokeWidth={3} />
         </SpringPressable>
         <View style={styles.purchaseContent}>
           <View style={styles.purchaseHero}>
             <View style={styles.purchasePackShadow} />
             <LinearGradient colors={visualColors} style={styles.purchasePackVisual}>
               {category ? <CategoryPickerPattern category={category} /> : <PurchaseFeaturePattern kind={featureKind} />}
+              {category && visual ? (
+                <Text style={[styles.purchasePackEmoji, { color: visual.tileIconText }]}>{visual.sticker}</Text>
+              ) : null}
               {featureEmoji ? <Text style={styles.purchaseFeatureEmoji}>{featureEmoji}</Text> : null}
               <View style={styles.purchaseVisualCopy}>
-                <Text numberOfLines={1} style={styles.purchaseVisualTitle}>{visualLabel}</Text>
-                <Text numberOfLines={1} style={styles.purchaseVisualMeta}>{visualMeta}</Text>
+                <Text numberOfLines={1} style={[styles.purchaseVisualTitle, category && visual && { color: visual.tileTitleText }]}>{visualLabel}</Text>
+                <Text numberOfLines={1} style={[styles.purchaseVisualMeta, category && visual && { color: visual.tileMetaText }]}>{visualMeta}</Text>
               </View>
             </LinearGradient>
           </View>
@@ -10209,6 +10766,11 @@ function PurchaseLandingModal({
           <Text style={styles.purchaseFinePrint}>{previewLabel}</Text>
         </View>
         <View style={styles.purchaseBottomBar}>
+          {partnerPackStatusLabel ? (
+            <View style={styles.purchasePartnerPackTag}>
+              <Text numberOfLines={1} style={styles.purchasePartnerPackTagText}>{partnerPackStatusLabel}</Text>
+            </View>
+          ) : null}
           <SpringPressable onPress={onUnlock} style={styles.purchasePrimary}>
             <Text style={styles.purchasePrimaryText}>{ctaLabel}</Text>
           </SpringPressable>
@@ -10271,6 +10833,7 @@ function PurchaseSuccessScreen({
         titleText: isUnlimitedResponses ? candy.ink : candy.cream,
       }
     : categoryCardTone(category);
+  const packVisual = isNoAds || isUnlimitedResponses ? null : categoryVisual(category);
   const visualTitle = isNoAds
     ? "Zéro pub"
     : isUnlimitedResponses
@@ -10300,13 +10863,6 @@ function PurchaseSuccessScreen({
       : isCustom
         ? `Vos idées peuvent maintenant vivre sans limite. ${partnerCopy}`
         : `${desireCardCount(category)} nouvelles cartes vous attendent, tous les deux. ${partnerCopy}`;
-  const price = isNoAds
-    ? NO_ADS_PRICE
-    : isUnlimitedResponses
-      ? UNLIMITED_RESPONSES_PRICE
-      : isCustom
-        ? CUSTOM_CARDS_UNLIMITED_PRICE
-        : CATEGORY_PRICES[category] ?? "4,99 €";
   const stickerScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] });
   const floatY = drift.interpolate({ inputRange: [0, 1], outputRange: [0, -14] });
   const shimmerX = pulse.interpolate({ inputRange: [0, 1], outputRange: [-18, 18] });
@@ -10323,7 +10879,7 @@ function PurchaseSuccessScreen({
   const unlockCTAOpacity = unlockAnim.interpolate({ inputRange: [0, 0.72, 1], outputRange: [0, 0, 1] });
   const unlockCTAY = unlockAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] });
   const unlockParticleOpacity = unlockAnim.interpolate({ inputRange: [0, 0.28, 0.78, 1], outputRange: [0, 0, 1, 0.72] });
-  const lightVisualText = isNoAds || ["Scénarios", "Kinky Soft", "Jeux & Défis", "BDSM", "Tabous"].includes(category);
+  const lightVisualText = isNoAds || (packVisual ? packVisual.tileTitleText !== candy.ink : false);
 
   useEffect(() => {
     unlockAnim.setValue(0);
@@ -10386,13 +10942,16 @@ function PurchaseSuccessScreen({
           >
             <LinearGradient colors={tone.colors} style={styles.purchaseSuccessPackVisual}>
               {isNoAds || isUnlimitedResponses ? <PurchaseFeaturePattern kind={featureKind} /> : <CategoryPickerPattern category={category} />}
+              {packVisual ? (
+                <Text style={[styles.purchaseSuccessPackEmoji, { color: packVisual.tileIconText }]}>{packVisual.sticker}</Text>
+              ) : null}
               <View style={styles.purchaseSuccessVisualCopy}>
                 <Text
                   numberOfLines={1}
                   style={[
                     styles.purchaseSuccessVisualTitle,
                     lightVisualText && styles.purchaseSuccessVisualTitleLight,
-                    { color: tone.titleText },
+                    { color: packVisual?.tileTitleText ?? tone.titleText },
                   ]}
                 >
                   {visualTitle}
@@ -10402,7 +10961,7 @@ function PurchaseSuccessScreen({
                   style={[
                     styles.purchaseSuccessVisualMeta,
                     lightVisualText && styles.purchaseSuccessVisualMetaLight,
-                    { color: tone.titleText },
+                    { color: packVisual?.tileMetaText ?? tone.titleText },
                   ]}
                 >
                   {visualMeta}
@@ -10470,7 +11029,6 @@ function PurchaseSuccessScreen({
         <SpringPressable onPress={onDiscover} style={styles.purchaseSuccessCTA}>
           <Text style={styles.purchaseSuccessCTAText}>Commencer à jouer</Text>
         </SpringPressable>
-        <Text style={styles.purchaseSuccessLegal}>{price} · Reçu vérifié · Restaurable à tout moment</Text>
       </Animated.View>
     </View>
   );
@@ -10478,6 +11036,7 @@ function PurchaseSuccessScreen({
 
 function ProfileScreen({
   authError,
+  bottomContentInset,
   couple,
   onBack,
   providerLoading,
@@ -10495,6 +11054,7 @@ function ProfileScreen({
   onStatusEmojiChange,
 }: {
   authError: string;
+  bottomContentInset: number;
   couple: CoupleState;
   onBack: () => void;
   providerLoading: AuthProvider | null;
@@ -10523,9 +11083,9 @@ function ProfileScreen({
   const profileVerticalGap = Math.min(24, Math.max(14, profileFrameHeight * 0.014));
   const profileScreenStyle = useMemo<ViewStyle>(() => ({
     gap: profileVerticalGap,
-    paddingBottom: Math.max(126, safeAreaInsets.bottom + TAB_DOCK_VISIBLE_HEIGHT + profileVerticalGap * 2),
+    paddingBottom: Math.max(bottomContentInset, safeAreaInsets.bottom + profileVerticalGap * 2),
     paddingTop: Math.max(14, safeAreaInsets.top + 10),
-  }), [profileVerticalGap, safeAreaInsets.bottom, safeAreaInsets.top]);
+  }), [bottomContentInset, profileVerticalGap, safeAreaInsets.bottom, safeAreaInsets.top]);
   const profileContentFrameStyle = useMemo<ViewStyle>(() => ({
     width: profileContentWidth,
   }), [profileContentWidth]);
@@ -10560,6 +11120,10 @@ function ProfileScreen({
       title: "Promotions",
     },
   ];
+  const purchasedPackCategories = useMemo(
+    () => PAID_PACK_CATEGORIES.filter((category) => isCategoryUnlocked(couple, category)),
+    [couple],
+  );
 
   function confirmReset() {
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -10614,6 +11178,10 @@ function ProfileScreen({
             providerLoading={providerLoading}
             onProvider={onProvider}
           />
+        </View>
+        <View style={styles.profileSettingsSection}>
+          <Text style={styles.profileSectionTitle}>Packs achetés</Text>
+          <ProfilePurchasedPacks categories={purchasedPackCategories} couple={couple} totalCount={PAID_PACK_CATEGORIES.length} />
         </View>
         <View style={styles.profileSettingsSection}>
           <Text style={styles.profileSectionTitle}>Notifications</Text>
@@ -10684,6 +11252,69 @@ function ProfileScreen({
   );
 }
 
+function ProfilePurchasedPacks({
+  categories,
+  couple,
+  totalCount,
+}: {
+  categories: DesireCategory[];
+  couple: CoupleState;
+  totalCount: number;
+}) {
+  const hasPurchasedPacks = categories.length > 0;
+
+  return (
+    <View style={styles.profilePurchasedPanel}>
+      <View style={styles.profilePurchasedHeader}>
+        <View style={styles.profilePurchasedHeaderCopy}>
+          <Text style={styles.profilePurchasedTitle}>Packs actifs</Text>
+          <Text style={styles.profilePurchasedText}>
+            {hasPurchasedPacks
+              ? "Débloqués pour vous deux."
+              : "Aucun pack payant acheté pour l'instant."}
+          </Text>
+        </View>
+        <View style={styles.profilePurchasedCountBadge}>
+          <Text numberOfLines={1} style={styles.profilePurchasedCountText}>
+            {categories.length}/{totalCount}
+          </Text>
+        </View>
+      </View>
+
+      {hasPurchasedPacks ? (
+        <View style={styles.profilePurchasedList}>
+          {categories.map((category) => {
+            const visual = categoryVisual(category);
+            const pack = packPresentation(category, couple);
+
+            return (
+              <View key={category} style={styles.profilePurchasedPackRow}>
+                <LinearGradient colors={visual.colors} style={styles.profilePurchasedPackIcon}>
+                  <Text style={[styles.profilePurchasedPackEmoji, { color: visual.tileIconText }]}>{visual.sticker}</Text>
+                </LinearGradient>
+                <View style={styles.profilePurchasedPackCopy}>
+                  <Text numberOfLines={1} style={styles.profilePurchasedPackName}>{pack.title}</Text>
+                  <Text numberOfLines={1} style={styles.profilePurchasedPackStatus}>{pack.statusLabel}</Text>
+                </View>
+                <View style={styles.profilePurchasedCheck}>
+                  <Check size={18} color={candy.white} strokeWidth={3} />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      ) : (
+        <View style={styles.profilePurchasedEmpty}>
+          <View style={styles.profilePurchasedEmptyIcon}>
+            <LockKeyhole size={21} color={candy.red} strokeWidth={2.7} />
+          </View>
+          <Text style={styles.profilePurchasedEmptyText}>Les packs achetés apparaîtront ici.</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 function StatusEmojiEditor({
   onChange,
   onNameChange,
@@ -10716,13 +11347,16 @@ function StatusEmojiEditor({
   }, [currentName, onNameChange, profileName]);
 
   const applyStatusEmoji = useCallback((nextEmoji: string) => {
-    if (!nextEmoji || /[a-z0-9]/i.test(nextEmoji)) {
+    const normalizedEmoji = standardEmojiFromValue(nextEmoji);
+
+    if (!normalizedEmoji) {
+      setCustomEmoji(currentEmoji);
       return;
     }
 
-    setCustomEmoji(nextEmoji);
-    if (nextEmoji !== currentEmoji) {
-      onChange(nextEmoji);
+    setCustomEmoji(normalizedEmoji);
+    if (normalizedEmoji !== currentEmoji) {
+      onChange(normalizedEmoji);
     }
   }, [currentEmoji, onChange]);
 
@@ -10740,9 +11374,15 @@ function StatusEmojiEditor({
         : customEmoji && rawValue.endsWith(customEmoji) && rawValue.length > customEmoji.length
           ? rawValue.slice(0, -customEmoji.length)
           : rawValue;
-    const nextEmoji = normalizeStatusEmoji(insertedValue || rawValue);
+    const nextEmoji = standardEmojiFromValue(insertedValue || rawValue);
+
+    if (!nextEmoji) {
+      setCustomEmoji(currentEmoji);
+      return;
+    }
+
     applyStatusEmoji(nextEmoji);
-  }, [applyStatusEmoji, customEmoji]);
+  }, [applyStatusEmoji, currentEmoji, customEmoji]);
 
   return (
     <View style={styles.statusEditorPanel}>
@@ -10840,6 +11480,7 @@ function NotificationPreferenceRow({
 }
 
 function DebugScreen({
+  bottomContentInset,
   couple,
   onActorChange,
   onApplyPreset,
@@ -10854,6 +11495,7 @@ function DebugScreen({
   onShowInvitePrompt,
   onShowOnboarding,
 }: {
+  bottomContentInset: number;
   couple: CoupleState;
   onActorChange: (id: PartnerId) => void;
   onApplyPreset: (preset: DebugPresetId) => void;
@@ -10875,6 +11517,9 @@ function DebugScreen({
   const activeHotVotes = Object.values(couple.votes[couple.activePartnerId]).filter(isFlameVote).length;
   const chatCount = couple.chat?.messages.length ?? 0;
   const loadedSince = new Date(couple.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+  const debugBottomInsetStyle = useMemo<ViewStyle>(() => ({
+    paddingBottom: bottomContentInset,
+  }), [bottomContentInset]);
   const presets: Array<{ id: DebugPresetId; title: string; text: string }> = [
     {
       id: "empty",
@@ -10950,7 +11595,7 @@ function DebugScreen({
   }
 
   return (
-    <ScrollView contentContainerStyle={[styles.screen, styles.debugScreen]} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={[styles.screen, styles.debugScreen, debugBottomInsetStyle]} showsVerticalScrollIndicator={false}>
       <LinearGradient colors={[candy.black, "#481132", candy.red]} style={styles.debugHero}>
         <Code2 size={28} color={candy.white} />
         <Text style={styles.debugEyebrow}>Dev tools</Text>
@@ -11115,6 +11760,7 @@ function DebugScreen({
           {PAID_PACK_CATEGORIES.map((category) => {
             const unlocked = isCategoryUnlocked(couple, category);
             const visual = categoryVisual(category);
+            const pack = packPresentation(category, couple);
 
             return (
               <SpringPressable
@@ -11125,13 +11771,13 @@ function DebugScreen({
               >
                 <View style={[styles.debugPurchaseDot, { backgroundColor: visual.accent }]} />
                 <View style={styles.debugPurchaseCopy}>
-                  <Text numberOfLines={1} style={styles.debugPurchaseTitle}>Pack {categoryLabel(category)}</Text>
+                  <Text numberOfLines={1} style={styles.debugPurchaseTitle}>{pack.title}</Text>
                   <Text numberOfLines={1} style={styles.debugPurchaseText}>
-                    {desireCardCount(category)} cartes · {CATEGORY_PRICES[category] ?? "4,99 €"}
+                    {pack.countLabel} · {pack.price}
                   </Text>
                 </View>
                 <Text style={[styles.debugPurchaseStatus, unlocked && styles.debugPurchaseStatusDone]}>
-                  {unlocked ? "Déjà actif" : "Acheter"}
+                  {unlocked ? pack.statusLabel : "Acheter"}
                 </Text>
               </SpringPressable>
             );
@@ -11885,10 +12531,10 @@ function InvitePartnerScreen({
   const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
   const [copied, setCopied] = useState(false);
   const inviteScale = Math.min(1.45, Math.max(0.9, Math.min(viewportWidth / 390, viewportHeight / 844)));
-  const headerButtonScale = Math.min(1.22, Math.max(0.82, Math.min(viewportWidth / 390, viewportHeight / 844)));
+  const headerButtonScale = Math.min(1.22, Math.max(0.9, Math.min(viewportWidth / 390, viewportHeight / 844)));
   const horizontalPadding = 21 * inviteScale;
   const contentWidth = Math.max(0, viewportWidth - horizontalPadding * 2);
-  const headerButtonSize = 34 * headerButtonScale;
+  const headerButtonSize = Math.max(44, 44 * headerButtonScale);
   const inviteLayout = {
     brandPill: {
       minHeight: 34 * inviteScale,
@@ -11929,13 +12575,13 @@ function InvitePartnerScreen({
       paddingTop: 16 * inviteScale,
     },
     stepPill: {
-      minHeight: 30 * headerButtonScale,
-      minWidth: 58 * headerButtonScale,
-      paddingHorizontal: 12 * headerButtonScale,
+      minHeight: Math.max(40, 40 * headerButtonScale),
+      minWidth: Math.max(74, 74 * headerButtonScale),
+      paddingHorizontal: 16 * headerButtonScale,
     },
     stepText: {
-      fontSize: 14 * headerButtonScale,
-      lineHeight: 17 * headerButtonScale,
+      fontSize: 15 * headerButtonScale,
+      lineHeight: 18 * headerButtonScale,
     },
     smallHalo: {
       bottom: 140 * inviteScale,
@@ -11987,7 +12633,7 @@ function InvitePartnerScreen({
       maxWidth: Math.min(340 * inviteScale, contentWidth),
     },
     topBar: {
-      minHeight: 34 * inviteScale,
+      minHeight: headerButtonSize,
     },
     waitingCard: {
       borderRadius: 22 * inviteScale,
@@ -12052,7 +12698,7 @@ function InvitePartnerScreen({
                 <Text style={[styles.mockBrandText, inviteLayout.brandText]}>WeSpice</Text>
               </View>
               <SpringPressable onPress={onContinue} style={[styles.onboardingBackButton, inviteLayout.headerButton]}>
-                <ArrowLeft size={18 * headerButtonScale} color={candy.white} />
+                <ArrowLeft size={Math.max(20, 20 * headerButtonScale)} color={candy.white} strokeWidth={3} />
               </SpringPressable>
             </View>
             <View style={[styles.onboardingStepPill, inviteLayout.stepPill]}>
@@ -12136,12 +12782,12 @@ function JoinCoupleScreen({
   const normalizedCode = inviteCode.trim().toUpperCase();
   const codeSlots = Array.from({ length: 6 }, (_, index) => normalizedCode[index] ?? "");
   const joinScale = Math.min(1.45, Math.max(0.9, Math.min(viewportWidth / 390, viewportHeight / 844)));
-  const headerButtonScale = Math.min(1.22, Math.max(0.82, Math.min(viewportWidth / 390, viewportHeight / 844)));
+  const headerButtonScale = Math.min(1.22, Math.max(0.9, Math.min(viewportWidth / 390, viewportHeight / 844)));
   const horizontalPadding = 21 * joinScale;
   const contentWidth = Math.max(0, viewportWidth - horizontalPadding * 2);
   const codeGap = 8 * joinScale;
   const codeCellSize = Math.min(46 * joinScale, (contentWidth - codeGap * 5) / 6);
-  const headerButtonSize = 34 * headerButtonScale;
+  const headerButtonSize = Math.max(44, 44 * headerButtonScale);
   const joinLayout = {
     bottomArea: {
       width: contentWidth,
@@ -12226,13 +12872,13 @@ function JoinCoupleScreen({
       width: 180 * joinScale,
     },
     stepPill: {
-      minHeight: 30 * headerButtonScale,
-      minWidth: 58 * headerButtonScale,
-      paddingHorizontal: 12 * headerButtonScale,
+      minHeight: Math.max(40, 40 * headerButtonScale),
+      minWidth: Math.max(74, 74 * headerButtonScale),
+      paddingHorizontal: 16 * headerButtonScale,
     },
     stepText: {
-      fontSize: 14 * headerButtonScale,
-      lineHeight: 17 * headerButtonScale,
+      fontSize: 15 * headerButtonScale,
+      lineHeight: 18 * headerButtonScale,
     },
     title: {
       fontSize: 39 * joinScale,
@@ -12241,7 +12887,7 @@ function JoinCoupleScreen({
       maxWidth: Math.min(340 * joinScale, contentWidth),
     },
     topBar: {
-      minHeight: 34 * joinScale,
+      minHeight: headerButtonSize,
     },
   };
 
@@ -12274,7 +12920,7 @@ function JoinCoupleScreen({
                 <Text style={[styles.mockBrandText, joinLayout.brandText]}>WeSpice</Text>
               </View>
               <SpringPressable disabled={busy} onPress={onCancel} style={[styles.onboardingBackButton, joinLayout.headerButton]}>
-                <ArrowLeft size={18 * headerButtonScale} color={candy.white} />
+                <ArrowLeft size={Math.max(20, 20 * headerButtonScale)} color={candy.white} strokeWidth={3} />
               </SpringPressable>
             </View>
             <View style={[styles.onboardingStepPill, joinLayout.stepPill]}>
@@ -12378,8 +13024,8 @@ function LeaveCoupleConfirmScreen({
       marginTop: leaveRhythm * 1.08,
     },
     backButton: {
-      height: 40 * leaveScale,
-      width: 40 * leaveScale,
+      height: Math.max(44, 44 * leaveScale),
+      width: Math.max(44, 44 * leaveScale),
     },
     bodyText: {
       fontSize: 14 * leaveScale,
@@ -12476,7 +13122,7 @@ function LeaveCoupleConfirmScreen({
           <View style={styles.leaveTopBar}>
             <Entrance delay={0}>
               <Pressable accessibilityLabel="Annuler et revenir" onPress={onCancel} style={[styles.leaveBackButton, leaveLayout.backButton]}>
-                <ArrowLeft color={candy.cream} size={18} strokeWidth={3} />
+                <ArrowLeft color={candy.cream} size={20} strokeWidth={3} />
               </Pressable>
             </Entrance>
           </View>
@@ -12744,8 +13390,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 7,
     left: 16,
-    minHeight: 40,
-    paddingHorizontal: 13,
+    minHeight: 44,
+    paddingHorizontal: 16,
     position: "absolute",
     top: 16,
   },
@@ -12885,30 +13531,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "900",
     lineHeight: 14,
-  },
-  secretToast: {
-    alignItems: "center",
-    alignSelf: "center",
-    backgroundColor: candy.black,
-    borderColor: "rgba(255,255,255,0.92)",
-    borderRadius: 999,
-    borderWidth: 1.5,
-    bottom: 106,
-    flexDirection: "row",
-    gap: 7,
-    minHeight: 38,
-    paddingHorizontal: 14,
-    position: "absolute",
-    shadowColor: "rgba(32,16,31,0.28)",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
-    zIndex: 90,
-  },
-  secretToastText: {
-    color: candy.white,
-    fontSize: 12,
-    fontWeight: "900",
   },
   fakeAdScreen: {
     flex: 1,
@@ -13233,27 +13855,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 28,
   },
-  tabNotificationBadge: {
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.9)",
-    borderColor: "rgba(35,18,36,0.18)",
-    borderRadius: 999,
-    borderWidth: 1,
-    height: 14,
-    justifyContent: "center",
-    position: "absolute",
-    right: -4,
-    top: -3,
-    width: 14,
-  },
-  tabNotificationBadgeOn: {
-    backgroundColor: candy.white,
-    borderColor: candy.red,
-  },
-  tabNotificationBadgeActive: {
-    backgroundColor: candy.red,
-    borderColor: candy.white,
-  },
   tabText: {
     color: "rgba(155,130,117,0.92)",
     fontSize: 10,
@@ -13266,7 +13867,6 @@ const styles = StyleSheet.create({
   },
   screen: {
     gap: 13,
-    paddingBottom: 138,
     paddingHorizontal: 14,
     paddingTop: 10,
   },
@@ -13274,27 +13874,28 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   enviesScreenContent: {
-    paddingBottom: 184,
     paddingTop: 0,
   },
   enviesGameContent: {
     flexGrow: 1,
     minHeight: "100%",
-    paddingBottom: 184,
     paddingTop: 0,
   },
   enviesStickyHeader: {
+    backgroundColor: candy.red,
+    elevation: 24,
     marginHorizontal: -14,
     overflow: "visible",
     paddingBottom: 10,
     paddingHorizontal: 16,
     paddingTop: 0,
     position: "relative",
-    zIndex: 20,
+    zIndex: 40,
   },
-  enviesStickyFade: {
+  enviesStickyBackdrop: {
+    backgroundColor: candy.red,
     borderBottomWidth: 0,
-    bottom: -30,
+    bottom: 0,
     left: 0,
     position: "absolute",
     right: 0,
@@ -13597,11 +14198,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 18,
   },
+  categoryPickerHeaderShell: {
+    elevation: 18,
+    position: "relative",
+    zIndex: 18,
+  },
   categoryPickerHeader: {
     alignItems: "flex-start",
+    backgroundColor: candy.red,
     flexDirection: "row",
     gap: 14,
     paddingBottom: 20,
+  },
+  categoryPickerHeaderFade: {
+    bottom: -10,
+    height: 18,
+    left: -18,
+    position: "absolute",
+    right: -18,
   },
   categoryPickerHeaderCopy: {
     flex: 1,
@@ -13623,17 +14237,26 @@ const styles = StyleSheet.create({
   },
   categoryPickerClose: {
     alignItems: "center",
-    backgroundColor: "rgba(255,249,240,0.22)",
+    backgroundColor: candy.cream,
     borderRadius: 999,
-    height: 40,
+    flexDirection: "row",
+    gap: 6,
     justifyContent: "center",
-    width: 40,
+    minHeight: 48,
+    paddingLeft: 17,
+    paddingRight: 18,
+  },
+  categoryPickerCloseText: {
+    color: candy.red,
+    fontSize: 15,
+    fontWeight: "900",
   },
   categoryPickerGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 14,
     paddingBottom: 72,
+    paddingTop: 8,
   },
   categoryPickerCard: {
     aspectRatio: 1,
@@ -13662,6 +14285,12 @@ const styles = StyleSheet.create({
   },
   categoryPickerCardLocked: {
     opacity: 0.96,
+  },
+  categoryPickerComingSoonCard: {
+    backgroundColor: candy.roseMist,
+    borderColor: "rgba(255,255,255,0.52)",
+    borderStyle: "dashed",
+    borderWidth: 2,
   },
   categoryPickerCardFill: {
     bottom: 0,
@@ -13693,6 +14322,20 @@ const styles = StyleSheet.create({
     transform: [{ rotate: "42deg" }],
     width: 18,
   },
+  categoryPickerPackEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 48,
+    left: 18,
+    lineHeight: 56,
+    position: "absolute",
+    right: 18,
+    textAlign: "center",
+    textShadowColor: "rgba(38,18,46,0.12)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 7,
+    top: 68,
+    zIndex: 2,
+  },
   categoryPickerCardCopy: {
     position: "relative",
     zIndex: 2,
@@ -13700,66 +14343,92 @@ const styles = StyleSheet.create({
   categoryPickerCardTitle: {
     color: candy.ink,
     fontFamily: displayFont,
-    fontSize: 21,
+    fontSize: 24,
     fontWeight: "900",
-    lineHeight: 23,
-  },
-  categoryPickerCardTitleLight: {
-    color: candy.cream,
-  },
-  categoryPickerCardTitleDark: {
-    color: candy.ink,
+    lineHeight: 26,
   },
   categoryPickerCardText: {
     color: candy.text,
-    fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 16,
-    marginTop: 3,
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 18,
+    marginTop: 4,
   },
-  categoryPickerCardTextLight: {
-    color: "rgba(255,249,240,0.86)",
-  },
-  categoryPickerCardTextDark: {
+  categoryPickerComingSoonTitle: {
     color: candy.ink,
+  },
+  categoryPickerComingSoonText: {
+    color: "rgba(38,18,46,0.76)",
   },
   categoryPickerLock: {
     alignSelf: "flex-start",
     backgroundColor: candy.black,
     borderRadius: 999,
-    marginTop: 10,
-    minHeight: 32,
-    paddingHorizontal: 14,
+    marginTop: 13,
+    minHeight: 38,
+    paddingHorizontal: 17,
     justifyContent: "center",
   },
   categoryPickerBadgeActive: {
-    backgroundColor: candy.white,
+    backgroundColor: candy.red,
   },
   categoryPickerBadgeCreate: {
     backgroundColor: candy.red,
   },
   categoryPickerBadgeText: {
     color: candy.white,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "900",
+    lineHeight: 17,
   },
   categoryPickerBadgeTextActive: {
-    color: candy.red,
+    color: candy.white,
   },
   categoryPickerBadgeTextCreate: {
     color: candy.white,
   },
-  categoryPickerBadgeTextHot: {
-    color: candy.yellow,
+  categoryPickerPartnerTag: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,249,240,0.92)",
+    borderRadius: 999,
+    marginTop: 7,
+    maxWidth: "100%",
+    minHeight: 24,
+    paddingHorizontal: 9,
+    justifyContent: "center",
+  },
+  categoryPickerPartnerTagText: {
+    color: candy.red,
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 13,
+  },
+  categoryPickerComingSoonBadge: {
+    backgroundColor: "rgba(38,18,46,0.88)",
+  },
+  categoryPickerComingSoonBadgeText: {
+    color: candy.cream,
+  },
+  categoryPickerComingSoonIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(245,40,110,0.9)",
+    borderRadius: 999,
+    height: 38,
+    justifyContent: "center",
+    position: "absolute",
+    right: 12,
+    top: 12,
+    width: 38,
+    zIndex: 3,
   },
   categoryPickerLockIcon: {
     alignItems: "center",
-    height: 28,
+    height: 36,
     justifyContent: "center",
     position: "absolute",
-    right: 14,
-    top: 14,
-    width: 28,
+    right: 12,
+    top: 12,
+    width: 36,
   },
   desireFilterRow: {
     flexGrow: 1,
@@ -13982,7 +14651,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "center",
-    minHeight: 50,
+    minHeight: 58,
     position: "relative",
   },
   enviesPackPill: {
@@ -13991,22 +14660,24 @@ const styles = StyleSheet.create({
     backgroundColor: candy.cream,
     borderRadius: 999,
     flexDirection: "row",
-    gap: 8,
-    minHeight: 42,
-    paddingHorizontal: 16,
+    gap: 9,
+    minHeight: 48,
+    paddingHorizontal: 20,
   },
   enviesGamePackPill: {
     alignSelf: "center",
+    justifyContent: "center",
+    minWidth: 112,
   },
   enviesPackPillDot: {
     backgroundColor: candy.red,
     borderRadius: 999,
-    height: 8,
-    width: 8,
+    height: 9,
+    width: 9,
   },
   enviesPackPillText: {
     color: candy.black,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
   },
   enviesPackPillChevron: {
@@ -14018,12 +14689,13 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1.2,
     color: candy.white,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
-    minWidth: 74,
+    minHeight: 48,
+    minWidth: 82,
     overflow: "hidden",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 17,
+    paddingVertical: 13,
     position: "absolute",
     right: 0,
     textAlign: "center",
@@ -14035,10 +14707,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,249,240,0.92)",
     borderRadius: 999,
     flexDirection: "row",
-    gap: 5,
+    gap: 6,
     justifyContent: "center",
-    minHeight: 40,
-    paddingHorizontal: 15,
+    minHeight: 48,
+    paddingHorizontal: 18,
   },
   enviesGameBackButton: {
     left: 0,
@@ -14100,22 +14772,36 @@ const styles = StyleSheet.create({
     maxWidth: 500,
     minHeight: 480,
   },
-  desireGameBackCard: {
-    backgroundColor: "rgba(247,232,215,0.9)",
-    borderRadius: 32,
-    bottom: 8,
-    boxShadow: "0 12px 22px rgba(38,18,46,0.12)",
+  desireGameDeckShadow: {
+    alignSelf: "center",
+    backgroundColor: "rgba(38,18,46,0.12)",
+    borderRadius: 999,
+    bottom: 24,
+    boxShadow: "0 18px 30px rgba(38,18,46,0.08)",
+    height: 28,
+    opacity: 0.34,
     position: "absolute",
-    top: 34,
-    width: "84%",
+    width: "52%",
+  },
+  desireGameBackCard: {
+    backgroundColor: "rgba(255,249,240,0.22)",
+    borderColor: "rgba(255,255,255,0.24)",
+    borderRadius: 28,
+    borderWidth: 1,
+    bottom: 46,
+    boxShadow: "0 8px 14px rgba(38,18,46,0.045)",
+    opacity: 0.46,
+    position: "absolute",
+    top: 72,
+    width: "72%",
   },
   desireGameBackCardLeft: {
-    left: 0,
-    transform: [{ rotate: "-6deg" }],
+    left: 22,
+    transform: [{ translateY: 6 }, { rotate: "-1.6deg" }],
   },
   desireGameBackCardRight: {
-    right: 0,
-    transform: [{ rotate: "6deg" }],
+    right: 22,
+    transform: [{ translateY: 6 }, { rotate: "1.6deg" }],
   },
   desireGameCard: {
     alignSelf: "center",
@@ -14128,14 +14814,16 @@ const styles = StyleSheet.create({
     minHeight: 360,
     overflow: "hidden",
     paddingHorizontal: 24,
-    paddingVertical: 24,
+    paddingBottom: 44,
+    paddingTop: 24,
     position: "relative",
     width: "86%",
   },
   desireGameCardRoomy: {
     minHeight: 434,
     paddingHorizontal: 30,
-    paddingVertical: 30,
+    paddingBottom: 54,
+    paddingTop: 30,
     width: "83%",
   },
   desireGameTopRow: {
@@ -14161,11 +14849,11 @@ const styles = StyleSheet.create({
   desireGameCopy: {
     justifyContent: "center",
     minHeight: 164,
-    paddingTop: 20,
+    paddingTop: 0,
   },
   desireGameCopyRoomy: {
     minHeight: 220,
-    paddingTop: 28,
+    paddingTop: 0,
   },
   desireGameTitle: {
     color: candy.ink,
@@ -14173,14 +14861,16 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "900",
     lineHeight: 31,
-    textAlign: "left",
+    textAlign: "center",
   },
   desireGameText: {
-    color: candy.muted,
-    fontSize: 12,
+    alignSelf: "center",
+    color: candy.text,
+    fontSize: 15,
     fontWeight: "900",
-    lineHeight: 16,
-    maxWidth: 300,
+    lineHeight: 19,
+    maxWidth: 320,
+    textAlign: "center",
   },
   desireGameValidationVeil: {
     alignItems: "center",
@@ -14407,9 +15097,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255,249,240,0.17)",
     borderRadius: 999,
-    height: 42,
+    height: 46,
     justifyContent: "center",
-    width: 42,
+    width: 46,
   },
   editorPreviewCard: {
     backgroundColor: candy.cream,
@@ -14620,16 +15310,16 @@ const styles = StyleSheet.create({
   },
   editorBottomContent: {
     alignSelf: "center",
-    gap: 9,
     maxWidth: "100%",
     width: "100%",
   },
   editorSubmitButton: {
     alignItems: "center",
     backgroundColor: candy.black,
-    borderRadius: 25,
+    borderRadius: 33,
     justifyContent: "center",
-    minHeight: 55,
+    minHeight: 66,
+    paddingVertical: 18,
     width: "100%",
   },
   editorSubmitButtonDisabled: {
@@ -14637,15 +15327,8 @@ const styles = StyleSheet.create({
   },
   editorSubmitText: {
     color: candy.cream,
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "900",
-  },
-  editorFooterText: {
-    color: "rgba(255,249,240,0.75)",
-    fontSize: 12,
-    fontWeight: "900",
-    lineHeight: 15,
-    textAlign: "center",
   },
   desireCard: {
     borderColor: candy.white,
@@ -15077,38 +15760,6 @@ const styles = StyleSheet.create({
     fontFamily: displayFont,
     fontSize: 16,
     fontWeight: "900",
-    textAlign: "center",
-  },
-  hiddenRevealAdText: {
-    color: "rgba(255,255,255,0.58)",
-    fontSize: 12,
-    fontWeight: "900",
-    lineHeight: 16,
-    textAlign: "center",
-  },
-  hiddenRevealAdLink: {
-    color: candy.cream,
-    textDecorationLine: "underline",
-  },
-  hiddenRevealPendingLine: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    maxWidth: 320,
-  },
-  hiddenRevealPendingDot: {
-    backgroundColor: candy.yellow,
-    borderRadius: 999,
-    height: 8,
-    width: 8,
-  },
-  hiddenRevealPendingText: {
-    color: candy.white,
-    flexShrink: 1,
-    fontSize: 13,
-    fontWeight: "900",
-    lineHeight: 17,
     textAlign: "center",
   },
   matchRevealTheater: {
@@ -15928,9 +16579,9 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     backgroundColor: "rgba(255,249,240,0.13)",
     borderRadius: 999,
-    height: 42,
+    height: 46,
     justifyContent: "center",
-    width: 42,
+    width: 46,
   },
   chatUnavailableCenter: {
     alignItems: "center",
@@ -16026,9 +16677,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255,249,240,0.13)",
     borderRadius: 999,
-    height: 42,
+    height: 46,
     justifyContent: "center",
-    width: 42,
+    width: 46,
   },
   chatHeaderAvatarStack: {
     alignItems: "center",
@@ -16284,11 +16935,17 @@ const styles = StyleSheet.create({
     width: 54,
   },
   chatPhotoRevealLabel: {
+    backgroundColor: "rgba(38,18,46,0.84)",
+    borderRadius: 999,
     bottom: 9,
-    color: candy.red,
+    color: candy.cream,
     fontSize: 11,
     fontWeight: "900",
     left: 10,
+    lineHeight: 14,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     position: "absolute",
     right: 10,
     textAlign: "center",
@@ -16480,21 +17137,32 @@ const styles = StyleSheet.create({
   chatIconButtonDisabled: {
     opacity: 0.55,
   },
-  chatInput: {
+  chatInputShell: {
     backgroundColor: candy.cream,
     borderRadius: 999,
-    color: candy.ink,
     flex: 1,
+    justifyContent: "center",
+    maxHeight: 96,
+    minHeight: 58,
+    minWidth: 0,
+    overflow: "hidden",
+    paddingHorizontal: 18,
+    paddingVertical: 0,
+  },
+  chatInput: {
+    backgroundColor: "transparent",
+    color: candy.ink,
     fontSize: 16,
     fontWeight: "800",
-    includeFontPadding: false,
-    lineHeight: 21,
-    maxHeight: 90,
-    minHeight: 52,
+    includeFontPadding: true,
+    lineHeight: 22,
+    maxHeight: 82,
+    minHeight: 30,
     minWidth: 0,
-    paddingHorizontal: 18,
-    paddingVertical: 15,
+    paddingHorizontal: 0,
+    paddingVertical: 4,
     textAlignVertical: "top",
+    width: "100%",
   },
   chatSendButton: {
     alignItems: "center",
@@ -16522,16 +17190,16 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: "row",
-    gap: 4,
-    minHeight: 38,
-    paddingHorizontal: 12,
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: 16,
   },
   rulesBackIcon: {
     transform: [{ rotate: "180deg" }],
   },
   rulesBackText: {
     color: candy.red,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "900",
   },
   rulesHero: {
@@ -16831,9 +17499,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255,249,240,0.17)",
     borderRadius: 999,
-    height: 42,
+    height: 46,
     justifyContent: "center",
-    width: 42,
+    width: 46,
   },
   storeTitle: {
     color: candy.white,
@@ -16983,35 +17651,60 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
   },
+  storePackEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 42,
+    left: 12,
+    lineHeight: 50,
+    position: "absolute",
+    right: 12,
+    textAlign: "center",
+    textShadowColor: "rgba(38,18,46,0.12)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 7,
+    zIndex: 2,
+  },
+  storePackLockIcon: {
+    alignItems: "center",
+    height: 32,
+    justifyContent: "center",
+    position: "absolute",
+    right: 8,
+    top: 8,
+    width: 32,
+    zIndex: 3,
+  },
   storePackCardCopy: {
     position: "relative",
     zIndex: 2,
   },
   storePackTitle: {
-    color: candy.ink,
     fontFamily: displayFont,
     fontSize: 20,
     fontWeight: "900",
     lineHeight: 22,
   },
-  storePackTitleLight: {
-    color: candy.cream,
-  },
-  storePackTitleDark: {
-    color: candy.ink,
-  },
   storePackPrice: {
-    color: candy.ink,
     fontSize: 13,
     fontWeight: "900",
     lineHeight: 16,
     marginTop: 1,
   },
-  storePackPriceLight: {
-    color: candy.yellow,
+  storePackPartnerTag: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,249,240,0.92)",
+    borderRadius: 999,
+    marginTop: 6,
+    maxWidth: "100%",
+    minHeight: 22,
+    paddingHorizontal: 8,
+    justifyContent: "center",
   },
-  storePackPriceDark: {
-    color: candy.ink,
+  storePackPartnerTagText: {
+    color: candy.red,
+    fontSize: 9.5,
+    fontWeight: "900",
+    lineHeight: 12,
   },
   storeFooter: {
     alignItems: "center",
@@ -17092,11 +17785,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginTop: 14,
   },
+  storeOfferPriceStack: {
+    flexShrink: 1,
+    gap: 6,
+    minWidth: 0,
+  },
   storeOfferPrice: {
     color: candy.red,
     fontFamily: displayFont,
     fontSize: 22,
     fontWeight: "900",
+  },
+  storeOfferPartnerTag: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(245,40,110,0.12)",
+    borderRadius: 999,
+    minHeight: 24,
+    paddingHorizontal: 9,
+    justifyContent: "center",
+  },
+  storeOfferPartnerTagText: {
+    color: candy.red,
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 13,
   },
   storeOfferButton: {
     minHeight: 40,
@@ -17154,6 +17866,7 @@ const styles = StyleSheet.create({
     zIndex: 30,
   },
   homeHero: {
+    alignSelf: "stretch",
     gap: 20,
     overflow: "hidden",
     paddingBottom: 6,
@@ -17249,7 +17962,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   homeMoodSheetOverlay: {
-    alignItems: "center",
+    alignItems: "stretch",
     backgroundColor: "rgba(38,18,46,0.48)",
     flex: 1,
     justifyContent: "flex-end",
@@ -17262,11 +17975,11 @@ const styles = StyleSheet.create({
     top: 0,
   },
   homeMoodSheet: {
+    alignSelf: "stretch",
     backgroundColor: candy.cream,
     borderTopLeftRadius: 34,
     borderTopRightRadius: 34,
     gap: 14,
-    maxWidth: 430,
     minHeight: "78%",
     paddingHorizontal: 18,
     paddingTop: 0,
@@ -17413,6 +18126,7 @@ const styles = StyleSheet.create({
   },
   dailyAdviceCard: {
     alignItems: "center",
+    alignSelf: "stretch",
     backgroundColor: candy.black,
     borderRadius: 22,
     flexDirection: "row",
@@ -18279,9 +18993,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255,249,240,0.16)",
     borderRadius: 999,
-    height: 42,
+    height: 46,
     justifyContent: "center",
-    width: 42,
+    width: 46,
   },
   purchaseContent: {
     alignItems: "center",
@@ -18346,6 +19060,20 @@ const styles = StyleSheet.create({
     lineHeight: 68,
     position: "absolute",
     top: 24,
+  },
+  purchasePackEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 54,
+    left: 20,
+    lineHeight: 62,
+    position: "absolute",
+    right: 20,
+    textAlign: "center",
+    textShadowColor: "rgba(38,18,46,0.14)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+    top: 68,
+    zIndex: 2,
   },
   purchaseTitle: {
     color: candy.white,
@@ -18439,6 +19167,21 @@ const styles = StyleSheet.create({
   },
   purchaseBottomBar: {
     gap: 10,
+  },
+  purchasePartnerPackTag: {
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "rgba(255,249,240,0.92)",
+    borderRadius: 999,
+    minHeight: 30,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+  },
+  purchasePartnerPackTagText: {
+    color: candy.red,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 15,
   },
   purchasePrimary: {
     alignItems: "center",
@@ -18688,6 +19431,20 @@ const styles = StyleSheet.create({
     padding: 26,
     width: 226,
   },
+  purchaseSuccessPackEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 58,
+    left: 24,
+    lineHeight: 66,
+    position: "absolute",
+    right: 24,
+    textAlign: "center",
+    textShadowColor: "rgba(38,18,46,0.14)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+    top: 88,
+    zIndex: 2,
+  },
   purchaseSuccessUnlockBadge: {
     alignItems: "center",
     backgroundColor: candy.cream,
@@ -18763,13 +19520,6 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingBottom: 10,
     width: "100%",
-  },
-  purchaseSuccessLegal: {
-    color: "rgba(255,249,240,0.72)",
-    fontSize: 11,
-    fontWeight: "900",
-    lineHeight: 14,
-    textAlign: "center",
   },
   moodWidgetShell: {
     borderRadius: 30,
@@ -19217,6 +19967,136 @@ const styles = StyleSheet.create({
     letterSpacing: 1.8,
     paddingHorizontal: 18,
     textTransform: "uppercase",
+  },
+  profilePurchasedPanel: {
+    backgroundColor: candy.cream,
+    borderColor: "rgba(43,23,53,0.08)",
+    borderRadius: 30,
+    borderWidth: 1,
+    gap: 12,
+    padding: 16,
+  },
+  profilePurchasedHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+  },
+  profilePurchasedHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profilePurchasedTitle: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 23,
+    fontWeight: "900",
+    lineHeight: 26,
+  },
+  profilePurchasedText: {
+    color: candy.muted,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  profilePurchasedCountBadge: {
+    alignItems: "center",
+    backgroundColor: candy.red,
+    borderRadius: 999,
+    justifyContent: "center",
+    minHeight: 38,
+    minWidth: 58,
+    paddingHorizontal: 12,
+  },
+  profilePurchasedCountText: {
+    color: candy.white,
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 17,
+  },
+  profilePurchasedList: {
+    gap: 8,
+  },
+  profilePurchasedPackRow: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.62)",
+    borderColor: "rgba(43,23,53,0.08)",
+    borderRadius: 20,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 11,
+    minHeight: 62,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  profilePurchasedPackIcon: {
+    alignItems: "center",
+    borderRadius: 16,
+    height: 46,
+    justifyContent: "center",
+    overflow: "hidden",
+    width: 46,
+  },
+  profilePurchasedPackEmoji: {
+    fontFamily: emojiFont,
+    fontSize: 22,
+    lineHeight: 28,
+    textShadowColor: "rgba(38,18,46,0.12)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  profilePurchasedPackCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profilePurchasedPackName: {
+    color: candy.ink,
+    fontFamily: displayFont,
+    fontSize: 18,
+    fontWeight: "900",
+    lineHeight: 21,
+  },
+  profilePurchasedPackStatus: {
+    color: candy.red,
+    fontSize: 12,
+    fontWeight: "900",
+    lineHeight: 15,
+    marginTop: 1,
+  },
+  profilePurchasedCheck: {
+    alignItems: "center",
+    backgroundColor: candy.red,
+    borderRadius: 999,
+    height: 32,
+    justifyContent: "center",
+    width: 32,
+  },
+  profilePurchasedEmpty: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.58)",
+    borderColor: "rgba(43,23,53,0.08)",
+    borderRadius: 20,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 58,
+    paddingHorizontal: 12,
+  },
+  profilePurchasedEmptyIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(245,40,110,0.1)",
+    borderRadius: 999,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
+  },
+  profilePurchasedEmptyText: {
+    color: candy.text,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "900",
+    lineHeight: 17,
   },
   profileNotificationList: {
     backgroundColor: candy.cream,
@@ -20166,9 +21046,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255,244,232,0.12)",
     borderRadius: 999,
-    height: 40,
+    height: 44,
     justifyContent: "center",
-    width: 40,
+    width: 44,
   },
   leaveContentStage: {
     flexGrow: 1,
@@ -20803,23 +21683,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255,249,240,0.14)",
     borderRadius: 999,
-    height: 42,
+    height: 46,
     justifyContent: "center",
-    width: 42,
+    width: 46,
   },
   onboardingStepPill: {
     alignItems: "center",
     backgroundColor: "rgba(255,249,240,0.16)",
     borderRadius: 999,
     justifyContent: "center",
-    minHeight: 30,
-    minWidth: 58,
-    paddingHorizontal: 12,
+    minHeight: 40,
+    minWidth: 74,
+    paddingHorizontal: 16,
   },
   onboardingStepPillText: {
     color: candy.white,
     fontFamily: labelFont,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
   },
 });

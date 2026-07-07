@@ -134,6 +134,25 @@ Variable Expo :
 EXPO_PUBLIC_EAS_PROJECT_ID=...
 ```
 
+Android/Firebase :
+
+```txt
+Package Android attendu dans Firebase: app.wespice.mobile
+Fichier attendu a la racine du repo: google-services.json
+Config Expo: expo.android.googleServicesFile -> ./google-services.json
+```
+
+Pour activer les push Android sur un nouveau build :
+
+1. Dans Firebase Console, cree ou ouvre le projet WeSpice.
+2. Ajoute une app Android avec le package `app.wespice.mobile`.
+3. Telecharge `google-services.json` et place-le a la racine du repo.
+4. Dans Google Cloud/Firebase, cree une cle de service FCM V1 avec le role `Firebase Messaging API Admin`.
+5. Upload cette cle dans EAS avec `eas credentials` > Android > production > Google Service Account > FCM V1.
+6. Rebuild Android avec `npm run build:dev:android` ou `npm run build:prod:android`.
+
+`google-services.json` contient surtout des identifiants publics du projet Firebase et peut etre versionne si besoin. La cle de service FCM V1 est sensible : ne la commit jamais, elle doit rester dans EAS credentials/secret.
+
 Secrets Supabase :
 
 ```bash
@@ -215,9 +234,12 @@ tools/card-editor.html
 Workflow :
 
 ```bash
+npm run cards:import -- cocoon_packs_cartes.csv
 npm run cards:generate
 npm run cards:check
 ```
+
+`cards:import` transforme le CSV de production en `content/desire-packs.json`. Le champ CSV `description_pack` devient `description` au niveau du pack et est ensuite exposé dans `DESIRE_PACKS` pour pouvoir être réutilisé dans l'app.
 
 `cards:generate` transforme le JSON en `src/data/desires.generated.ts`, qui est le fichier réellement importé par l'app.
 

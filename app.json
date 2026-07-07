@@ -16,6 +16,8 @@
     },
     "android": {
       "package": "app.wespice.mobile",
+      "googleServicesFile": "./google-services.json",
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "backgroundColor": "#FF2A74",
         "foregroundImage": "./assets/android-icon-foreground.png"
@@ -45,7 +47,7 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": false,
+          "cameraPermission": "WeSpice utilise votre caméra uniquement pour joindre une photo au chat privé.",
           "microphonePermission": false,
           "photosPermission": "WeSpice utilise votre photothèque uniquement pour joindre une photo au chat privé."
         }

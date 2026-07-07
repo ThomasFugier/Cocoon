@@ -51,7 +51,7 @@ export function OnboardingScreen({
   const horizontalPadding = 21 * tutorialScale;
   const contentWidth = Math.max(0, viewportWidth - horizontalPadding * 2);
   const headerHeight = 48 * onboardingScale;
-  const backButtonSize = 40 * onboardingScale;
+  const backButtonSize = Math.max(44, 44 * onboardingScale);
   const layout = {
     backButton: {
       height: backButtonSize,
@@ -109,9 +109,9 @@ export function OnboardingScreen({
       paddingTop: 16 * tutorialScale,
     },
     stepPill: {
-      height: 36 * onboardingScale,
-      minWidth: 68 * onboardingScale,
-      paddingHorizontal: 14 * onboardingScale,
+      height: Math.max(40, 40 * onboardingScale),
+      minWidth: Math.max(74, 74 * onboardingScale),
+      paddingHorizontal: 16 * onboardingScale,
     },
     stepText: {
       fontSize: 16 * onboardingScale,
@@ -198,7 +198,7 @@ export function OnboardingScreen({
                 <Text style={[styles.onboardingBrandText, layout.brandText]}>WeSpice</Text>
               </View>
               <SpringPressable onPress={goBack} style={[styles.onboardingBackButton, layout.backButton]}>
-                <ArrowLeft size={18 * onboardingScale} color={candy.white} />
+                <ArrowLeft size={Math.max(20, 20 * onboardingScale)} color={candy.white} strokeWidth={3} />
               </SpringPressable>
             </View>
             <View style={[styles.onboardingStepPill, layout.stepPill]}>
@@ -343,9 +343,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(255,249,240,0.14)",
     borderRadius: 999,
-    height: 42,
+    height: 46,
     justifyContent: "center",
-    width: 42,
+    width: 46,
   },
   onboardingBrandPill: {
     alignItems: "center",
@@ -367,14 +367,14 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,249,240,0.16)",
     borderRadius: 999,
     justifyContent: "center",
-    minHeight: 30,
-    minWidth: 58,
-    paddingHorizontal: 12,
+    minHeight: 40,
+    minWidth: 74,
+    paddingHorizontal: 16,
   },
   onboardingStepPillText: {
     color: candy.white,
     fontFamily: labelFont,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "900",
   },
   onboardingTitle: {

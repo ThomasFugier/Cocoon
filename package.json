@@ -58,6 +58,7 @@
     "build:prod:android": "npm run version:prod && npx eas-cli@latest build -p android --profile production",
     "submit:ios": "npx eas-cli@latest submit -p ios --profile production --latest",
     "submit:android": "npx eas-cli@latest submit -p android --profile production --latest",
+    "cards:import": "node scripts/import-desires-csv.js",
     "cards:generate": "node scripts/generate-desires.js",
     "cards:check": "node scripts/generate-desires.js --check",
     "db:admin": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/db-admin.ps1",

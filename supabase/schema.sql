@@ -1208,7 +1208,7 @@ begin
   values (v_couple.id, v_user_id, 'partner')
   on conflict do nothing;
 
-  return query select v_couple.id, v_couple.invite_code;
+  return query select v_couple.id as couple_id, v_couple.invite_code as invite_code;
 end;
 $$;
 
@@ -2375,7 +2375,7 @@ begin
     limit 1
   )
   update public.match_reveals reveals
-  set revealed_at = coalesce(revealed_at, now())
+  set revealed_at = coalesce(reveals.revealed_at, now())
   from candidate
   where reveals.couple_id = v_couple_id
     and reveals.user_id = auth.uid()

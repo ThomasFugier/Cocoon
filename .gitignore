@@ -19,6 +19,9 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+firebase-service-account*.json
+fcm-service-account*.json
+google-service-account*.json
 
 # Metro
 .metro-health-check*
@@ -35,6 +38,7 @@ ASO/exports/
 ASO/generate_store_screenshots*.py
 ASO/mockups-*.png
 artifacts/
+APK/
 
 # macOS
 .DS_Store

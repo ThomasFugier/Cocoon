@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "494755164029",
+    "project_id": "wespice-a1874",
+    "storage_bucket": "wespice-a1874.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:494755164029:android:7d7bca173f058f74986614",
+        "android_client_info": {
+          "package_name": "app.wespice.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCwcCiEtEB6Q9JY5zQtOQXQoHNClG264aY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

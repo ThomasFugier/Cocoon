@@ -27,6 +27,7 @@ import {
 
 const useNativeAnimations = Platform.OS !== "web";
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const androidLabelText = Platform.OS === "android" ? ({ includeFontPadding: false } satisfies TextStyle) : null;
 const webTextInputFocusReset =
   Platform.OS === "web"
     ? ({
@@ -39,6 +40,9 @@ const webTextInputFocusReset =
 
 type WsButtonVariant = "primary" | "secondary" | "accent" | "hot" | "outline" | "ghost" | "danger";
 type WsButtonSize = "sm" | "md" | "lg";
+type WsButtonLabelLines = 1 | 2;
+
+const CTA_BUTTON_VARIANTS = new Set<WsButtonVariant>(["primary", "secondary", "accent", "hot", "danger"]);
 
 type WsPressableProps = Omit<PressableProps, "style"> & {
   children: React.ReactNode;
@@ -85,8 +89,8 @@ export function WsPressable({
   );
 }
 
-export function WsText({ style, ...props }: TextProps) {
-  return <RNText {...props} style={[wsType.app, style]} />;
+export function WsText({ minimumFontScale = 0.78, style, ...props }: TextProps) {
+  return <RNText minimumFontScale={minimumFontScale} {...props} style={[styles.textBase, wsType.app, androidLabelText, style]} />;
 }
 
 export function WsButton({
@@ -94,6 +98,8 @@ export function WsButton({
   disabled,
   label,
   left,
+  minimumFontScale = 0.74,
+  numberOfLines,
   onPress,
   right,
   size = "lg",
@@ -105,6 +111,8 @@ export function WsButton({
   disabled?: boolean;
   label: string;
   left?: React.ReactNode;
+  minimumFontScale?: number;
+  numberOfLines?: WsButtonLabelLines;
   onPress?: () => void;
   right?: React.ReactNode;
   size?: WsButtonSize;
@@ -113,6 +121,7 @@ export function WsButton({
   variant?: WsButtonVariant;
 }) {
   const blocked = disabled || busy;
+  const labelLineCount = numberOfLines ?? (CTA_BUTTON_VARIANTS.has(variant) ? 2 : 1);
 
   return (
     <WsPressable
@@ -121,7 +130,12 @@ export function WsButton({
       style={[styles.button, buttonSizes[size], buttonVariants[variant], style]}
     >
       {busy ? <ActivityIndicator color={buttonActivityColors[variant]} /> : left}
-      <RNText adjustsFontSizeToFit numberOfLines={1} style={[styles.buttonText, buttonTextVariants[variant], textStyle]}>
+      <RNText
+        adjustsFontSizeToFit
+        minimumFontScale={minimumFontScale}
+        numberOfLines={labelLineCount}
+        style={[styles.buttonText, androidLabelText, buttonTextVariants[variant], textStyle]}
+      >
         {label}
       </RNText>
       {right}
@@ -182,7 +196,9 @@ export function WsTextField({
 
   return (
     <Animated.View style={[styles.fieldBlock, containerStyle]}>
-      <RNText style={[styles.fieldLabel, labelStyle]}>{label}</RNText>
+      <RNText adjustsFontSizeToFit minimumFontScale={0.82} numberOfLines={1} style={[styles.fieldLabel, androidLabelText, labelStyle]}>
+        {label}
+      </RNText>
       <TextInput
         cursorColor={wsColors.red}
         onBlur={(event) => {
@@ -215,7 +231,14 @@ export function WsChoicePill({
 }) {
   return (
     <WsPressable onPress={onPress} style={[styles.choicePill, selected && styles.choicePillSelected, style]}>
-      <RNText style={[styles.choicePillText, selected && styles.choicePillTextSelected]}>{label}</RNText>
+      <RNText
+        adjustsFontSizeToFit
+        minimumFontScale={0.76}
+        numberOfLines={1}
+        style={[styles.choicePillText, androidLabelText, selected && styles.choicePillTextSelected]}
+      >
+        {label}
+      </RNText>
     </WsPressable>
   );
 }
@@ -319,6 +342,10 @@ const buttonActivityColors: Record<WsButtonVariant, string> = {
 };
 
 const styles = StyleSheet.create({
+  textBase: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
   disabled: {
     opacity: 0.6,
   },
@@ -326,13 +353,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: wsRadius.lg,
     borderWidth: 2,
+    flexShrink: 1,
     flexDirection: "row",
     gap: 8,
     justifyContent: "center",
+    minWidth: 0,
     ...wsShadows.button,
   },
   buttonText: {
     ...wsType.button,
+    flexShrink: 1,
+    lineHeight: 18,
+    minWidth: 0,
     textAlign: "center",
   },
   iconButton: {
@@ -358,7 +390,9 @@ const styles = StyleSheet.create({
     fontFamily: inputFont,
     fontSize: 18,
     fontWeight: "900",
+    includeFontPadding: false,
     minHeight: 60,
+    minWidth: 0,
     paddingHorizontal: 20,
   },
   textInputFocused: {
@@ -371,8 +405,10 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,249,240,0.72)",
     borderRadius: wsRadius.pill,
     borderWidth: 1.5,
+    flexShrink: 1,
     justifyContent: "center",
     minHeight: 40,
+    minWidth: 0,
     paddingHorizontal: 17,
   },
   choicePillSelected: {
@@ -384,6 +420,8 @@ const styles = StyleSheet.create({
     fontFamily: labelFont,
     fontSize: 13,
     fontWeight: "900",
+    lineHeight: 16,
+    minWidth: 0,
   },
   choicePillTextSelected: {
     color: wsColors.red,

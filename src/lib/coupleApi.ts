@@ -324,13 +324,15 @@ export async function markRemoteMatchRevealed(coupleId: string, cardId: string) 
 
 export async function markRemoteNextMatchRevealed(coupleId: string) {
   const client = requireSupabase();
-  const { error } = await client.rpc("reveal_next_match", {
+  const { data, error } = await client.rpc("reveal_next_match", {
     p_couple_id: coupleId,
   });
 
   if (error) {
     throw error;
   }
+
+  return ((data ?? [])[0] ?? null) as RemoteMatch | null;
 }
 
 export async function saveRemoteCustomDesire({

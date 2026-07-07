@@ -74,6 +74,14 @@ export type DesireCard = {
   safety?: string;
 };
 
+export type DesirePack = {
+  cardCount: number;
+  category: Exclude<DesireCategory, "Perso">;
+  description: string;
+  label: string;
+  paid: boolean;
+};
+
 export type CustomDesireCard = DesireCard & {
   custom: true;
   createdAt: string;
